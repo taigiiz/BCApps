@@ -1,0 +1,33 @@
+{
+  "name": "PosAPI POST /rest/receipt - success",
+  "priority": 10,
+  "metadata": {
+    "note": "PLACEHOLDER. Shape follows the PosAPI 3.0 response summary (id = 33-digit DDTD, receipts[].id, posId, status, date, qrData, lottery, easy). Re-check every field against the official PosAPI.yaml (v3.2.48) before relying on it. qrData/lottery are FAKE canaries (QR-CANARY-/LOTTERY-CANARY- prefix): integration tests grep DB dumps, logs and exported traces for them and fail if found (02-architecture.md 11.5)."
+  },
+  "request": {
+    "method": "POST",
+    "urlPath": "/rest/receipt"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "jsonBody": {
+      "id": "{{randomValue length=33 type='NUMERIC'}}",
+      "version": "3.2.48-mock",
+      "posId": 100001,
+      "status": "SUCCESS",
+      "message": "",
+      "date": "{{now timezone='Asia/Ulaanbaatar' format='yyyy-MM-dd HH:mm:ss'}}",
+      "easy": false,
+      "lottery": "LOTTERY-CANARY-{{randomValue length=8 type='ALPHANUMERIC' uppercase=true}}",
+      "qrData": "QR-CANARY-{{randomValue length=60 type='NUMERIC'}}",
+      "receipts": [
+        {
+          "id": "{{randomValue length=33 type='NUMERIC'}}"
+        }
+      ]
+    }
+  }
+}

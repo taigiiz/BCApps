@@ -1,0 +1,80 @@
+<Project>
+  <!--
+    Central Package Management: every NuGet version lives here, projects reference packages without Version.
+    Versions are the latest stable on nuget.org as of 2026-10-06. Dependabot (.github/dependabot.yml) keeps them current.
+    Licence policy: only licences in tools/licenses/allowed-licenses.json; see 18-dev-setup.md section 10.
+    Do NOT add: MediatR, AutoMapper (licence keys), FluentAssertions v8+ (paid commercial use), Duende IdentityServer,
+    FluentValidation (request validation is the built-in .NET 10 AddValidation()), third-party migration runners
+    (Erp.Migrator is our own runner, ADR-0014).
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="Analyzers applied to every project">
+    <GlobalPackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
+    <GlobalPackageReference Include="Meziantou.Analyzer" Version="3.0.294" />
+  </ItemGroup>
+
+  <ItemGroup Label="Data access (PostgreSQL)">
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <PackageVersion Include="Npgsql.DependencyInjection" Version="10.0.3" />
+    <PackageVersion Include="Npgsql.OpenTelemetry" Version="10.0.3" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
+    <PackageVersion Include="Dapper" Version="2.1.89" />
+    <!-- Erp.Migrator is our own runner on plain Npgsql (ADR-0014): journal core.schema_migration, no extra package. -->
+  </ItemGroup>
+
+  <ItemGroup Label="Web, identity and API">
+    <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.12" />
+    <PackageVersion Include="OpenIddict.AspNetCore" Version="7.7.1" />
+    <PackageVersion Include="OpenIddict.EntityFrameworkCore" Version="7.7.1" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.FeatureManagement.AspNetCore" Version="4.8.0" />
+    <!-- GET clients only (PosAPI /rest/info, sendData, reference APIs). NEVER on the eBarimt receipt client (ADR-0012). -->
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
+    <!-- Staging/production secrets are files in /run/secrets (02-architecture.md section 10.4). -->
+    <PackageVersion Include="Microsoft.Extensions.Configuration.KeyPerFile" Version="10.0.12" />
+    <!-- [EbarimtPrintOnly] / [PersonalData] / [Secret] data classification + erasing/HMAC redactors (02-architecture.md 11.5). -->
+    <PackageVersion Include="Microsoft.Extensions.Compliance.Redaction" Version="10.10.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Jobs, documents, exports">
+    <PackageVersion Include="Quartz.Extensions.Hosting" Version="4.3.0" />
+    <PackageVersion Include="Quartz.Serialization.SystemTextJson" Version="4.3.0" />
+    <!-- QuestPDF Community licence: free while company annual gross revenue < USD 1M. Reviewed exception, see tools/licenses. -->
+    <PackageVersion Include="QuestPDF" Version="2026.9.1" />
+    <PackageVersion Include="ClosedXML" Version="0.105.1" />
+  </ItemGroup>
+
+  <ItemGroup Label="Observability">
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.19.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.19.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="In-repo Roslyn analyzers (tools/Erp.Analyzers)">
+    <!-- 4.14 loads in every .NET 10 SDK feature band (the compiler must be >= the referenced Roslyn version). -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Tests">
+    <PackageVersion Include="xunit.v3" Version="4.0.1" />
+    <PackageVersion Include="Shouldly" Version="4.3.0" />
+    <PackageVersion Include="FsCheck.Xunit.v3" Version="3.4.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.15.0" />
+    <PackageVersion Include="TngTech.ArchUnitNET.xUnitV3" Version="0.13.4" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <!-- FakeTimeProvider: tests control TimeProvider (wall clock is banned, RS0030). -->
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.12.0" />
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,35 @@
+# MN Micro ERP - normalise line endings (copy to repository root).
+# LF everywhere so SQL migration checksums are identical on Windows, macOS and Linux runners.
+* text=auto eol=lf
+
+*.sql      text eol=lf
+*.cs       text eol=lf diff=csharp
+*.csproj   text eol=lf
+*.props    text eol=lf
+*.slnx     text eol=lf
+*.json     text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.md       text eol=lf
+*.ts       text eol=lf
+*.tsx      text eol=lf
+*.sh       text eol=lf
+*.ps1      text eol=crlf
+*.cmd      text eol=crlf
+
+# Binary assets
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.pdf  binary
+*.ttf  binary
+*.otf  binary
+*.woff binary
+*.woff2 binary
+*.xlsx binary
+
+# Generated / lock files: collapsed in GitHub PR view (still reviewable; lock-file changes matter for supply chain)
+**/packages.lock.json linguist-generated=true
+web/package-lock.json linguist-generated=true
+web/src/shared/api/schema.d.ts linguist-generated=true
+web/src/shared/api/openapi.json linguist-generated=true

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    In-repo Roslyn analyzers. Referenced as an analyzer (not a library) from Directory.Build.props.
+    ERP0001: binary floating point is banned in money code (*.Domain, *.Application, *.Contracts, module *.Api).
+    Why not BannedSymbols? Banning T:System.Double only catches static member access (double.Parse);
+    it does not catch declarations, locals, casts or literals. Spec: 18-dev-setup.md section 4.2.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <!-- RS2008: release tracking is for analyzers shipped as NuGet packages; this one never leaves the repo. -->
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

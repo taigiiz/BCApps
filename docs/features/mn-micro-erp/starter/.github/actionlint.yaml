@@ -1,0 +1,6 @@
+# actionlint configuration: custom labels of the self-hosted runners in the Mongolian data centre (cd.yml).
+self-hosted-runner:
+  labels:
+    - mn-dc
+    - staging
+    - production

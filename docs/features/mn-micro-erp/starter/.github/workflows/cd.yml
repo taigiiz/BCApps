@@ -1,0 +1,208 @@
+# =============================================================================
+# MN Micro ERP - continuous delivery to the Mongolian data centre
+# Spec: docs/features/mn-micro-erp/18-dev-setup.md section 11.
+#
+# Why self-hosted runners: production must run in Mongolia (PosAPI is reachable only from Mongolian IPs
+# on an internal network). A runner inside the DC network pulls images from GHCR, mirrors them into the
+# in-DC registry, runs migrations, and rolls the app hosts. Production secrets never leave the DC:
+# they are files under /etc/erp/secrets/<service>/ on the runner/app hosts (SOPS + Ansible, managed by ops),
+# mounted read-only into containers as /run/secrets (02-architecture.md 10.4) - never env vars, never GitHub secrets.
+#
+#   staging    : automatically after a green "ci" run on main (image tag sha-<commit>)
+#   production : manual (workflow_dispatch) run FROM the release tag vX.Y.Z ("Use workflow from" = the tag);
+#                the GitHub environment "production" requires 2 reviewers and allows only v* tags
+#                (configured in repo settings). The freeze calendar (02-architecture.md 14.6) is enforced here.
+#
+# Runner host prerequisites (18-dev-setup.md section 11): docker, jq, curl, ssh key for deploy@<hosts>,
+# /etc/erp/secrets/migrator/ConnectionStrings__Migrations, /etc/erp/posapi-instances.json, login to LOCAL_REGISTRY.
+#
+# Runner labels: [self-hosted, linux, x64, mn-dc, staging] and [self-hosted, linux, x64, mn-dc, production].
+# Environment variables (GitHub "vars", per environment): LOCAL_REGISTRY, APP_HOSTS, DB_HOST, APP_URL.
+# =============================================================================
+name: cd
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [staging, production]
+        default: staging
+        required: true
+      version:
+        description: "Image tag: vX.Y.Z (required for production) or sha-<40 hex> (staging only)"
+        type: string
+        required: true
+      override_freeze:
+        description: "Production hotfix inside a freeze window (approved by the chief architect + on-call)"
+        type: boolean
+        default: false
+      override_reason:
+        description: "Why the freeze is overridden (incident / ticket id) - required with override_freeze"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  resolve:
+    name: resolve target
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    outputs:
+      environment: ${{ steps.r.outputs.environment }}
+      version: ${{ steps.r.outputs.version }}
+      git_ref: ${{ steps.r.outputs.git_ref }}
+    steps:
+      - id: r
+        env:
+          EVENT: ${{ github.event_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          IN_ENV: ${{ inputs.environment }}
+          IN_VERSION: ${{ inputs.version }}
+          OVERRIDE: ${{ inputs.override_freeze }}
+          OVERRIDE_REASON: ${{ inputs.override_reason }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_run" ]; then
+            env_name=staging; version="sha-$RUN_SHA"; git_ref="$RUN_SHA"
+          else
+            env_name="$IN_ENV"; version="$IN_VERSION"
+            if [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              git_ref="$version"
+            elif [[ "$version" =~ ^sha-([0-9a-f]{40})$ ]] && [ "$env_name" = "staging" ]; then
+              git_ref="${BASH_REMATCH[1]}"
+            else
+              echo "::error::Invalid version for $env_name (production accepts only vX.Y.Z, staging also sha-<40 hex>)"; exit 1
+            fi
+          fi
+
+          if [ "$env_name" = "production" ]; then
+            # The production environment only admits v* tags, so the workflow must be dispatched from the tag itself.
+            if [ "$GITHUB_REF" != "refs/tags/$version" ]; then
+              echo "::error::Dispatch production from the release tag (Use workflow from: $version); got $GITHUB_REF"; exit 1
+            fi
+            # Freeze calendar, Asia/Ulaanbaatar (02-architecture.md 14.6).
+            read -r m d < <(TZ=Asia/Ulaanbaatar date +'%-m %-d')
+            freeze=""
+            if [ "$d" -ge 9 ] && [ "$d" -le 10 ]; then freeze="monthly VAT return (days 9-10)"; fi
+            case "$m" in 1|4|7|10) if [ "$d" -ge 18 ] && [ "$d" -le 20 ]; then freeze="quarterly CIT return (days 18-20)"; fi ;; esac
+            if [ "$m" -eq 2 ] && [ "$d" -ge 5 ] && [ "$d" -le 10 ]; then freeze="annual financial statements (Feb 5-10)"; fi
+            if { [ "$m" -eq 12 ] && [ "$d" -ge 29 ]; } || { [ "$m" -eq 1 ] && [ "$d" -le 3 ]; }; then freeze="year end (Dec 29 - Jan 3)"; fi
+            if [ -n "$freeze" ]; then
+              reason=$(printf '%s' "$OVERRIDE_REASON" | tr -d '\r\n')
+              if [ "$OVERRIDE" = "true" ] && [ -n "$reason" ]; then
+                echo "Freeze window ($freeze) overridden. Reason: $reason"
+                echo "Freeze window ($freeze) overridden. Reason: $reason" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "::error::Production deploys are frozen today ($freeze). Hotfix: set override_freeze and override_reason."; exit 1
+              fi
+            fi
+          fi
+          {
+            echo "environment=$env_name"
+            echo "version=$version"
+            echo "git_ref=$git_ref"
+          } >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: deploy ${{ needs.resolve.outputs.version }} -> ${{ needs.resolve.outputs.environment }}
+    needs: resolve
+    runs-on: [self-hosted, linux, x64, mn-dc, "${{ needs.resolve.outputs.environment }}"]
+    environment:
+      name: ${{ needs.resolve.outputs.environment }}
+      url: ${{ vars.APP_URL }}
+    concurrency:
+      group: deploy-${{ needs.resolve.outputs.environment }}
+      cancel-in-progress: false
+    timeout-minutes: 45
+    env:
+      ENV_NAME: ${{ needs.resolve.outputs.environment }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+      UPSTREAM: ghcr.io/${{ github.repository_owner }}
+      LOCAL_REGISTRY: ${{ vars.LOCAL_REGISTRY }}
+      APP_HOSTS: ${{ vars.APP_HOSTS }}
+      DB_HOST: ${{ vars.DB_HOST }}
+      APP_URL: ${{ vars.APP_URL }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.git_ref }}
+
+      - name: Mirror images GHCR -> in-DC registry
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+          for c in api worker migrator; do
+            docker pull "$UPSTREAM/erp-$c:$VERSION"
+            docker tag  "$UPSTREAM/erp-$c:$VERSION" "$LOCAL_REGISTRY/erp-$c:$VERSION"
+            docker push "$LOCAL_REGISTRY/erp-$c:$VERSION"
+          done
+          docker logout ghcr.io
+
+      - name: Pre-deploy checks (backup freshness, PosAPI pool, disk)
+        run: |
+          set -euo pipefail
+          # Last pgBackRest backup must be < 26 h old and the WAL archive healthy.
+          ssh "deploy@$DB_HOST" "sudo -n -u postgres pgbackrest --stanza=erp check"
+          ssh "deploy@$DB_HOST" "sudo -n -u postgres pgbackrest --stanza=erp info --output=json" \
+            | jq -e '.[0].backup[-1].timestamp.stop > (now - 26*3600)' > /dev/null
+          # Every PosAPI instance answers /rest/info (internal network only).
+          for url in $(jq -r '.[]' /etc/erp/posapi-instances.json); do curl -fsS --max-time 10 "$url/rest/info" > /dev/null; done
+          df -h /var/lib/docker | tail -1
+
+      - name: Restore point (production only)
+        if: env.ENV_NAME == 'production'
+        run: |
+          set -euo pipefail
+          label="pre-deploy-${VERSION}-$(date -u +%Y%m%dT%H%M%SZ)"
+          # shellcheck disable=SC2029  # $label is intentionally expanded on the runner
+          ssh "deploy@$DB_HOST" "sudo -n -u postgres psql -d erp -v ON_ERROR_STOP=1 -c \"SELECT pg_create_restore_point('$label')\""
+
+      - name: Migrations (expand) as erp_migrator, then verify
+        run: |
+          set -euo pipefail
+          # Secrets are files (ConnectionStrings__Migrations) read by the KeyPerFile provider - never env vars.
+          # The migrator connects to PostgreSQL directly (session-level advisory lock), not through PgBouncer.
+          for cmd in migrate verify; do
+            docker run --rm --network host --read-only --tmpfs /tmp \
+              -e DOTNET_ENVIRONMENT="${ENV_NAME^}" \
+              -v /etc/erp/secrets/migrator:/run/secrets:ro \
+              "$LOCAL_REGISTRY/erp-migrator:$VERSION" "$cmd"
+          done
+
+      - name: Rolling deploy of api + worker
+        run: |
+          set -euo pipefail
+          for host in $APP_HOSTS; do
+            echo "::group::$host"
+            # shellcheck disable=SC2029  # $VERSION is intentionally expanded on the runner
+            ssh "deploy@$host" "cd /opt/erp && sed -i 's/^ERP_VERSION=.*/ERP_VERSION=$VERSION/' .env && docker compose pull --quiet && docker compose up -d --remove-orphans"
+            ok=""
+            for _ in $(seq 1 36); do
+              if curl -fsS --max-time 5 "http://$host:8080/health/ready" > /dev/null; then ok=1; break; fi
+              sleep 5
+            done
+            [ -n "$ok" ] || { echo "::error::$host did not become ready - stop rollout (other hosts still run the previous version)"; exit 1; }
+            echo "::endgroup::"
+          done
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 10 "$APP_URL/health/ready" > /dev/null
+          deployed=$(curl -fsS --max-time 10 "$APP_URL/api/v1/system/version" | jq -r .version)
+          [ "$deployed" = "$VERSION" ] || { echo "::error::expected $VERSION, got $deployed"; exit 1; }
+          echo "Deployed $VERSION to $ENV_NAME"

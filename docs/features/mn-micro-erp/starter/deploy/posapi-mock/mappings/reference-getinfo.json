@@ -1,0 +1,28 @@
+{
+  "name": "api.ebarimt.mn GET /api/info/check/getInfo?tin= (reference service stub)",
+  "priority": 10,
+  "metadata": {
+    "note": "Point Ebarimt:ReferenceApi:BaseUrl at http://localhost:7080 locally. PLACEHOLDER shape; the real service returns name, vatPayer, cityPayer, freeProject, isGovernment."
+  },
+  "request": {
+    "method": "GET",
+    "urlPath": "/api/info/check/getInfo"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "jsonBody": {
+      "data": {
+        "name": "MOCK TAXPAYER {{request.query.tin}}",
+        "vatPayer": true,
+        "cityPayer": true,
+        "freeProject": false,
+        "isGovernment": false
+      },
+      "status": 200,
+      "msg": ""
+    }
+  }
+}

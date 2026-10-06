@@ -1,0 +1,30 @@
+// Banned only in *.Domain (incl. Erp.BuildingBlocks.Domain), *.Application and *.Contracts projects (wired in Directory.Build.props).
+// Money is System.Decimal, rounded ONLY through Erp.BuildingBlocks.Domain.Monetary.MoneyMath.Round(value, decimals)
+// (MidpointRounding.AwayFromZero, same as PostgreSQL round(numeric, n)) - ADR-0006.
+// MoneyMath itself suppresses RS0030 locally with a justification comment (architecture test #7).
+// Spec: docs/features/mn-micro-erp/18-dev-setup.md section 4.
+//
+// NOTE: a T: entry only catches member access on the type (double.Parse). Declarations, locals, casts and
+// literals (double x = 1.5) are caught by the ERP0001 analyzer in tools/Erp.Analyzers - keep both.
+
+// --- No binary floating point anywhere near amounts, quantities, prices or rates.
+T:System.Double;Money/qty/rate must be System.Decimal. double is banned in money code (see also ERP0001)
+T:System.Single;Money/qty/rate must be System.Decimal. float is banned in money code (see also ERP0001)
+T:System.Half;Money/qty/rate must be System.Decimal
+M:System.Convert.ToDouble(System.Decimal);Do not convert money to double
+M:System.Decimal.ToDouble(System.Decimal);Do not convert money to double
+M:System.Decimal.ToSingle(System.Decimal);Do not convert money to float
+M:System.Convert.ToDecimal(System.Double);Do not create money from double
+
+// --- No bare rounding: .NET defaults to banker's rounding (ToEven), PostgreSQL rounds half away from zero.
+M:System.Math.Round(System.Decimal);Use MoneyMath.Round(value, decimals)
+M:System.Math.Round(System.Decimal,System.Int32);Use MoneyMath.Round(value, decimals)
+M:System.Math.Round(System.Decimal,System.MidpointRounding);Use MoneyMath.Round(value, decimals)
+M:System.Math.Round(System.Decimal,System.Int32,System.MidpointRounding);Use MoneyMath.Round(value, decimals)
+M:System.Decimal.Round(System.Decimal);Use MoneyMath.Round(value, decimals)
+M:System.Decimal.Round(System.Decimal,System.Int32);Use MoneyMath.Round(value, decimals)
+M:System.Decimal.Round(System.Decimal,System.MidpointRounding);Use MoneyMath.Round(value, decimals)
+M:System.Decimal.Round(System.Decimal,System.Int32,System.MidpointRounding);Use MoneyMath.Round(value, decimals)
+M:System.Math.Floor(System.Decimal);Use a MoneyMath helper with an explicit rounding direction (ADR-0006: NEAREST/UP/DOWN)
+M:System.Math.Ceiling(System.Decimal);Use a MoneyMath helper with an explicit rounding direction (ADR-0006: NEAREST/UP/DOWN)
+M:System.Math.Truncate(System.Decimal);Use a MoneyMath helper with an explicit rounding direction (ADR-0006: NEAREST/UP/DOWN)

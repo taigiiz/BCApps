@@ -1,0 +1,22 @@
+# Build context for deploy/docker/Dockerfile (context = repository root)
+**/bin/
+**/obj/
+**/node_modules/
+artifacts/
+TestResults/
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+docs/
+tests/
+deploy/hosts/
+web/dist/
+**/*.user
+**/.env
+**/.env.*
+**/*.pfx
+**/*.pem
+**/*.key
+**/appsettings.*.local.json

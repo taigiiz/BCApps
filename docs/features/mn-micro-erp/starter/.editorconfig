@@ -1,0 +1,221 @@
+# MN Micro ERP - EditorConfig (copy to repository root)
+# Spec: docs/features/mn-micro-erp/18-dev-setup.md section 3.
+# Build enforcement: Directory.Build.props sets EnforceCodeStyleInBuild=true and TreatWarningsAsErrors=true,
+# so every rule below with severity "warning" FAILS the build. "suggestion" only shows in the IDE.
+# Note: option-level severities ("= value:warning") are IDE-only; build severities are set with dotnet_diagnostic.*.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{json,jsonc,yml,yaml,ts,tsx,js,mjs,cjs,css,html}]
+indent_size = 2
+
+[*.{csproj,props,targets,slnx,xml,resx,config}]
+indent_size = 2
+
+[*.md]
+indent_size = 2
+trim_trailing_whitespace = false
+
+[*.sql]
+indent_size = 4
+
+[*.{sh,bash}]
+indent_size = 2
+
+[*.{g.cs,generated.cs}]
+generated_code = true
+
+###############################################################################
+# C#
+###############################################################################
+[*.cs]
+
+# ---- Usings and namespaces ----
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace
+csharp_style_namespace_declarations = file_scoped
+dotnet_style_namespace_match_folder = true
+
+# ---- var: explicit for built-in types (prevents `var total = 0;` -> int, `var x = 1.5;` -> double) ----
+csharp_style_var_for_built_in_types = false
+csharp_style_var_when_type_is_apparent = true
+csharp_style_var_elsewhere = true
+
+# ---- Language keywords instead of BCL names (decimal, not Decimal) ----
+dotnet_style_predefined_type_for_locals_parameters_members = true
+dotnet_style_predefined_type_for_member_access = true
+
+# ---- this. qualification: never ----
+dotnet_style_qualification_for_field = false
+dotnet_style_qualification_for_property = false
+dotnet_style_qualification_for_method = false
+dotnet_style_qualification_for_event = false
+
+# ---- Modifiers ----
+dotnet_style_require_accessibility_modifiers = for_non_interface_members
+dotnet_style_readonly_field = true
+csharp_preferred_modifier_order = public,private,protected,internal,file,static,extern,new,virtual,abstract,sealed,override,readonly,unsafe,required,volatile,async
+
+# ---- Braces and blocks ----
+csharp_prefer_braces = true
+csharp_prefer_simple_using_statement = true
+csharp_style_prefer_primary_constructors = true
+csharp_style_expression_bodied_methods = when_on_single_line
+csharp_style_expression_bodied_properties = true
+csharp_style_expression_bodied_accessors = true
+csharp_style_prefer_switch_expression = true
+csharp_style_prefer_pattern_matching = true
+csharp_style_prefer_not_pattern = true
+csharp_style_throw_expression = true
+dotnet_style_prefer_collection_expression = when_types_loosely_match
+dotnet_style_coalesce_expression = true
+dotnet_style_null_propagation = true
+dotnet_style_object_initializer = true
+dotnet_style_collection_initializer = true
+
+# ---- Formatting (Allman) ----
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_new_line_before_members_in_object_initializers = true
+csharp_new_line_before_members_in_anonymous_types = true
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_space_after_cast = false
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_preserve_single_line_statements = false
+csharp_preserve_single_line_blocks = true
+
+# ---- Naming ----
+# Interfaces: IPascalCase
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_style.i_pascal.required_prefix = I
+dotnet_naming_style.i_pascal.capitalization = pascal_case
+dotnet_naming_rule.interfaces_i_pascal.symbols = interfaces
+dotnet_naming_rule.interfaces_i_pascal.style = i_pascal
+dotnet_naming_rule.interfaces_i_pascal.severity = warning
+
+# Type parameters: TPascalCase
+dotnet_naming_symbols.type_params.applicable_kinds = type_parameter
+dotnet_naming_style.t_pascal.required_prefix = T
+dotnet_naming_style.t_pascal.capitalization = pascal_case
+dotnet_naming_rule.type_params_t_pascal.symbols = type_params
+dotnet_naming_rule.type_params_t_pascal.style = t_pascal
+dotnet_naming_rule.type_params_t_pascal.severity = warning
+
+# Async methods end with Async
+dotnet_naming_symbols.async_methods.applicable_kinds = method
+dotnet_naming_symbols.async_methods.required_modifiers = async
+dotnet_naming_style.async_suffix.required_suffix = Async
+dotnet_naming_style.async_suffix.capitalization = pascal_case
+dotnet_naming_rule.async_methods_suffix.symbols = async_methods
+dotnet_naming_rule.async_methods_suffix.style = async_suffix
+dotnet_naming_rule.async_methods_suffix.severity = warning
+
+# Constants: PascalCase
+dotnet_naming_symbols.constants.applicable_kinds = field, local
+dotnet_naming_symbols.constants.required_modifiers = const
+dotnet_naming_style.pascal.capitalization = pascal_case
+dotnet_naming_rule.constants_pascal.symbols = constants
+dotnet_naming_rule.constants_pascal.style = pascal
+dotnet_naming_rule.constants_pascal.severity = warning
+
+# Private / internal fields (instance and static): _camelCase
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private, internal, private_protected
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+dotnet_naming_rule.private_fields_underscore.severity = warning
+
+# Types, methods, properties, events, public fields: PascalCase
+dotnet_naming_symbols.pascal_members.applicable_kinds = namespace, class, struct, enum, delegate, method, property, event, field
+dotnet_naming_rule.pascal_members.symbols = pascal_members
+dotnet_naming_rule.pascal_members.style = pascal
+dotnet_naming_rule.pascal_members.severity = warning
+
+# Parameters and locals: camelCase
+dotnet_naming_symbols.params_locals.applicable_kinds = parameter, local, local_function
+dotnet_naming_style.camel.capitalization = camel_case
+dotnet_naming_rule.params_locals_camel.symbols = params_locals
+dotnet_naming_rule.params_locals_camel.style = camel
+dotnet_naming_rule.params_locals_camel.severity = warning
+
+# ---- Build-enforced code-style rules (IDExxxx) ----
+dotnet_diagnostic.IDE0005.severity = warning   # unused usings
+dotnet_diagnostic.IDE0008.severity = warning   # explicit type for built-in types (see var options)
+dotnet_diagnostic.IDE0007.severity = suggestion
+dotnet_diagnostic.IDE0011.severity = warning   # braces
+dotnet_diagnostic.IDE0040.severity = warning   # accessibility modifiers required
+dotnet_diagnostic.IDE0044.severity = warning   # readonly fields
+dotnet_diagnostic.IDE0049.severity = warning   # decimal, not System.Decimal
+dotnet_diagnostic.IDE0055.severity = warning   # formatting
+dotnet_diagnostic.IDE0065.severity = warning   # usings outside namespace
+dotnet_diagnostic.IDE0130.severity = warning   # namespace matches folder
+dotnet_diagnostic.IDE0161.severity = warning   # file-scoped namespace
+dotnet_diagnostic.IDE1006.severity = warning   # naming rules above
+dotnet_diagnostic.IDE0290.severity = suggestion # primary constructors
+dotnet_diagnostic.IDE0058.severity = none      # expression value never used (noisy with fluent APIs)
+
+# ---- .NET analyzers (CAxxxx) ----
+# Culture safety: money and dates must never be formatted/parsed with the thread culture.
+dotnet_diagnostic.CA1304.severity = warning
+dotnet_diagnostic.CA1305.severity = warning
+dotnet_diagnostic.CA1309.severity = warning
+dotnet_diagnostic.CA1310.severity = warning
+dotnet_diagnostic.CA1311.severity = warning
+dotnet_diagnostic.CA1307.severity = suggestion
+dotnet_diagnostic.CA1308.severity = suggestion  # snake_case is lower-case by design
+# Async and cancellation
+dotnet_diagnostic.CA2016.severity = warning    # forward CancellationToken
+dotnet_diagnostic.CA1849.severity = warning    # call async overloads in async methods
+dotnet_diagnostic.CA2007.severity = none       # no ConfigureAwait in ASP.NET Core / generic host
+# Logging: source-generated LoggerMessage, constant templates (no interpolation -> no accidental PII)
+dotnet_diagnostic.CA1848.severity = warning
+dotnet_diagnostic.CA2254.severity = warning
+dotnet_diagnostic.CA1727.severity = warning    # PascalCase placeholders in log templates
+# Design
+dotnet_diagnostic.CA1852.severity = warning    # seal internal types
+dotnet_diagnostic.CA1062.severity = none       # nullable reference types cover argument null checks
+dotnet_diagnostic.CA1303.severity = none       # UI text comes from resources; log/exception text is English
+dotnet_diagnostic.CA1812.severity = none       # DI-instantiated internal classes
+dotnet_diagnostic.CA1515.severity = suggestion
+dotnet_diagnostic.CA1716.severity = suggestion
+dotnet_diagnostic.CA1819.severity = suggestion
+dotnet_diagnostic.CA2227.severity = suggestion
+dotnet_diagnostic.CA1054.severity = suggestion
+dotnet_diagnostic.CA1056.severity = suggestion
+
+# ---- Banned APIs (BannedSymbols*.txt) ----
+dotnet_diagnostic.RS0030.severity = error
+
+# ---- Meziantou.Analyzer (MAxxxx) ----
+dotnet_diagnostic.MA0004.severity = none       # ConfigureAwait
+dotnet_diagnostic.MA0006.severity = none       # string.Equals instead of ==
+dotnet_diagnostic.MA0011.severity = warning    # IFormatProvider
+dotnet_diagnostic.MA0076.severity = warning    # culture-sensitive ToString in interpolated strings
+dotnet_diagnostic.MA0048.severity = warning    # file name must match type name
+dotnet_diagnostic.MA0026.severity = suggestion # TODO comments
+dotnet_diagnostic.MA0051.severity = suggestion # method too long
+dotnet_diagnostic.MA0016.severity = suggestion # prefer collection abstraction
+
+###############################################################################
+# Tests: relaxed naming/logging rules (culture rules still apply)
+###############################################################################
+[tests/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA1852.severity = suggestion
+dotnet_diagnostic.MA0048.severity = suggestion
+dotnet_diagnostic.IDE1006.severity = suggestion

@@ -1,0 +1,118 @@
+<Project>
+  <!--
+    Root MSBuild settings for every .NET project in the MN Micro ERP repository.
+    Copy this file to the repository root (next to Erp.slnx).
+    Spec: docs/features/mn-micro-erp/18-dev-setup.md (sections 3 and 4).
+
+    Rules enforced here:
+      * net10.0, C# latest, nullable reference types, implicit usings
+      * every warning is an error (compiler, analyzers, code style, MSBuild, NuGet high/critical audit)
+      * deterministic, reproducible builds with lock files (locked restore on CI)
+      * banned APIs: DateTime.Now / Guid.NewGuid everywhere; bare Math.Round in *.Domain (incl. Erp.BuildingBlocks.Domain)/Application/Contracts
+      * ERP0001 analyzer (tools/Erp.Analyzers): no double/float/Half in *.Domain/*.Application/*.Contracts/module *.Api
+  -->
+
+  <PropertyGroup Label="Language and target">
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Features>strict</Features>
+    <!-- Integer overflow must throw (entry numbers, counters). decimal always throws on overflow anyway. -->
+    <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
+    <!-- We format numbers and dates for mn-MN, so ICU culture data is required (no invariant mode). -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <NeutralLanguage>mn</NeutralLanguage>
+    <SatelliteResourceLanguages>mn;en</SatelliteResourceLanguages>
+    <IsPackable>false</IsPackable>
+    <Product>MN Micro ERP</Product>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Warnings and analyzers">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
+    <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- Makes .editorconfig IDExxxx rules (naming, file-scoped namespaces, unused usings...) part of the build. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Needed so IDE0005 (unused usings) is reported during build. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- XML docs are mandatory only for public module contracts (*.Contracts). -->
+    <NoWarn Condition="!$(MSBuildProjectName.EndsWith('.Contracts'))">$(NoWarn);CS1591</NoWarn>
+
+    <!-- NuGet vulnerability audit on every restore, including transitive packages.
+         NU1901 (low) and NU1902 (moderate) stay warnings; NU1903 (high) and NU1904 (critical) fail the build. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Deterministic and reproducible builds">
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' or '$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <DebugType>portable</DebugType>
+    <!-- packages.lock.json is committed for every project; CI restores in locked mode. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(ContinuousIntegrationBuild)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+
+  <!-- Module layers (src/Modules/<M>/<Layer>/Erp.<M>.<Layer>.csproj) are internal by default.
+       Sibling layers of the SAME module and the test projects may see internals; which layer may reference
+       which is still decided by ProjectReference + architecture tests (18-dev-setup.md section 2.4). -->
+  <PropertyGroup Label="Module prefix" Condition="$(MSBuildProjectDirectory.Replace('\', '/').Contains('/src/Modules/'))">
+    <ErpModulePrefix>$(MSBuildProjectName.Substring(0, $(MSBuildProjectName.LastIndexOf('.'))))</ErpModulePrefix>
+  </PropertyGroup>
+
+  <ItemGroup Label="Internals visible to sibling layers and tests" Condition="'$(ErpModulePrefix)' != ''">
+    <InternalsVisibleTo Include="$(ErpModulePrefix).Application" />
+    <InternalsVisibleTo Include="$(ErpModulePrefix).Infrastructure" />
+    <InternalsVisibleTo Include="$(ErpModulePrefix).Api" />
+    <InternalsVisibleTo Include="Erp.Tests.Unit" />
+    <InternalsVisibleTo Include="Erp.Tests.Integration" />
+    <InternalsVisibleTo Include="Erp.Tests.Golden" />
+    <InternalsVisibleTo Include="Erp.Tests.Architecture" />
+  </ItemGroup>
+
+  <!-- ERP0001 (tools/Erp.Analyzers): no double/float/Half anywhere in money code - declarations, locals, casts,
+       literals, implicit conversions. BannedSymbols cannot do this (it only sees member access like double.Parse). -->
+  <ItemGroup Label="ERP0001 money analyzer"
+             Condition="Exists('$(MSBuildThisFileDirectory)tools/Erp.Analyzers/Erp.Analyzers.csproj') and ($(MSBuildProjectName.EndsWith('.Domain')) or $(MSBuildProjectName.EndsWith('.Application')) or $(MSBuildProjectName.EndsWith('.Contracts')) or ('$(ErpModulePrefix)' != '' and $(MSBuildProjectName.EndsWith('.Api'))))">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)tools/Erp.Analyzers/Erp.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
+  </ItemGroup>
+
+  <PropertyGroup Label="Host projects and dev tools share one local user-secrets store (loaded only in Development)"
+                 Condition="'$(MSBuildProjectName)' == 'Erp.Api' or '$(MSBuildProjectName)' == 'Erp.Worker' or '$(MSBuildProjectName)' == 'Erp.Migrator' or '$(MSBuildProjectName)' == 'Erp.DevTools'">
+    <UserSecretsId>mn-erp-local-dev</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup Label="Banned APIs (RS0030, Microsoft.CodeAnalysis.BannedApiAnalyzers)">
+    <!-- Everywhere: wall clock, random GUIDs, culture-sensitive parsing shortcuts. -->
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt"
+                     Condition="Exists('$(MSBuildThisFileDirectory)BannedSymbols.txt')" />
+    <!-- *.Domain (incl. Erp.BuildingBlocks.Domain) / *.Application / *.Contracts: no bare rounding (use MoneyMath.Round, ADR-0006). -->
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.Domain.txt"
+                     Condition="Exists('$(MSBuildThisFileDirectory)BannedSymbols.Domain.txt') and ($(MSBuildProjectName.EndsWith('.Domain')) or $(MSBuildProjectName.EndsWith('.Application')) or $(MSBuildProjectName.EndsWith('.Contracts')))" />
+  </ItemGroup>
+
+  <!-- ===================== Test projects (Erp.Tests.*) ===================== -->
+  <!-- xUnit v3 test projects are executables running on Microsoft.Testing.Platform (see global.json "test.runner"). -->
+  <PropertyGroup Label="Test projects" Condition="$(MSBuildProjectName.StartsWith('Erp.Tests.'))">
+    <OutputType>Exe</OutputType>
+    <IsTestProject>true</IsTestProject>
+    <!-- GenerateDocumentationFile stays true: IDE0005 (unused usings) is enforced on build in tests too. -->
+    <!-- CA1707: test names use underscores (Method_State_Expected). CA1515: test classes must be public. -->
+    <NoWarn>$(NoWarn);CA1707;CA1515;CA2007</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup Label="Test packages" Condition="$(MSBuildProjectName.StartsWith('Erp.Tests.'))">
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <Using Include="Xunit" />
+    <Using Include="Shouldly" />
+  </ItemGroup>
+</Project>

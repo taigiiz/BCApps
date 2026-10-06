@@ -1,0 +1,540 @@
+# =============================================================================
+# MN Micro ERP - continuous integration
+# Spec: docs/features/mn-micro-erp/18-dev-setup.md section 10.
+#
+# Jobs (all must pass; "ci-ok" is the single required status check in the branch ruleset):
+#   build          restore (locked) -> format check -> build (warnings = errors) -> OpenAPI drift + oasdiff breaking
+#                  -> unit tests -> architecture tests
+#   integration    Testcontainers PostgreSQL (17 and 18): RLS, append-only ledger, numbering, outbox, posting
+#   golden         accountant-signed golden scenarios against a PostgreSQL 17 service container
+#   migrations     PG 16/17/18: lint, empty-DB path, previous-release upgrade path, schema diff, verify
+#   web            React SPA: lint, typecheck, i18n key parity, generated API client drift, unit tests, build
+#   supply-chain   NuGet/npm licence allow-list, vulnerability audit, CycloneDX SBOM + scan, secret scan
+#   image          api / worker / migrator images (pushed to GHCR only on main and v* tags)
+#   codeql         SAST (C#, TypeScript) - only when repo variable CODEQL_ENABLED == 'true'
+#                  (private repositories need a GitHub Code Security licence)
+# =============================================================================
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+  SOLUTION: Erp.slnx
+  CONFIGURATION: Release
+  TEST_RESULTS: ${{ github.workspace }}/artifacts/test-results
+
+jobs:
+  # ---------------------------------------------------------------------------
+  build:
+    name: build · format · unit · architecture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          # Latest 10.0 SDK; global.json (10.0.100 + rollForward latestFeature) accepts any 10.0.x feature band.
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+
+      - name: Restore (locked mode, NuGet audit)
+        run: dotnet restore "$SOLUTION" --locked-mode
+
+      - name: Format check (whitespace + code style)
+        run: |
+          dotnet format whitespace "$SOLUTION" --verify-no-changes --verbosity minimal
+          dotnet format style "$SOLUTION" --verify-no-changes --no-restore --severity warn --verbosity minimal
+
+      - name: Build (warnings are errors)
+        run: dotnet build "$SOLUTION" -c "$CONFIGURATION" --no-restore
+
+      - name: OpenAPI contract drift
+        # Erp.Api generates web/src/shared/api/openapi.json at build time (Microsoft.Extensions.ApiDescription.Server).
+        # A change (or a new untracked file) means the API changed but the committed contract was not updated.
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain -- web/src/shared/api/openapi.json)" ]; then
+            git --no-pager diff -- web/src/shared/api/openapi.json || true
+            echo "::error::web/src/shared/api/openapi.json is out of date: build Erp.Api, run 'npm run api:gen' in web/ and commit both files."
+            exit 1
+          fi
+
+      - name: OpenAPI breaking-change check against the target branch (v1 is additive only)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          if ! git show "FETCH_HEAD:web/src/shared/api/openapi.json" > "$RUNNER_TEMP/openapi.base.json" 2>/dev/null; then
+            echo "::notice::No committed contract on $BASE_REF yet - breaking-change check skipped."
+            exit 0
+          fi
+          cp web/src/shared/api/openapi.json "$RUNNER_TEMP/openapi.head.json"
+          docker run --rm -v "$RUNNER_TEMP:/specs:ro" tufin/oasdiff:v1.33.0 \
+            breaking /specs/openapi.base.json /specs/openapi.head.json --fail-on ERR
+
+      - name: Unit tests
+        run: >-
+          dotnet test --project tests/Unit/Erp.Tests.Unit.csproj
+          -c "$CONFIGURATION" --no-build
+          --results-directory "$TEST_RESULTS/unit"
+          -- --report-xunit-trx --coverage --coverage-output-format cobertura
+
+      - name: Architecture tests (module boundaries, banned types, naming)
+        run: >-
+          dotnet test --project tests/Architecture/Erp.Tests.Architecture.csproj
+          -c "$CONFIGURATION" --no-build
+          --results-directory "$TEST_RESULTS/architecture"
+          -- --report-xunit-trx
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-build
+          path: artifacts/test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  integration:
+    name: integration (Testcontainers ${{ matrix.pg }})
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ["postgres:17", "postgres:18"]
+    env:
+      # Read by Erp.BuildingBlocks.Testing.PostgresFixture; Docker is preinstalled on ubuntu runners.
+      ERP_TEST_PG_IMAGE: ${{ matrix.pg }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      - run: dotnet restore tests/Integration/Erp.Tests.Integration.csproj --locked-mode
+      - run: dotnet build tests/Integration/Erp.Tests.Integration.csproj -c "$CONFIGURATION" --no-restore
+      - name: Integration tests (RLS isolation, ledger immutability, gapless numbering, outbox/idempotency, posting)
+        run: >-
+          dotnet test --project tests/Integration/Erp.Tests.Integration.csproj
+          -c "$CONFIGURATION" --no-build
+          --results-directory "$TEST_RESULTS/integration"
+          -- --report-xunit-trx
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-integration-${{ strategy.job-index }}
+          path: artifacts/test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  golden:
+    name: golden scenarios (PostgreSQL 17 service)
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres   # ephemeral CI container only
+          POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      # When set, the test fixture uses this server instead of starting Testcontainers.
+      # It migrates a template database once (as erp_migrator) and clones it per scenario
+      # (CREATE DATABASE ... TEMPLATE ...); scenarios run as erp_app so RLS is active.
+      ERP_TEST_PG_ADMIN: "Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      - name: Bootstrap roles and databases
+        run: psql -v ON_ERROR_STOP=1 -d postgres -f db/init/01-roles.sql
+      - run: dotnet restore tests/Golden/Erp.Tests.Golden.csproj --locked-mode
+      - run: dotnet build tests/Golden/Erp.Tests.Golden.csproj -c "$CONFIGURATION" --no-restore
+      - name: Golden scenario tests (tests/Golden/Scenarios/**/*.yaml)
+        run: >-
+          dotnet test --project tests/Golden/Erp.Tests.Golden.csproj
+          -c "$CONFIGURATION" --no-build
+          --results-directory "$TEST_RESULTS/golden"
+          -- --report-xunit-trx
+      - name: Upload golden diffs (expected vs actual G/L, VAT, sub-ledger)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: golden-diffs
+          path: |
+            tests/Golden/**/*.actual.yaml
+            tests/Golden/**/*.diff.md
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-golden
+          path: artifacts/test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  migrations:
+    name: migrations (PostgreSQL ${{ matrix.pg }})
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ["16", "17", "18"]
+    services:
+      postgres:
+        image: postgres:${{ matrix.pg }}
+        env:
+          POSTGRES_PASSWORD: postgres   # ephemeral CI container only
+          POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      FRESH_CS: "Host=localhost;Port=5432;Database=erp_fresh;Username=erp_migrator;Password=erp_migrator_local"
+      UPGRADE_CS: "Host=localhost;Port=5432;Database=erp_upgrade;Username=erp_migrator;Password=erp_migrator_local"
+      UPGRADE_APP_CS: "Host=localhost;Port=5432;Database=erp_upgrade;Username=erp_app;Password=erp_app_local"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0       # tags + history: needed to find and check out the previous release
+          fetch-tags: true
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+
+      - name: Lint migration files (naming, duplicates, released files are immutable)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          bad=""
+          for path in db/migrations/*; do
+            f=$(basename "$path")
+            [[ "$f" =~ ^(V[0-9]{4}__[a-z0-9]+(_[a-z0-9]+)*|R__[a-z0-9]+(__?[a-z0-9]+)*)\.sql$ ]] || bad+="$f "
+          done
+          if [ -n "$bad" ]; then echo "::error::Bad migration file names (expected V0001__snake_case.sql or R__schema__object.sql): $bad"; exit 1; fi
+          versions=()
+          for path in db/migrations/V*.sql; do f=$(basename "$path"); versions+=("${f:0:5}"); done
+          dupes=$(printf '%s\n' "${versions[@]}" | sort | uniq -d)
+          if [ -n "$dupes" ]; then echo "::error::Duplicate migration versions: $dupes"; exit 1; fi
+          prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD^ 2>/dev/null || true)
+          echo "PREV_TAG=$prev" >> "$GITHUB_ENV"
+          if [ -n "$prev" ]; then
+            changed=$(git diff --name-status "$prev" HEAD -- 'db/migrations/V*.sql' | grep -Ev '^A' || true)
+            if [ -n "$changed" ]; then echo "::error::Released migrations must never change (add a new V-file instead):"; echo "$changed"; exit 1; fi
+            echo "Previous release: $prev"
+          else
+            echo "::notice::No previous release tag found - upgrade path is skipped."
+          fi
+
+      - name: Bootstrap roles
+        run: psql -v ON_ERROR_STOP=1 -d postgres -f db/init/01-roles.sql
+
+      - name: Build migrator
+        run: dotnet build src/Erp.Migrator/Erp.Migrator.csproj -c "$CONFIGURATION"
+
+      - name: Path A - empty database -> all migrations -> verify
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -d postgres -c "CREATE DATABASE erp_fresh OWNER erp_owner"
+          dotnet run --project src/Erp.Migrator -c "$CONFIGURATION" --no-build -- migrate --connection "$FRESH_CS"
+          # verify = checksums, FORCE RLS + rls_<table>__tenant on every tenant table, fail-closed without app.tenant_id,
+          # BYPASSRLS only on erp_dispatch_definer, ledger guard triggers + revoked UPDATE/DELETE/TRUNCATE,
+          # no float/real/double/money columns, amounts on core.amount/core.amount_lcy, rates on core.fx_rate,
+          # no qr_data/lottery columns anywhere.
+          dotnet run --project src/Erp.Migrator -c "$CONFIGURATION" --no-build -- verify --connection "$FRESH_CS"
+          # Re-running must be a no-op.
+          dotnet run --project src/Erp.Migrator -c "$CONFIGURATION" --no-build -- migrate --connection "$FRESH_CS"
+
+      - name: Path B - previous release snapshot (schema + posted demo data) -> upgrade -> verify
+        if: env.PREV_TAG != ''
+        run: |
+          set -euo pipefail
+          git worktree add "$RUNNER_TEMP/prev" "$PREV_TAG"
+          psql -v ON_ERROR_STOP=1 -d postgres -c "CREATE DATABASE erp_upgrade OWNER erp_owner"
+          prev="$RUNNER_TEMP/prev"
+          dotnet run --project "$prev/src/Erp.Migrator" -c "$CONFIGURATION" -- migrate --connection "$UPGRADE_CS"
+          dotnet run --project "$prev/src/Erp.Migrator" -c "$CONFIGURATION" -- seed --set demo --connection "$UPGRADE_CS"
+          # Demo drafts are posted through the posting engine (never by SQL), so the ledger tables hold real rows.
+          dotnet run --project "$prev/tools/Erp.DevTools" -c "$CONFIGURATION" -- demo-post --connection "$UPGRADE_APP_CS"
+          dotnet run --project src/Erp.Migrator -c "$CONFIGURATION" --no-build -- migrate --connection "$UPGRADE_CS"
+          dotnet run --project src/Erp.Migrator -c "$CONFIGURATION" --no-build -- verify --connection "$UPGRADE_CS"
+
+      - name: Schema diff - fresh and upgraded databases must be identical
+        if: env.PREV_TAG != ''
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          # pg_dump runs inside the service container so its version always matches the server.
+          dump() {
+            docker exec "$PG_CONTAINER" pg_dump -U postgres --schema-only --no-comments -d "$1" \
+              | grep -Ev '^(--|SET |SELECT pg_catalog\.set_config|\\restrict|\\unrestrict)' \
+              | sed '/^[[:space:]]*$/d'
+          }
+          dump erp_fresh   > "$RUNNER_TEMP/fresh.sql"
+          dump erp_upgrade > "$RUNNER_TEMP/upgrade.sql"
+          diff -u "$RUNNER_TEMP/fresh.sql" "$RUNNER_TEMP/upgrade.sql"
+
+  # ---------------------------------------------------------------------------
+  web:
+    name: web (lint · typecheck · i18n · test · build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: i18n key parity (mn is primary, en must have the same keys)
+        run: npm run i18n:check
+      - name: Generated API client is in sync with the committed OpenAPI contract
+        run: |
+          set -euo pipefail
+          npm run api:gen
+          if [ -n "$(git status --porcelain -- src/shared/api/)" ]; then
+            git --no-pager diff -- src/shared/api/ || true
+            echo "::error::web/src/shared/api is out of date: run 'npm run api:gen' and commit the result."
+            exit 1
+          fi
+      - name: Unit tests (Vitest)
+        run: npm run test:ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-results-web
+          path: web/test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  supply-chain:
+    name: SBOM · vulnerabilities · licences · secrets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      NPM_LICENSE_ALLOWLIST: "MIT;MIT-0;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;Zlib;CC0-1.0;BlueOak-1.0.0;Python-2.0;Unlicense"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Secret scan (gitleaks, working tree)
+        run: docker run --rm -v "$GITHUB_WORKSPACE:/repo:ro" zricethezav/gitleaks:v8.30.1 dir /repo --redact --no-banner
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+      - name: NuGet restore + vulnerability audit (NU1903/NU1904 fail)
+        run: dotnet restore "$SOLUTION" --locked-mode
+      - run: dotnet tool restore
+      - name: NuGet licences (production projects under src/ only)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/licenses
+          # Erp.BuildingBlocks.Testing lives under src/ but ships nothing to production (test-only dependencies).
+          find src -name '*.csproj' -not -path '*/Erp.BuildingBlocks.Testing/*' | sort | jq -R . | jq -s . > "$RUNNER_TEMP/projects.json"
+          dotnet tool run nuget-license -ji "$RUNNER_TEMP/projects.json" -t \
+            -a tools/licenses/allowed-licenses.json \
+            -ignore tools/licenses/ignored-packages.json \
+            -o Markdown -fo artifacts/licenses/nuget-licenses.md
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: npm licences + audit (production dependencies)
+        working-directory: web
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx --yes license-checker-rseidelsohn@5 --production --excludePrivatePackages --onlyAllow "$NPM_LICENSE_ALLOWLIST"
+          npm audit --omit=dev --audit-level=high
+
+      - name: CycloneDX SBOM (source tree - NuGet lock files + npm lock file)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: artifacts/sbom/source.cdx.json
+          artifact-name: sbom-source.cdx.json
+          dependency-snapshot: false
+
+      - name: Vulnerability scan of the SBOM (fail on high/critical)
+        uses: anchore/scan-action@v7
+        with:
+          sbom: artifacts/sbom/source.cdx.json
+          fail-build: true
+          severity-cutoff: high
+          output-format: table
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: licences
+          path: artifacts/licenses
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  image:
+    name: image (${{ matrix.target }})
+    needs: [build, integration, golden, migrations, web, supply-chain]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [api, worker, migrator]
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/erp-${{ matrix.target }}
+      PUSH: ${{ github.event_name == 'push' && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            type=semver,pattern=v{{version}}
+            type=raw,value=ci-local,enable=${{ github.event_name != 'push' }}
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: ${{ matrix.target }}
+          push: ${{ env.PUSH == 'true' }}
+          load: ${{ env.PUSH != 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # VERSION becomes the assembly InformationalVersion that /api/v1/system/version returns; cd.yml smoke-tests
+          # it against the deployed image tag: vX.Y.Z for release tags, sha-<40 hex> for everything else.
+          build-args: |
+            SOURCE_SHA=${{ github.sha }}
+            VERSION=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('sha-{0}', github.sha) }}
+          provenance: ${{ env.PUSH == 'true' && 'mode=max' || 'false' }}
+          sbom: ${{ env.PUSH == 'true' }}
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+      - name: Image vulnerability scan (fail on critical)
+        uses: anchore/scan-action@v7
+        with:
+          image: ${{ env.PUSH == 'true' && format('{0}@{1}', env.IMAGE, steps.build.outputs.digest) || format('{0}:ci-local', env.IMAGE) }}
+          fail-build: true
+          severity-cutoff: critical
+          output-format: table
+
+  # ---------------------------------------------------------------------------
+  codeql:
+    name: codeql (${{ matrix.language }})
+    if: vars.CODEQL_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [csharp, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+
+  # ---------------------------------------------------------------------------
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [build, integration, golden, migrations, web, supply-chain, image, codeql]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail if any required job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - run: echo "All required CI jobs passed."

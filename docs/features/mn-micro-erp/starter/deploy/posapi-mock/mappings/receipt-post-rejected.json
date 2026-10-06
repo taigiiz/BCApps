@@ -1,0 +1,29 @@
+{
+  "name": "PosAPI POST /rest/receipt - validation error (REJECTED)",
+  "priority": 2,
+  "metadata": {
+    "note": "Any receipt for merchantTin 99999999902 is rejected. PLACEHOLDER error shape: confirm the real PosAPI error status code and body on the eBarimt staging environment."
+  },
+  "request": {
+    "method": "POST",
+    "urlPath": "/rest/receipt",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": {
+          "expression": "$.merchantTin",
+          "equalTo": "99999999902"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 400,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "jsonBody": {
+      "status": "ERROR",
+      "message": "MOCK: totalAmount does not equal the sum of receipts[].totalAmount"
+    }
+  }
+}

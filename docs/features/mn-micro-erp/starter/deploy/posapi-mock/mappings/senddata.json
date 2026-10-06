@@ -1,0 +1,21 @@
+{
+  "name": "PosAPI GET /rest/sendData",
+  "priority": 10,
+  "metadata": {
+    "note": "Daily job (Quartz) calls this once per PosAPI instance. PLACEHOLDER body."
+  },
+  "request": {
+    "method": "GET",
+    "urlPath": "/rest/sendData"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "jsonBody": {
+      "status": "SUCCESS",
+      "message": ""
+    }
+  }
+}

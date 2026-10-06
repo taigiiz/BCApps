@@ -1,0 +1,23 @@
+// Banned in EVERY project (RS0030, Microsoft.CodeAnalysis.BannedApiAnalyzers).
+// Format: <documentation comment id>;<message shown in the build error>
+// Spec: docs/features/mn-micro-erp/18-dev-setup.md section 3.1 (names follow 02-architecture.md and ADR-0006).
+
+// --- Time: technical time from the injected TimeProvider (FakeTimeProvider in tests); business dates from
+// IBusinessCalendar (Erp.BuildingBlocks.Application) = Asia/Ulaanbaatar calendar dates (02-architecture.md 5.2).
+P:System.DateTime.Now;Use the injected TimeProvider (technical UTC time) or IBusinessCalendar (Asia/Ulaanbaatar business date)
+P:System.DateTime.UtcNow;Use the injected TimeProvider.GetUtcNow()
+P:System.DateTime.Today;Use IBusinessCalendar (Asia/Ulaanbaatar business date), never the server's local date
+P:System.DateTimeOffset.Now;Use the injected TimeProvider.GetUtcNow()
+P:System.DateTimeOffset.UtcNow;Use the injected TimeProvider.GetUtcNow()
+
+// --- Identifiers: technical ids are UUIDv7 (DB default core.fn_uuid_v7()).
+M:System.Guid.NewGuid;Use Guid.CreateVersion7() (UUIDv7)
+
+// --- Culture-sensitive parsing of numbers: money and rates are parsed with InvariantCulture only.
+M:System.Decimal.Parse(System.String);Use decimal.Parse(s, NumberStyles.Number, CultureInfo.InvariantCulture)
+M:System.Decimal.TryParse(System.String,System.Decimal@);Use decimal.TryParse(s, NumberStyles.Number, CultureInfo.InvariantCulture, out ...)
+M:System.Convert.ToDecimal(System.String);Use decimal.Parse(s, NumberStyles.Number, CultureInfo.InvariantCulture)
+
+// --- Misc
+M:System.Threading.Thread.Sleep(System.Int32);Use await Task.Delay(..., ct)
+M:System.Console.WriteLine(System.String);Use ILogger (structured logging, see redaction rules)

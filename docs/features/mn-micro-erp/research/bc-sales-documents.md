@@ -66,7 +66,7 @@
 
 ### Document model and header defaults
 - **R-SALES-DOCUMENTS-01**: The draft header is keyed by (`Document Type`, `No.`) and **cannot be renamed**. `No.` comes from the series for that document type (Quote/Order/Invoice/Credit Memo Nos.), and the code loops until it finds an unused number. *Src:* [SH]:3653, 3778-3787, 3966-3990, 4254-4292. *Keep:* MUST.
-- **R-SALES-DOCUMENTS-02**: When a record is created, Posting Date := WorkDate (except for Quote and Blanket Order, or when the setup says "No Date"), Document Date := WorkDate, VAT Date := Posting Date or Document Date depending on G/L Setup, and Correction := GLSetup."Mark Cr. Memos as Corrections" for credit documents. *Src:* [SH]:4014-4021, 4038-4042, 4074-4092; [GLS]:1620-1630. *Keep:* MUST (VAT Date = Posting Date only).
+- **R-SALES-DOCUMENTS-02**: When a record is created, Posting Date := WorkDate (except for Quote and Blanket Order, or when the setup says "No Date"). Document Date := Posting Date when `Link Doc. Date To Posting Date` is set (the default), and WorkDate only if it is still blank after that (verified-corrected: the note said Document Date := WorkDate unconditionally; see [SH]:4019-4021, 9753-9768). VAT Date := Posting Date or Document Date depending on G/L Setup, and Correction := GLSetup."Mark Cr. Memos as Corrections" for credit documents. *Src:* [SH]:4014-4021, 4038-4042, 4074-4092; [GLS]:1620-1630. *Keep:* MUST (VAT Date = Posting Date only).
 - **R-SALES-DOCUMENTS-03**: Validating Sell-to copies name, address, **Gen. Bus. Posting Group** and **VAT Bus. Posting Group**. It requires the customer to have a Gen. Bus. Posting Group and not to be blocked. Changing the customer, currency or business posting groups recreates all lines (after a confirmation). *Src:* [SH]:105-245, 7766-7796. *Keep:* MUST.
 - **R-SALES-DOCUMENTS-04**: Bill-to (NotBlank) copies the **Customer Posting Group** (which gives the receivables account), Currency, Prices Including VAT, Payment Terms, Payment Method, invoice-discount code and price group. With the default `Bill-to/Sell-to VAT Calc. = Bill-to/Pay-to No.`, it also **overrides** the Gen./VAT Bus. Posting Group with the Bill-to values. *Src:* [SH]:267-355, 7940-7997; [ACV]:187-197; [GLS]:901. *Keep:* MUST (collapse to a single customer field). *Notes:* credit documents copy the Payment Method only if the terms calculate discounts on credit memos ([SH]:7969-7975).
 - **R-SALES-DOCUMENTS-05**: Most header fields call `TestStatusOpen`, so a Released document cannot be edited. On lines, the check applies to every non-system line except comment lines. *Src:* [SH]:9136-9146; [SL]:7196-7214. *Keep:* MUST.
@@ -77,10 +77,11 @@
 
 ### Lines and amounts
 - **R-SALES-DOCUMENTS-10**: Line defaults come from the header: customer, currency, Gen./VAT Bus. Posting Group, dimensions. From the item (or G/L account) come the Gen./VAT Prod. Posting Group, Inventory Posting Group, Unit Cost and `Allow Invoice Disc.`. **G/L-account lines get `Allow Invoice Disc.` = false** and must allow Direct Posting. Items must not be blocked (or sales-blocked, except on credit documents). *Src:* [SL]:9773-9813, 4769-4785, 4799-4860. *Keep:* MUST.
-- **R-SALES-DOCUMENTS-11**: When `No.` is validated, the code checks that the General Posting Setup has a Sales account (and a COGS account) and that the VAT Posting Setup has a Sales VAT account, so a missing setup fails early instead of at posting. *Src:* [SL]:336-343. *Keep:* MUST.
+- **R-SALES-DOCUMENTS-11**: When `No.` is validated, the code checks that the General Posting Setup has a Sales account (and a COGS account) and that the VAT Posting Setup has a Sales VAT account. These checks only **send a non-blocking notification** (and only when posting-setup notifications are enabled; a missing General Posting Setup row is even auto-created). They do not stop data entry; the hard failure still happens at posting, when `GetSalesAccount`/`GetSalesCrMemoAccount` logs an error for a blank account (verified-corrected: the note said a missing setup "fails early"). *Src:* [SL]:336-343; `Finance/ReceivablesPayables/PostingSetupManagement.Codeunit.al`:103-122, 422-438; [SPI]:295-311. *Keep:* MUST (in the new system, validate the account mapping as a hard error at line entry or at release).
 - **R-SALES-DOCUMENTS-12**: `Line Discount Amount = round(round(Qty × Unit Price) × Line Discount % / 100)`. Entering an amount instead back-calculates the % to 5 decimals, which must stay within 0..100. Changing the line discount resets the line's invoice discount. *Src:* [SL]:9559-9585, 1042-1060, 10258-10280. *Keep:* MUST.
 - **R-SALES-DOCUMENTS-13**: `Line Amount = round(Qty × Unit Price) − Line Discount Amount`. A directly entered Line Amount is converted into a Line Discount Amount. The amount after invoice discount is `CalcLineAmount() = Line Amount − Inv. Discount Amount`. *Src:* [SL]:5881, 2051-2085, 4697-4702. *Keep:* MUST.
 - **R-SALES-DOCUMENTS-14**: Line VAT is a **cumulative** calculation over all other lines in the document with the same VAT Identifier / calculation type: `AIV_line = round((ΣAmt_others + Amt) × (1+VAT%)) − ΣAIV_others`. For PIV the reverse applies: `Amount = round((ΣLA − ΣInvDisc + CalcLineAmount)/(1+VAT%)) − ΣAmount_others`. *Src:* [SL]:5919-6080. *Keep:* MUST. *Notes:* this protects the invariant Σ line VAT = round(Σ base × rate).
+  - The document-level VAT group is not just the VAT Identifier. The VAT Amount Line key is (`VAT Identifier`, `VAT Calculation Type`, `Tax Group Code`, `Use Tax`, `Positive`), where `Positive = Line Amount ≥ 0`. A negative line on an invoice (for example a manual discount line) therefore forms its **own** VAT group and is rounded separately, and the rounding residue of the negative group is carried into the next group of the same identifier. Posting looks up the group with the same five-part key. (added-in-verification) *Src:* [VAL]:323; [SL]:7637; [SP]:3376; [VAL]:840-890.
 - **R-SALES-DOCUMENTS-15**: The invoice discount is either a **%** (from Cust. Invoice Disc. using the minimum amount, or set on the header) or an **Amount** typed on the header. It is spread over VAT groups in proportion to `Inv. Disc. Base Amount`, and then over the lines that have `Allow Invoice Disc.`, in both cases with a running remainder. *Src:* [SCD]:57-222; [SCDT]:75-111; [VAL]:637-699; [SL]:7339-7350. *Keep:* SHOULD (Amount and % on the header; SKIP the Cust. Invoice Disc table and service charge).
 - **R-SALES-DOCUMENTS-16**: Changing a line discount on a line that carried invoice discount reduces the header's Amount-type `Invoice Discount Value` by that line's share. *Src:* [SL]:9574-9580, 9592-9609. *Keep:* SHOULD.
 - **R-SALES-DOCUMENTS-17**: Changing Prices Including VAT requires that no line is invoiced. Unit prices are either converted by ×(1+VAT%) or ÷(1+VAT%) (after confirmation) or kept, and all amounts are recalculated. Changing the VAT Prod. Posting Group on a PIV item line rescales the Unit Price by (100+new%)/(100+old%). *Src:* [SH]:999-1081; [SL]:1835-1841. *Keep:* MUST.
@@ -96,31 +97,33 @@
 - **R-SALES-DOCUMENTS-23**: Posting flags: Invoice ⇒ Ship+Invoice, Credit Memo ⇒ Receive+Invoice. On an invoice every line must have Qty. to Ship = Qty. to Invoice = Quantity, so partial invoicing of an Invoice document is impossible. *Src:* [SP]:8694-8739, 2483-2518. *Keep:* MUST.
 - **R-SALES-DOCUMENTS-24**: If no line has Qty ≠ 0, the Invoice flag is cleared and release then fails. **A non-credit invoice whose total is negative is rejected**, so credits must be made with a credit memo. *Src:* [SP]:658-689, 943-960. *Keep:* MUST.
 - **R-SALES-DOCUMENTS-25**: Non-credit invoices require a Due Date. *Src:* [SP]:893-895. *Keep:* MUST.
-- **R-SALES-DOCUMENTS-26**: Customer Blocked: `All` blocks everything. `Invoice` blocks Quote/Order/Invoice. `Ship` blocks shipping. Both Sell-to and Bill-to are checked. *Src:* [SP]:6238-6294; [CUST]:2759-2778. *Keep:* MUST (one Blocked flag).
+- **R-SALES-DOCUMENTS-26**: Customer Blocked: `All` blocks everything, including credit memos and return orders. `Invoice` blocks Quote/Order/Invoice/Blanket Order but **not** credit memos or return orders. `Ship` blocks Quote/Order/Blanket Order when they are edited, and at posting blocks any Quote/Order/Invoice/Blanket Order that ships something; again credit documents are not blocked. `Privacy Blocked` always blocks. Both Sell-to and Bill-to are checked (Bill-to only when it differs). (verified-corrected: Blanket Order and the credit-document exemption were missing.) *Src:* [SP]:6238-6286; [CUST]:2759-2778. *Keep:* MUST (one Blocked flag; decide explicitly whether a blocked customer may still receive a credit memo, since BC allows it unless Blocked = All).
 - **R-SALES-DOCUMENTS-27**: Dimension rules and blocked General/VAT posting setups are checked before anything is written. *Src:* [SP]:877-879, 2520-2550. *Keep:* SHOULD.
 - **R-SALES-DOCUMENTS-28**: `External Document No.` is mandatory only when `Ext. Doc. No. Mandatory` is set (default **false** for sales). *Src:* [SP]:7228-7231; [GJPL]:7292-7314. *Keep:* SHOULD.
 
 ### Numbering and commit points
 - **R-SALES-DOCUMENTS-29**: The Posting No. is drawn **before the ledgers are posted**, written to the draft header and **committed** (commit #1). A retry therefore reuses the same number. The code fails early if a posted document with that number already exists. *Src:* [SP]:2787-2830, 766-782. *Keep:* MUST (invariant: no posted number is lost or duplicated). *Notes:* in the new system, draw the number inside the single posting transaction from a row-locked counter.
 - **R-SALES-DOCUMENTS-30**: If the series is **date-ordered**, the early commit is suppressed, so the number and the posted document land in the same transaction. If a caller forces a commit anyway, posting fails with an error. *Src:* [SP]:766-777, 371-377. *Keep:* MUST (always one transaction).
-- **R-SALES-DOCUMENTS-31**: Further commits happen after the invoice-discount recalculation (#2) and after the automatic release (#3, where the DB status stays Open), and one final commit happens after finalize (#4/#5). Line posting runs under `CommitBehavior::Ignore`, so extensions cannot commit half a document. *Src:* [SP]:695-716, 2400-2434, 3292-3295, 378-382, 400-442. *Keep:* MUST (one atomic transaction, no intermediate commits).
+- **R-SALES-DOCUMENTS-31**: Further commits happen after the invoice-discount recalculation (#2) and after the automatic release (#3, where the DB status stays Open), and one final commit happens after finalize (#4/#5). Commit #1 only happens when a new posting number was actually drawn (`ModifyHeader`), and commit #2 only when `Calc. Inv. Discount` is set **and** the document is already Released; for an Open document the invoice discount is recalculated inside the release step instead (verified-corrected: both commits were presented as unconditional; [SP]:777-782, 694-716; [REL]:104-119). Line posting runs under `CommitBehavior::Ignore`, so extensions cannot commit half a document. *Src:* [SP]:695-716, 2400-2434, 3292-3295, 378-382, 400-442. *Keep:* MUST (one atomic transaction, no intermediate commits).
 - **R-SALES-DOCUMENTS-32**: Deleting a draft that already has a Posting No. (or whose draft series = posted series) **creates an empty posted invoice or credit memo with that number** to fill the gap, after a confirmation. *Src:* [SH]:4352-4421, 3705-3750; [PSD]:232-292. *Keep:* MUST (in a simpler form: never hand out the number before commit, so no gap can arise).
 
 ### Posting mechanics
 - **R-SALES-DOCUMENTS-33**: Each line is posted in this order: `UpdateSalesLineBeforePost` → `DivideAmount` (prorate by Qty. to Invoice using the document VAT lines and remainders) → `RoundAmount` (add to the FCY and LCY totals) → **`ReverseAmount` if the document is not a credit memo** → item posting → `PrepareLine` into the buffer → insert the posted line. *Src:* [SP]:997-1180. *Keep:* MUST.
+  - Line processing order: when the "Concurrent Inventory Posting" feature key is on (`InventorySetup.UseLegacyPosting() = false`), posting iterates the lines by (`Type`, `Line No.`), not by `Line No.` alone. G/L Account lines (Type 1) are therefore processed before Item lines (Type 2). Because `DivideAmount` distributes the group VAT with a running remainder in that iteration order, the **posted** per-line VAT can differ by ±0.01 from the draft's line VAT, which was distributed in `Line No.` order at release. Document and G/L totals are unaffected (see E1). (added-in-verification) *Src:* [SP]:489-490, 3376-3445; `Inventory/Setup/InventorySetup.Table.al`:705-710.
 - **R-SALES-DOCUMENTS-34**: The LCY amount of each line = round(running FCY total → LCY) − running LCY total. This makes the line LCY amounts add up exactly to the LCY value of the document total. *Src:* [SP]:3487-3567. *Keep:* SHOULD.
 - **R-SALES-DOCUMENTS-35**: The G/L account for a line is the line's own `No.` for G/L-account and FA lines. For items and resources it is the General Posting Setup Sales account, or the **Sales Credit Memo account** on credit documents. *Src:* [SPI]:295-311. *Keep:* MUST.
 - **R-SALES-DOCUMENTS-36**: The customer entry: Account = **Bill-to**. `Amount = −TotalSalesLine.AIV`, which is positive (a debit) for invoices because the totals were negated ([SP]:521-526). Due Date, Payment Terms and discount fields come from the header. `Allow Application = Bal. Account No. blank`. *Src:* [SPI]:593-660; [GJL]:7313-7404. *Keep:* MUST.
 - **R-SALES-DOCUMENTS-37**: When a Bal. Account is set, a second entry is posted after the customer entry: Document Type Payment (Refund for credit memos), same Document No., Applies-to = the new invoice, `Amount = TotalSalesLine.AIV` (+ remaining payment discount). The invoice is closed in the same posting run. *Src:* [SP]:1262-1274; [SPI]:662-751. *Keep:* SHOULD (cash/POS sale).
 - **R-SALES-DOCUMENTS-38**: The (Document Type, Document No.) pair must not already exist in the customer ledger, and the posted header stores the `Cust. Ledger Entry No.` of the new entry. *Src:* [GJPL]:1323-1330; [GJCL]:801-820; [SP]:6158-6184. *Keep:* MUST.
-- **R-SALES-DOCUMENTS-39**: Item lines produce an item journal line (Entry Type Sale) with `Invoiced Quantity` and `Amount = −(line Amount × factor − remainder)`. The item engine stores the quantity **negative** for a sale and positive for a return. Inventory and COGS G/L entries come from the value entries. *Src:* [SP]:1583-1666, 1318-1391; `Inventory/Journal/ItemJournalLine.Table.al`:2386-2398. *Keep:* MUST (stock-out and COGS).
+- **R-SALES-DOCUMENTS-39**: Item lines produce an item journal line (Entry Type Sale) with `Invoiced Quantity` and `Amount = −(line Amount × factor − remainder)`. The item engine stores the quantity **negative** for a sale and positive for a return. Inventory and COGS G/L entries come from the value entries. They are posted to the G/L in the same run **only when Inventory Setup `Automatic Cost Posting` is on**; otherwise they wait for the "Post Inventory Cost to G/L" batch, and the sale's G/L transaction contains revenue, VAT and receivable only (added-in-verification; `Inventory/Posting/ItemJnlPostLine.Codeunit.al`:246, 683). *Src:* [SP]:1583-1666, 1318-1391; `Inventory/Journal/ItemJournalLine.Table.al`:2386-2398. *Keep:* MUST (stock-out and COGS; post COGS in the same transaction).
 - **R-SALES-DOCUMENTS-40**: Invoice rounding (optional): after the last line, a system line is added on the customer posting group's Invoice Rounding account for `−round(Total AIV − round(Total AIV, Inv. Rounding Precision))`. *Src:* [SP]:1216-1229, 3587-3654. *Keep:* SHOULD (round to whole MNT for cash).
+  - The rounding line is an ordinary G/L-account line, so it takes the VAT Prod. Posting Group of the Invoice Rounding account. If that group has a non-zero VAT %, the rounding amount is split into base + VAT (for prices excl. VAT the Unit Price is `IR/(1+VAT%)` and AIV is forced to `IR`). The rounding account should carry a 0 % / exempt VAT group, otherwise the eBarimt VAT totals and the G/L VAT will drift by the VAT share of the rounding. Rounding uses `Currency."Invoice Rounding Precision"` (for LCY, the G/L Setup `Inv. Rounding Precision (LCY)`) and requires `Sales & Receivables Setup."Invoice Rounding"`. (added-in-verification) *Src:* [SP]:3598-3632, 1222-1223.
 - **R-SALES-DOCUMENTS-41**: Finalize: for Invoice and Credit Memo documents, or an Order that is completely invoiced, the draft is archived (if set up), then the header, lines and comments are **deleted**. A partly invoiced Order stays. *Src:* [SP]:3192-3317, 3140-3190. *Keep:* MUST (mark the draft as posted, or delete it; never edit posted docs).
 - **R-SALES-DOCUMENTS-42**: Preview runs the full posting with fake numbers (`***nnnnnn`) and then raises an error to roll back. *Src:* [SP]:11942-11948, 3285-3290, 7038-7039. *Keep:* SHOULD.
 
 ### Credit memos and cancellation
 - **R-SALES-DOCUMENTS-43**: Cancel/Correct preconditions: the original Posting Date is still allowed for posting, the invoice is not already cancelled, it is not itself a corrective document, it is **fully unpaid** (`Amount Including VAT = Remaining Amount`), the customer is not blocked, the lines are of supported types, items have not been returned, the inventory period is open, it has no FA or prepayment lines, and number series are free. *Src:* [CORR]:349-370, 550-679. *Keep:* MUST (the unpaid, once-only and open-period checks).
-- **R-SALES-DOCUMENTS-44**: The cancelling credit memo is a **copy of the posted invoice**: header via TransferFields (so Posting Date, VAT date and currency factor come **from the invoice**), lines with the same amounts including Inv. Discount Amount, exact cost reversal (`Appl.-from Item Entry`), and Applies-to Doc. = the invoice with Amount to Apply = remaining. It is posted immediately, and a `Cancelled Document` row links the two. *Src:* [CORR]:41-71, 179-207, 393-407; [CDM]:775-792, 696-718, 1718-1757, 7225-7260, 8382-8386. *Keep:* MUST. *Notes:* verify the posting-date inheritance with a test; no code resets it.
+- **R-SALES-DOCUMENTS-44**: The cancelling credit memo is a **copy of the posted invoice**: header via TransferFields (so Posting Date, VAT date and currency factor come **from the invoice**), lines with the same amounts including Inv. Discount Amount, exact cost reversal (`Appl.-from Item Entry`), and Applies-to Doc. = the invoice with Amount to Apply = remaining. It is posted immediately, and a `Cancelled Document` row links the two. *Src:* [CORR]:41-71, 179-207, 393-407; [CDM]:775-792, 696-718, 1718-1757, 7225-7260, 8382-8386. *Keep:* MUST. *Notes:* verify the posting-date inheritance with a test; no code resets it. Verification re-read: the only posting-date reset in the copy path is for Quote/Blanket Order targets ([CDM]:711-712), `UpdateSalesCreditMemoHeader` does not touch it ([CDM]:7326-7345), and the Applies-to fields are only set if the invoice entry is still open ([CDM]:7240-7255).
 - **R-SALES-DOCUMENTS-45**: Correct = Cancel + a new draft Invoice copied from the original for the user to edit. *Src:* [CORR]:333-342. *Keep:* SHOULD.
 - **R-SALES-DOCUMENTS-46**: Credit documents are marked `Correction` (storno) when the G/L setup says so. Their G/L entries are then posted as negative debits or credits instead of the opposite side. *Src:* [SH]:4037-4040; [CDM]:7322-7340. *Keep:* SKIP in v1 (see open questions).
 
@@ -130,7 +133,7 @@
 
 ### Purchase differences
 - **R-SALES-DOCUMENTS-49**: `Ext. Doc. No. Mandatory` defaults to **true** for purchases. Invoices and orders need `Vendor Invoice No.`, and credit memos need `Vendor Cr. Memo No.`. *Src:* [PPS]:64-69; [PP]:911-916, 989-1016. *Keep:* MUST.
-- **R-SALES-DOCUMENTS-50**: Duplicate check: posting fails if the vendor already has an entry with the same Document Type and External Document No. that has not been reversed. Validating the field shows a notification earlier. *Src:* [PP]:1266-1268, 7592-7608; [VM]:159-166; [GJPL]:7316-7340; [PH]:1206-1226. *Keep:* MUST.
+- **R-SALES-DOCUMENTS-50**: Duplicate check: posting fails if the vendor already has an entry with the same Document Type and External Document No. that has not been reversed. The filter is on the **Pay-to** vendor's ledger entries. The check runs whenever `Ext. Doc. No. Mandatory` is set **or** a vendor document number was entered, so it also applies when the setup flag is off (verified-corrected: the note tied the check only to the mandatory setting). Validating the field shows a notification earlier. *Src:* [PP]:1266-1268, 7592-7608; [VM]:159-166; [GJPL]:7316-7340; [PH]:1206-1226. *Keep:* MUST.
 - **R-SALES-DOCUMENTS-51**: Signs: **credit-memo** purchase lines and totals are negated ([PP]:308-310, 1098-1101). The vendor entry has `Amount = −Total AIV`, so it is negative (a credit) for invoices and positive (a debit) for credit memos. *Src:* [PPI]:736-744. *Keep:* MUST.
 - **R-SALES-DOCUMENTS-52**: The Vendor Posting Group comes from Pay-to. Gen./VAT Bus. Posting Group come from Buy-from, or from Pay-to under the default VAT calc. setting. Due Date is calculated from the Document Date, as on the sales side. *Src:* [PH]:130, 268-281, 649. *Keep:* MUST.
 
@@ -159,7 +162,7 @@
 4. **CheckAndUpdate** ([SP]:745-812):
    1. `CheckSalesDocument`: mandatory fields, allowed posting date, VAT date, posting flags, dimensions, blocked customer, Invoice flag recalculated, Due Date, then `TestSalesLine` for each line ([SP]:832-916).
    2. `UpdatePostingNos`: Shipping No., Return Receipt No., Posting No. Collision check. **Commit #1** unless date-ordered ([SP]:766-782).
-   3. `CalcInvDiscount` (**commit #2**). `ReleaseSalesDocument` (**commit #3**; status stays Open in the DB, Released in memory) ([SP]:790-794).
+   3. `CalcInvDiscount` (**commit #2**, only when `Calc. Inv. Discount` is set and the document is not Open). `ReleaseSalesDocument` (**commit #3**; status stays Open in the DB, Released in memory) ([SP]:790-794, 694-716) (verified-corrected).
    4. Archive the order if it ships. Lock tables. Source code = SALES ([SP]:796-803).
    5. `InsertPostedHeaders`: posted invoice header (TransferFields; No. = Posting No., or the draft No. when the series are equal; Pre-Assigned No.; user and source code) or credit memo header ([SP]:7028-7094, 7205-7314).
 5. **ProcessPosting** under `CommitBehavior::Ignore` ([SP]:400-543):
@@ -190,7 +193,7 @@
 ### F6: Cancel a posted invoice ([CORR]:139-207, 41-71)
 1. `TestCorrectInvoiceIsAllowed` (R-43).
 2. Insert a new Credit Memo header with a new draft No. `CopySalesDocForInvoiceCancelling`: TransferFields from the posted invoice, lines copied with their amounts, exact cost reversal, Applies-to = the invoice, Amount to Apply set on the invoice entry.
-3. Unapply the item cost applications. Commit (unless the series is date-ordered). Run Sales-Post on the credit memo.
+3. Unapply the item cost applications. The code sets `SuppressCommit := not IsNoSeriesInDateOrder(Posting No. Series)`, so the pre-posting commit happens **only when** the credit memo's posting number series **is** date-ordered and is skipped otherwise (verified-corrected: the note had the condition reversed; [CORR]:56-62). Run Sales-Post on the credit memo.
 4. Insert the `Cancelled Document` row (invoice → credit memo). Update the order lines if any. Commit.
 5. If posting fails, the user is offered the unposted or posted credit memo ([CORR]:145-177).
 
@@ -215,15 +218,15 @@ Notation: `P` = Amount Rounding Precision of the document currency (LCY 0.01 by 
 | C5 | Group VAT (excl. VAT prices) | `Base_g = Σ(LA − ID)`; `VAT_g = round(Base_g × v%/100, P, VAT rounding direction)`; `AIV_g = Base_g + VAT_g` | [VAL]:700-759 |
 | C6 | Group VAT (PIV) | `AIV_g = Σ(LA − ID)`; `VAT_g = round(AIV_g × v/(100+v), P, dir)`; `Base_g = AIV_g − VAT_g` | [VAL]:700-759 |
 | C7 | Line VAT distribution | excl. VAT: `VAT_l = r(rem + VAT_g × Amt_l / Base_g)`; PIV: `AIV_l = r(remAIV + AIV_g × CLA_l/CLA_g)`, `Amt_l = AIV_l − r(rem + VAT_g × CLA_l/CLA_g)` | [SL]:7358-7400; [SP]:3394-3445 |
-| C8 | Partial invoice | `LA_part = LA × QtyToInv / Qty`; `LDA_part = r(LDA × QtyToInv / Qty)` | [SP]:3468-3485 |
-| C9 | LCY of line | `X_LCY,l = round(ΣX_FCY,1..l / CurrencyFactor) − ΣX_LCY,1..l−1` for AIV, Amount, LA, LDA, ID, VAT Base. **`Round()` with no precision argument is used (0.01 default).** | [SP]:3499-3555 |
+| C8 | Partial invoice | `LA_part = r(QtyToInv × UnitPrice) − r(r(QtyToInv × UnitPrice) × LD% / 100)` (recomputed from the unit price, not prorated from LA; with prepayment to deduct, `r(QtyToInv × r(Qty × UnitPrice) / Qty)` is used for the gross part); the posted `Line Discount Amount` field is `LDA_part = r(LDA × QtyToInv / Qty)` (verified-corrected: the note had `LA_part = LA × QtyToInv / Qty`) | [SP]:3468-3485; [SL]:8442-8474 |
+| C9 | LCY of line | `X_LCY,l = round(ΣX_FCY,1..l / CurrencyFactor) − ΣX_LCY,1..l−1` for AIV, Amount, LA, LDA, ID, VAT Difference, VAT Base. `Round()` is called with no precision argument; the platform then takes the precision from Codeunit 45 `ReadRounding`, which BaseApp answers with **G/L Setup `Amount Rounding Precision`** (the LCY precision), with 2 decimals as the fallback only if nothing answers (verified-corrected: the note said a fixed 0.01 default) | [SP]:3499-3555; `Finance/Currency/AmountAutoFormat.Codeunit.al`:55-60; MS Learn "System.Round Method" |
 | C10 | Customer amount | `Amount = −Total.AIV` (Total negated for invoices ⇒ positive) | [SPI]:645 |
 | C11 | Invoice rounding | `IR = −r(TotalAIV − round(TotalAIV, InvRoundPrec, dir))` posted as a line on the Invoice Rounding account | [SP]:3598-3602 |
 | C12 | Due / discount dates | `Due = CalcDate(DueFormula, DocumentDate)`; `PmtDiscDate = CalcDate(DiscFormula, DocumentDate)`. For example, with Document Date 2026-01-31: `1M`→2026-02-28 (clamped to month end), `30D`→2026-03-02, `CM`→2026-01-31, `CM+10D`→2026-02-10, `7D`→2026-02-07 | [SH]:747-751 |
 | C13 | Payment discount possible | `r(AIV × Disc% / 100)` if `PmtDiscDate + grace ≥ PostingDate` | [GJPL]:2617-2650 |
 | C14 | Item journal amount | `Amount = −(line Amount × factor − RemAmt)`, rounded, with the remainder carried forward | [SP]:1641-1666 |
 
-Ordering rule: the invoice discount is applied **before** VAT. VAT is calculated per group on the discounted base. Lines are distributed in `Line No.` order, so the last line in a group absorbs the rounding remainder.
+Ordering rule: the invoice discount is applied **before** VAT. VAT is calculated per group on the discounted base. On the draft (release, `UpdateVATOnLines`) lines are distributed in `Line No.` order, so the last line in a group absorbs the rounding remainder. At posting, the iteration order is (`Type`, `Line No.`) when the Concurrent Inventory Posting feature is on, so the line that absorbs the remainder can change; only the per-line split moves, not the totals (verified-corrected; [SL]:7315-7400; [SP]:489-490).
 
 ---
 
@@ -239,8 +242,9 @@ Document Date = Posting Date = 2026-01-31. Payment Terms `1M(2%7D)`: Due 2026-02
 | L3 | G/L 5120 service (no inv. disc.) | 1 × 10 000.05 | 10 000.05 | 0 | 10 000.05 | 0 | 10 000.05 | 1 000.01 | 1 000.01 |
 | Σ | | | | | 25 419.59 | 1 000.00 | **24 419.59** | **2 441.96** | 2 441.97 ✗ |
 
-- Invoice discount base = 15 419.54. L1 share = 1 000 × 8 382.59 / 15 419.54 = 543.6292 → 543.63, remainder −0.0008. L2 = 456.3708 − 0.0008 → 456.37.
-- Document VAT = r(24 419.59 × 10 %) = 2 441.96. Rounding each line separately would give 2 441.97, which is why BC distributes.
+- Invoice discount base = 15 419.54. L1 share = 1 000 × 8 382.59 / 15 419.54 = 543.6342 → 543.63, remainder +0.0042. L2 = 456.3658 + 0.0042 = 456.3700 → 456.37 (verified-corrected: the intermediates were 543.6292 / −0.0008 / 456.3708, which do not follow from the inputs; the final amounts were right).
+- Document VAT = r(24 419.59 × 10 %) = 2 441.96. Rounding each line separately would give 2 441.97, which is why BC distributes. (Assumes the service account's VAT Prod. Posting Group shares the GOODS VAT Identifier; with separate identifiers the groups give r(1 441.954) = 1 441.95 and r(1 000.005) = 1 000.01, which is the same total and the same G/L.)
+- The "VAT (distributed)" column is the `Line No.`-order split (draft lines after release, and posting with legacy order). With Concurrent Inventory Posting on, posting handles L3 (G/L Account) first and the **posted** lines get L3 1 000.01, L1 783.89, L2 658.06. The buffer row 5110 is still 1 441.95, so the G/L below is identical (verified-corrected).
 - Payment discount possible = r(26 861.55 × 2 %) = 537.23.
 
 Buffer (after negation): row 5110 (L1+L2 grouped) Amount −14 419.54, VAT −1 441.95; row 5120 Amount −10 000.05, VAT −1 000.01. Customer amount = −(−26 861.55).
@@ -254,7 +258,7 @@ Buffer (after negation): row 5110 (L1+L2 grouped) Amount −14 419.54, VAT −1 
 | 2300 VAT payable (row 5120) | | 1 000.01 |
 | **Total** | **26 861.55** | **26 861.55** |
 
-Cost (average cost PEN 800, PAPER 1 500; item ledger quantities −7 and −3):
+Cost (average cost PEN 800, PAPER 1 500; item ledger quantities −7 and −3; posted in the same run only with `Automatic Cost Posting` on, see R-39):
 
 | Account | Debit | Credit |
 |---|---|---|
@@ -264,7 +268,7 @@ Cost (average cost PEN 800, PAPER 1 500; item ledger quantities −7 and −3):
 ### E2: Cash sale, Prices Including VAT, Bal. Account = Bank (posting group → 1100)
 L1 3 × 11 000 = 33 000.00; L2 7 × 1 999 = 13 993.00 (both incl. VAT, GOODS).
 - `AIV_g` = 46 993.00; `VAT_g` = r(46 993 × 10/110) = r(4 272.0909) = 4 272.09; `Base_g` = 42 720.91.
-- L1: VAT = r(4 272.09 × 33 000/46 993) = r(2 999.9993) = 3 000.00, Amount = 30 000.00, remainder −0.0007. L2: VAT = r(−0.0007 + 1 272.0907) = 1 272.09, Amount = 12 720.91.
+- L1: VAT = r(4 272.09 × 33 000/46 993) = r(2 999.9994) = 3 000.00, Amount = 30 000.00, remainder −0.0006. L2: VAT = r(−0.0006 + 1 272.0906) = r(1 272.0900) = 1 272.09, Amount = 12 720.91 (verified-corrected: 4th-decimal intermediates were 2 999.9993 / −0.0007 / 1 272.0907; results unchanged).
 
 Transaction 1 (invoice):
 
@@ -307,6 +311,7 @@ Exact cost reversal (item ledger +7 and +3, applied from the original entries):
 Result: the invoice and credit memo entries are both closed, the invoice shows `Cancelled = true`, and the credit memo shows `Corrective = true`.
 
 ### E4: Partial manual credit memo (customer returns 2 PEN), applied to the E1 invoice
+This is an alternative to E3: the E1 invoice was **not** cancelled. After E3 the invoice entry is closed and could not be applied to (verified-corrected: clarified the scenario).
 2 × 1 234.55 = 2 469.10; line discount 3 % = 74.07; Amount 2 395.03; VAT r(239.503) = 239.50; total 2 634.53. No invoice discount, because the credit memo is a new document.
 
 | Account | Debit | Credit |
@@ -398,8 +403,8 @@ FCY: base 20.02, VAT r(2.002) = 2.00 (1.00 per line), AIV 22.02.
 10. **Cancel only unpaid, uncancelled, non-corrective invoices in an open period.** The cancelling credit memo inherits the **invoice's** posting date and VAT date in BC. If the period is closed, cancellation is refused and a manual credit memo dated today is required.
 11. **Partial credit memos priced by hand ignore the original invoice discount** (E4). Offer "credit from posted invoice lines", which copies the net amounts.
 12. **Bal. Account and Applies-to exclude each other.** A cash sale posts a second transaction (Payment) applied to the invoice. The bank account currency must equal the document currency.
-13. **FCY:** convert with running totals (C9), take the rate from the posting date, and re-confirm the rate when the posting date changes. BC's LCY conversion rounds to 0.01 by default. If MNT uses whole-tögrög precision, round explicitly.
-14. **Blocked customer semantics:** check both the customer on the document and, if different, the billing customer. Blocked items may still be returned on credit memos.
+13. **FCY:** convert with running totals (C9), take the rate from the posting date, and re-confirm the rate when the posting date changes. BC's LCY conversion calls `Round()` without a precision, which resolves to the G/L Setup `Amount Rounding Precision`. Whatever LCY precision is configured (0.01 or whole tögrög) is applied automatically; the new system must use the configured LCY precision too, not a hard-coded 0.01 (verified-corrected).
+14. **Blocked customer semantics:** check both the customer on the document and, if different, the billing customer. Only `Blocked = All` (or Privacy Blocked) stops a credit memo. Items: `Blocked` items can never be used, not even on credit memos. Only **`Sales Blocked`** items may still appear on credit documents, with a notification instead of an error (verified-corrected: the note said blocked items may be returned; [SL]:4808-4815).
 15. **Posting groups snapshot.** The line stores Gen./VAT posting groups at entry time. A later change on the customer or item must not change posted or in-progress lines silently. BC recreates lines on header changes after a confirmation.
 16. **A released document can still be posted after reopen and edit.** Totals must be recalculated at posting regardless of status.
 17. **Purchases:** the duplicate vendor document number check must ignore **reversed** entries. Purchase credit memos need their own vendor credit memo number.
@@ -418,3 +423,74 @@ FCY: base 20.02, VAT r(2.002) = 2.00 (1.00 per line), AIV 22.02.
 7. VAT date: always the posting date, or the document date for purchase invoices received late? (BC supports both via G/L Setup.)
 8. Should the invoice discount be posted to a separate "sales discounts" account for management reporting (BC `Discount Posting = Invoice/All`), or netted against revenue?
 9. To verify by test in BC: (a) the cancelling credit memo inherits the invoice Posting Date via TransferFields ([CDM]:787); (b) posting an Open document leaves the DB status Open after a failure that happens after commit #3.
+
+---
+
+## Verification log
+
+Adversarial re-check against the AL source. Every worked example was recomputed with exact decimal arithmetic (ROUND_HALF_UP at 0.01). In all six examples debits equal credits: E1 26 861.55 (cost 10 100.00), E2 46 993.00 twice, E3 26 861.55 (cost 10 100.00), E4 2 634.53, E5 132 000.00 and 22 000.00, E6 75 980.01. Paths are relative to `src/Layers/W1/BaseApp/` unless a tag is used.
+
+| Claim | Verdict | Evidence (path:line) |
+|---|---|---|
+| R-01 header key (Document Type, No.), rename blocked, number loop until unused | confirmed | [SH]:3653, 3778-3787, 3974-3986 |
+| R-02 InitRecord date defaults (Document Date) | corrected | [SH]:4014-4021, 9753-9768; [SRS]:993-998 |
+| R-03 Sell-to: blocked check, Gen. Bus. PG required, lines recreated | confirmed | [SH]:193-195, 224-227 |
+| R-04 Bill-to copies Customer PG/currency/PIV/terms/method; Gen./VAT Bus. PG from Bill-to | confirmed | [SH]:7966-7987; [ACV]:187-197; [GLS]:901 |
+| R-06 currency factor from Posting Date (WorkDate if blank), 0 for LCY | confirmed | [SH]:4755-4770 |
+| R-07 posting date locked when Posting No. from a date-ordered series | confirmed | [SH]:654-666, 4334-4345 |
+| R-08 Bal. Account checks; bank currency = document currency; excludes Applies-to | confirmed | [SH]:1254-1255, 1281-1296, 2061-2070 |
+| R-09 draft series = posted series ⇒ posted doc keeps draft No. | confirmed | [SP]:2811-2816, 7223-7237 |
+| R-10 G/L lines `Allow Invoice Disc.` = false, Direct Posting; item Blocked / Sales Blocked | confirmed | [SL]:4769-4785, 4809-4815 |
+| R-11 setup check at `No.` validation "fails early" | refuted (rewritten: notification only) | [SL]:336-343; `Finance/ReceivablesPayables/PostingSetupManagement.Codeunit.al`:103-122, 422-438 |
+| R-12 / C2 nested rounding of line discount, reverse % to 5 dp in 0..100 | confirmed | [SL]:9569-9572, 10268-10280 |
+| R-13 / C3 Line Amount = r(Qty × Price) − LDA | confirmed | [SL]:5881 |
+| R-14 cumulative line VAT (excl. and incl. VAT) | confirmed; sign-split VAT group added | [SL]:5986-6040; [VAL]:323; [SL]:7637 |
+| R-15 / C4 invoice discount split per VAT group then per line, running remainder | confirmed | [VAL]:637-662; [SL]:7333-7350; [SCDT]:100 |
+| R-16 line-discount change reduces Amount-type header discount | confirmed | [SL]:9573-9608 |
+| R-17 PIV switch; VAT Prod. PG change rescales Unit Price | confirmed | [SL]:1835-1840; [SH]:999-1081 |
+| R-18 Qty = 0 ⇒ Amount = 0; else Type, No., posting groups | confirmed | [SP]:2653-2660 |
+| R-19..21 release checks, Calc. Inv. Discount, VAT recalc, Reopen | confirmed | [REL]:65-66, 104-145, 159-176, 223-243 |
+| R-22 mandatory header fields, allowed posting date, VAT date fill | confirmed | [SP]:8670-8674, 852-856, 8903-8910 |
+| R-23 Invoice ⇒ Ship+Invoice; Qty. to Ship = Qty. to Invoice = Quantity | confirmed | [SP]:8703-8718, 2502-2509 |
+| R-24 negative invoice rejected (both total Line Amount and total AIV < 0; Invoice/Order only) | confirmed | [SP]:942-958 |
+| R-25 Due Date required for non-credit invoices | confirmed | [SP]:893-895 |
+| R-26 customer Blocked semantics | corrected (Blanket Order; credit docs not blocked by Ship/Invoice) | [CUST]:2759-2778; [SP]:6238-6286 |
+| R-28 sales Ext. Doc. No. mandatory only by setup (default false) | confirmed | [GJPL]:7292-7313; [SRS]:106-110 |
+| R-29 posting no. drawn early, written, committed; collision check | confirmed | [SP]:2811-2829, 777-782 |
+| R-30 date-ordered series suppresses early commit; forced commit errors | confirmed | [SP]:769-776, 371-372 |
+| R-31 / F3 4.3 commit points | corrected (commit #1 and #2 are conditional) | [SP]:694-716, 777-782; [REL]:104-119 |
+| R-32 deleting a numbered draft creates an empty posted doc | confirmed | [PSD]:261-284; [SH]:4352-4421 |
+| R-33 line pipeline and `ReverseAmount` for non-credit docs | confirmed; posting line order added | [SP]:1029-1051, 489-490 |
+| R-35 G/L account: line No. for G/L/FA; Sales or Sales Cr. Memo account | confirmed | [SPI]:295-311 |
+| R-36 / C10 customer entry on Bill-to, Amount = −Total AIV, Allow Application | confirmed | [SPI]:617, 645; [GJL]:7390, 7397-7401 |
+| R-37 balancing entry Payment/Refund, applies to invoice, AIV + rem. pmt. disc. | confirmed | [SPI]:700-705, 725, 745-748 |
+| Balancing entry is a separate G/L transaction (E2 "Transaction 2") | confirmed | [GJPL]:1995-1997 |
+| R-38 (Document Type, No.) unique in customer ledger (non-payment types) | confirmed | [GJPL]:1322-1330; [GJCL]:801-818 |
+| R-39 / C14 item journal amount and sign | confirmed; Automatic Cost Posting dependency added | [SP]:1653; `Inventory/Posting/ItemJnlPostLine.Codeunit.al`:246, 683 |
+| R-40 / C11 invoice rounding formula and account | confirmed; VAT-on-rounding-line note added | [SP]:3598-3632 |
+| R-41 finalize deletes Invoice/Cr. Memo/fully invoiced Order | confirmed | [SP]:3204-3282 |
+| R-43 cancel preconditions (open period, once, not corrective, unpaid, etc.) | confirmed | [CORR]:349-370, 550-562, 585-591 |
+| R-44 cancelling CM copies posted invoice incl. Posting Date; applies to invoice | confirmed | [CDM]:775-792, 711-712, 7225-7255, 8382-8386 |
+| Cancelled / Corrective FlowFields (E3) | confirmed | [SIH]:1140-1158; `Sales/History/SalesCrMemoHeader.Table.al`:1027-1043 |
+| R-46 credit memo `Correction` from G/L Setup | confirmed | [CDM]:7333; [SH]:4038-4041 |
+| R-47 / C12 Due Date and Pmt. Disc. Date from Document Date; credit-doc rule | confirmed | [SH]:735-751, 754-760 |
+| R-48 / C13 Original Pmt. Disc. Possible with grace period | confirmed | [GJPL]:2627-2644 |
+| C5 / C6 / C7 group VAT and line distribution formulas | confirmed | [VAL]:700-759, 840-890; [SL]:7358-7400; [SP]:3394-3445 |
+| C8 partial-invoice line amount | corrected | [SL]:8442-8474; [SP]:3468-3485 |
+| C9 + pitfall 13: `Round()` default precision "0.01" | corrected (= G/L Setup Amount Rounding Precision) | `Finance/Currency/AmountAutoFormat.Codeunit.al`:55-60; MS Learn System.Round |
+| Ordering rule "lines distributed in Line No. order" | corrected (posting uses Type, Line No. under concurrent posting) | [SP]:489-490 |
+| R-49 purchase Ext. Doc. No. Mandatory InitValue true; Vendor Invoice / Cr. Memo No. | confirmed | [PPS]:64-69; [PP]:911-914, 998-1013 |
+| R-50 vendor duplicate check | corrected (also runs when not mandatory if a number is given; Pay-to vendor) | [PP]:1266-1268, 7597-7605; [VM]:159-166; [GJPL]:7329-7340 |
+| R-51 purchase signs (credit docs negated; vendor = −Total AIV) | confirmed | [PP]:307-310, 1097-1100; [PPI]:736 |
+| R-52 Vendor PG from Pay-to; Gen./VAT Bus. PG; due date from Document Date | confirmed | [PH]:130-131, 272-280, 649 |
+| F6 step 3 "commit unless date-ordered" | refuted (reversed: commit only if date-ordered) | [CORR]:56-62 |
+| E1 invoice-discount intermediates (543.6292, −0.0008, 456.3708) | corrected (543.6342, +0.0042, 456.3658); final amounts, VAT 2 441.96, G/L confirmed | recomputed; [VAL]:637-662 |
+| E1 posted per-line VAT split | corrected (depends on line order; totals unchanged) | [SP]:489-490, 3430-3445 |
+| E2 PIV intermediates | corrected (2 999.9994 / −0.0006 / 1 272.0906); G/L confirmed | recomputed; [SP]:3394-3412 |
+| E3 mirror credit memo | confirmed | [SPI]:303-308; [CDM]:775-792 |
+| E4 partial credit memo arithmetic (74.07, 239.50, 2 634.53, 24 227.02, ≈155.32) | confirmed; scenario clarified as alternative to E3 (corrected) | recomputed |
+| E5 purchase invoice/CM and duplicate message text | confirmed | [GJPL]:183; [PP]:342, 7597-7605 |
+| E6 FCY running-total conversion incl. .xx5 ties | confirmed (stored factor 1/3450.5 rounds down, so ties resolve up) | `Finance/Currency/CurrencyExchangeRate.Table.al`:215-219; [SP]:3499-3555 |
+| Pitfall 14 "blocked items may still be returned" | refuted (only Sales Blocked items) | [SL]:4809-4815 |
+
+**Counts:** 60 claims checked: 46 confirmed, 11 corrected, 3 refuted. Four rules were added (marked "added-in-verification"): the sign-split VAT groups (R-14), the posting line order (R-33), the Automatic Cost Posting dependency (R-39), and VAT on the invoice rounding line (R-40).

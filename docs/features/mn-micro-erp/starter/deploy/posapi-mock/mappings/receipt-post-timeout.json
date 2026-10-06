@@ -1,0 +1,35 @@
+{
+  "name": "PosAPI POST /rest/receipt - hangs (timeout => UNKNOWN)",
+  "priority": 1,
+  "metadata": {
+    "note": "Any receipt for merchantTin 99999999901 answers after 40 s. The adapter's timeout is shorter, so the outbox row must become UNKNOWN and must NOT be retried automatically (the receipt may exist on the PosAPI side)."
+  },
+  "request": {
+    "method": "POST",
+    "urlPath": "/rest/receipt",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": {
+          "expression": "$.merchantTin",
+          "equalTo": "99999999901"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 40000,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "jsonBody": {
+      "id": "{{randomValue length=33 type='NUMERIC'}}",
+      "posId": 100001,
+      "status": "SUCCESS",
+      "message": "created after the client gave up",
+      "date": "{{now timezone='Asia/Ulaanbaatar' format='yyyy-MM-dd HH:mm:ss'}}",
+      "lottery": "LOTTERY-CANARY-LATE",
+      "qrData": "QR-CANARY-LATE"
+    }
+  }
+}

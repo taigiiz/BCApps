@@ -1,0 +1,40 @@
+{
+  "name": "PosAPI GET /rest/info",
+  "priority": 10,
+  "metadata": {
+    "note": "PLACEHOLDER. Used by health checks and the leftLotteries < 100 / last-send-age alerts. Field names must be verified against the official spec."
+  },
+  "request": {
+    "method": "GET",
+    "urlPath": "/rest/info"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "jsonBody": {
+      "operatorName": "MOCK OPERATOR LLC",
+      "operatorTIN": "99999999900",
+      "posId": 100001,
+      "posNo": "MOCK001",
+      "version": "3.2.48-mock",
+      "lastSentDate": "{{now timezone='Asia/Ulaanbaatar' format='yyyy-MM-dd HH:mm:ss'}}",
+      "leftLotteries": 5000,
+      "merchants": [
+        {
+          "tin": "37900846788",
+          "name": "eBarimt staging test merchant (mock)"
+        },
+        {
+          "tin": "99999999901",
+          "name": "Mock merchant: receipt timeout"
+        },
+        {
+          "tin": "99999999902",
+          "name": "Mock merchant: receipt rejected"
+        }
+      ]
+    }
+  }
+}

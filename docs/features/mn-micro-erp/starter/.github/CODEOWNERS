@@ -1,0 +1,67 @@
+# MN Micro ERP - CODEOWNERS (example; replace @mn-erp/* with the real GitHub teams)
+# Spec: docs/features/mn-micro-erp/18-dev-setup.md section 8.3.
+# The LAST matching pattern wins, so generic rules come first and specific rules last.
+# The main-branch ruleset requires "Review from Code Owners"; .github/workflows/sensitive-review.yml
+# additionally requires 2 approvals for the posting / tax / numbering / eBarimt / migration paths.
+# When a line lists several teams, an approval from ANY ONE of them satisfies the code-owner rule.
+# Paths whose specific team MUST approve (tax, eBarimt, accountant sign-off) therefore list that team alone.
+#
+# Teams:
+#   @mn-erp/tech-leads           architecture, build, anything not owned below
+#   @mn-erp/ledger-owners        posting engine, G/L, sub-ledger application, numbering, money type
+#   @mn-erp/tax-owners           VAT, city tax, tax parameters, tax reports
+#   @mn-erp/ebarimt-owners       PosAPI adapter, outbox handlers for eBarimt
+#   @mn-erp/accounting-reviewers accountants who sign golden scenarios (domain review, not code)
+#   @mn-erp/platform             tenancy, identity, audit, integration/outbox, jobs
+#   @mn-erp/frontend             web/
+#   @mn-erp/devops               CI/CD, containers, deploy, database roles
+
+# ---- Default ----
+*                                               @mn-erp/tech-leads
+
+# ---- Build, CI/CD, infrastructure ----
+/.github/                                       @mn-erp/devops @mn-erp/tech-leads
+/deploy/                                        @mn-erp/devops
+/db/init/                                       @mn-erp/devops
+/Directory.Build.props                          @mn-erp/tech-leads
+/Directory.Packages.props                       @mn-erp/tech-leads
+/BannedSymbols*.txt                             @mn-erp/tech-leads @mn-erp/ledger-owners
+/global.json                                    @mn-erp/tech-leads
+/nuget.config                                   @mn-erp/devops @mn-erp/tech-leads
+/tools/licenses/                                @mn-erp/tech-leads
+
+# ---- Frontend ----
+/web/                                           @mn-erp/frontend
+/tests/E2E/                                     @mn-erp/frontend
+
+# ---- Platform ----
+/src/Modules/Platform/                          @mn-erp/platform
+/src/Modules/Integration/                       @mn-erp/platform
+/src/Erp.Worker/                                @mn-erp/platform
+/src/BuildingBlocks/                            @mn-erp/tech-leads
+
+# ---- Ledger-critical code (posting, money, numbering) ----
+/src/Modules/GeneralLedger/                     @mn-erp/ledger-owners
+/src/Modules/Platform/*/Numbering/              @mn-erp/ledger-owners
+/src/BuildingBlocks/Erp.BuildingBlocks.Domain/Monetary/  @mn-erp/ledger-owners
+/tools/Erp.Analyzers/                           @mn-erp/ledger-owners @mn-erp/tech-leads
+# Posting code of every module (any depth), FX revaluation.
+/src/Modules/**/Posting/                        @mn-erp/ledger-owners
+/src/Modules/**/Revaluation/                    @mn-erp/ledger-owners
+
+# ---- Tax ----
+/src/Modules/Tax/                               @mn-erp/tax-owners
+
+# ---- eBarimt ----
+/src/Modules/EBarimt/                           @mn-erp/ebarimt-owners
+/deploy/posapi-mock/                            @mn-erp/ebarimt-owners
+
+# ---- Database migrations: one approval from ledger owners OR devops satisfies the code-owner rule;
+#      sensitive-review.yml requires a second approval. Request both teams on every schema change. ----
+/db/migrations/                                 @mn-erp/ledger-owners @mn-erp/devops
+/src/Erp.Migrator/                              @mn-erp/devops @mn-erp/ledger-owners
+
+# ---- Tests that encode accounting truth ----
+/tests/Golden/                                  @mn-erp/ledger-owners
+/tests/Golden/Scenarios/                        @mn-erp/accounting-reviewers
+/tests/Architecture/                            @mn-erp/tech-leads

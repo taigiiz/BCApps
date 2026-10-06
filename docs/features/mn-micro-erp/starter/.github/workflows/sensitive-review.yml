@@ -1,0 +1,70 @@
+# =============================================================================
+# MN Micro ERP - two approvals for posting / tax / numbering / eBarimt / migrations
+# Spec: docs/features/mn-micro-erp/18-dev-setup.md section 8.3.
+#
+# GitHub rulesets can require "1 approval + code owner review" per branch, but not a higher count
+# per path. This check adds the rule: if a PR touches a sensitive path it needs >= 2 approvals
+# from people other than the author (latest review state per reviewer). Make the job
+# "sensitive-review / two-approvals" a required status check in the main-branch ruleset.
+# =============================================================================
+name: sensitive-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed]
+  # A required check must also report on merge-queue commits; approvals were already enforced on the PR.
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: sensitive-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  two-approvals:
+    name: two-approvals
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number }}
+      AUTHOR: ${{ github.event.pull_request.user.login }}
+      # Posting engine + ledger, posting code of every module, FX revaluation, tax rules, gapless numbering,
+      # eBarimt adapter, money type + ERP0001 analyzer, SQL migrations + migrator, accountant-signed golden scenarios.
+      SENSITIVE: '^(src/Modules/(GeneralLedger|Tax|EBarimt)/|src/Modules/[^/]+/[^/]+/(.+/)?(Posting|Revaluation)/|src/Modules/Platform/[^/]+/Numbering/|src/BuildingBlocks/Erp\.BuildingBlocks\.Domain/Monetary/|tools/Erp\.Analyzers/|db/migrations/|src/Erp\.Migrator/|tests/Golden/Scenarios/)'
+      REQUIRED: "2"
+    steps:
+      - name: Merge queue - approvals were checked on the pull request
+        if: github.event_name == 'merge_group'
+        run: echo "merge_group run - two-approvals was enforced on the PR before it entered the queue."
+
+      - name: Count approvals when sensitive paths change
+        if: github.event_name != 'merge_group'
+        run: |
+          set -euo pipefail
+          # The files API (paginated, up to 3000 files) also works for large PRs where `gh pr diff` gives up.
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
+          hits=$(printf '%s\n' "$files" | grep -E "$SENSITIVE" || true)
+          if [ -z "$hits" ]; then
+            echo "No sensitive paths changed - standard review rules apply."
+            exit 0
+          fi
+          echo "Sensitive paths changed:"; printf '  %s\n' "$hits"
+          approvals=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" \
+            | jq -s --arg author "$AUTHOR" '
+                add
+                | map(select(.user.login != $author and (.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")))
+                | group_by(.user.login)
+                | map(last)
+                | map(select(.state == "APPROVED"))
+                | length')
+          echo "Approvals from non-authors: $approvals (required: $REQUIRED)"
+          if [ "$approvals" -lt "$REQUIRED" ]; then
+            echo "::error::This PR changes posting/tax/numbering/eBarimt/migration/golden files and needs $REQUIRED approvals (one from CODEOWNERS)."
+            exit 1
+          fi

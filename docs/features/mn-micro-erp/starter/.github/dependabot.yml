@@ -1,0 +1,66 @@
+# MN Micro ERP - dependency updates (weekly, grouped). Licence/vulnerability gates run in ci.yml.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Asia/Ulaanbaatar
+    open-pull-requests-limit: 5
+    groups:
+      # Npgsql and EF Core majors must move together, so they share one group (and Npgsql.OpenTelemetry follows Npgsql).
+      npgsql-efcore:
+        patterns: ["Npgsql*", "EFCore.*", "Microsoft.EntityFrameworkCore*"]
+      microsoft:
+        patterns: ["Microsoft.*", "System.*"]
+        exclude-patterns: ["Microsoft.EntityFrameworkCore*", "Microsoft.CodeAnalysis.*"]
+      opentelemetry:
+        patterns: ["OpenTelemetry*"]
+      tests:
+        patterns: ["xunit*", "Shouldly", "FsCheck*", "Testcontainers*", "TngTech.*"]
+    ignore:
+      # tools/Erp.Analyzers must reference a Roslyn version <= the compiler of the oldest supported SDK band
+      # (global.json: 10.0.100 + latestFeature). Raise it deliberately together with global.json, not via Dependabot.
+      - dependency-name: "Microsoft.CodeAnalysis.CSharp"
+    labels: ["dependencies", "dotnet"]
+
+  - package-ecosystem: npm
+    directory: "/web"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Asia/Ulaanbaatar
+    open-pull-requests-limit: 5
+    groups:
+      react:
+        patterns: ["react", "react-dom", "@types/react*"]
+      tooling:
+        patterns: ["vite*", "vitest*", "eslint*", "typescript*", "@typescript-eslint/*", "prettier"]
+    labels: ["dependencies", "web"]
+
+  - package-ecosystem: npm
+    directory: "/tests/E2E"
+    schedule:
+      interval: monthly
+    labels: ["dependencies", "e2e"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "ci"]
+
+  - package-ecosystem: docker
+    directory: "/deploy/docker"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: docker-compose
+    directory: "/deploy"
+    schedule:
+      interval: monthly
+    labels: ["dependencies", "docker"]

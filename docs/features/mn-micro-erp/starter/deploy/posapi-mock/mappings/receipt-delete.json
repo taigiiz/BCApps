@@ -1,0 +1,21 @@
+{
+  "name": "PosAPI DELETE /rest/receipt - return a B2C_RECEIPT",
+  "priority": 10,
+  "metadata": {
+    "note": "PLACEHOLDER. Real body is {id, date}; only B2C_RECEIPT not yet confirmed by the citizen can be deleted."
+  },
+  "request": {
+    "method": "DELETE",
+    "urlPath": "/rest/receipt"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "jsonBody": {
+      "status": "SUCCESS",
+      "message": ""
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "PosAPI GET /rest/bankAccounts?tin=",
+  "priority": 10,
+  "metadata": {
+    "note": "PLACEHOLDER. Real data comes from the local PosAPI bankaccount table."
+  },
+  "request": {
+    "method": "GET",
+    "urlPath": "/rest/bankAccounts"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "jsonBody": [
+      {
+        "id": 1,
+        "tin": "37900846788",
+        "bankAccountNo": "5000000001",
+        "bankAccountName": "MOCK ACCOUNT",
+        "bankId": 5,
+        "bankName": "Khan Bank (mock)"
+      }
+    ]
+  }
+}

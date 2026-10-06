@@ -1,0 +1,75 @@
+# =============================================================================
+# OpenTelemetry Collector (contrib 0.162.0) - local development configuration
+# Location in the repository: deploy/otel-collector.yaml (mounted by deploy/docker-compose.yml)
+#
+# Redaction is defence in depth. The primary rule is in the application:
+# eBarimt qrData / lottery, passwords, tokens and full national ID numbers are NEVER
+# put into log messages, span attributes or HTTP body capture (18-dev-setup.md section 3.6,
+# 02-architecture.md section 11.5). National ids are DELETED here, not hashed: a plain hash of a
+# register number is reversible by brute force (small key space). The app uses an HMAC redactor if it
+# really needs a correlatable value.
+# Staging/production use the same processors in front of their own backends.
+# =============================================================================
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+
+  # Drop forbidden attributes by name on spans and log records.
+  attributes/redact:
+    actions:
+      - pattern: '(?i)^(.*\.)?(qr_?data|lottery)$'
+        action: delete
+      - pattern: '(?i)^http\.(request|response)\.body.*$'
+        action: delete
+      - pattern: '(?i)^(.*\.)?(password|passwd|secret|token|access_token|refresh_token|id_token|authorization|cookie|set[-_]cookie|x[-_]api[-_]key)$'
+        action: delete
+      - pattern: '(?i)^(.*\.)?(register_?no|reg_?no|civil_?id|national_?id|consumer_?no)$'
+        action: delete
+
+  # Mask the same fields if they ever appear inside a JSON-looking log body.
+  transform/redact:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          - 'replace_pattern(log.body, "(?i)\"(qrData|lottery|regNo|civilId|consumerNo)\"\\s*:\\s*\"[^\"]*\"", "\"$$1\":\"[REDACTED]\"")'
+
+  batch: {}
+
+exporters:
+  otlp_grpc/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redact, batch]
+      exporters: [otlp_grpc/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redact, transform/redact, batch]
+      exporters: [debug]

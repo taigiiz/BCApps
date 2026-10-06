@@ -1,0 +1,74 @@
+# MN Micro ERP - .gitignore (copy to repository root)
+
+# ---------- .NET build output ----------
+bin/
+obj/
+artifacts/
+publish/
+*.user
+*.suo
+*.userprefs
+*.rsuser
+.vs/
+*.binlog
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+*.cobertura.xml
+!tests/**/fixtures/*.cobertura.xml
+
+# NuGet
+.nuget/packages/
+*.nupkg
+*.snupkg
+# packages.lock.json files ARE committed (locked restore on CI) - do not ignore them.
+
+# ---------- Node / web ----------
+node_modules/
+web/dist/
+web/.vite/
+web/coverage/
+tests/E2E/test-results/
+tests/E2E/playwright-report/
+tests/E2E/blob-report/
+tests/E2E/.auth/
+*.tsbuildinfo
+npm-debug.log*
+
+# ---------- IDEs ----------
+.idea/
+*.sln.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+*.code-workspace
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- Secrets and local configuration (never commit) ----------
+# Local secrets live in `dotnet user-secrets` (outside the repo); production secrets are environment variables.
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+*.pfx
+*.p12
+*.pem
+*.key
+!deploy/**/*.example.pem
+secrets/
+deploy/hosts/*.env
+!deploy/hosts/*.env.example
+
+# ---------- Local database dumps and golden-test outputs ----------
+*.dump
+*.backup
+db/snapshots/local/
+tests/Golden/**/*.actual.yaml
+tests/Golden/**/*.diff.md
