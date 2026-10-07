@@ -31,6 +31,7 @@
 21. [Схемийн өөрчлөлтийн хүсэлт](#21-схемийн-өөрчлөлтийн-хүсэлт-schema-change-requests)
 22. [Нээлттэй асуулт](#22-нээлттэй-асуулт)
 23. [Мөрдөх чадвар (traceability)](#23-мөрдөх-чадвар-traceability)
+24. [Хяналтын тэмдэглэл (Review log)](#хяналтын-тэмдэглэл-review-log)
 
 ---
 
@@ -215,6 +216,7 @@ stateDiagram-v2
 | SEC-ID-14 | Тенант үүсгэх (FR-PLT-001) нь имэйл баталгаажсан хэрэглэгчид л боломжтой. Үүсгэгч `OWNER` болно. MFA тохируулаагүй бол компанид хандахаас өмнө тохируулна (SEC-AUTH-10). |
 | SEC-ID-15 | Support ажилтан тенантын гишүүн биш. Тенантад зөвхөн хүчинтэй `support_access_grant`-аар хандана (§7.9). |
 | SEC-ID-16 | `INVITED` төлөвтэй, огт идэвхжээгүй гишүүнчлэл ба урилгыг устгаж болно. `ACTIVE`/`DISABLED` гишүүнчлэлийг устгахгүй (`user_company_role` ба аудит иш татна). |
+| SEC-ID-17 | Урилга хүлээн авахад хэрэглэгч тухайн тенантад аль хэдийн гишүүнчлэлтэй бол: `ACTIVE` → `409 platform.already_member` (урилгыг `accepted_at`-гүй хэвээр, Owner цуцална; role-ийг урилгаар нэмэхгүй — SEC-AZ-15-ийг тойрохоос сэргийлнэ); `DISABLED` → `403 platform.membership_disabled` (урилгаар дахин идэвхжүүлэхгүй; зөвхөн `platform.security.manage`-ээр, §4.3); `INVITED` → `ACTIVE` болгоно. Урилга үүсгэх үед ч мөн адил шалгаж, `ACTIVE`/`DISABLED` гишүүнд урилга илгээхгүй (`409`). |
 
 ### 4.5 Компанийн хандалтыг тодорхойлох алгоритм
 
@@ -264,6 +266,9 @@ POST /bff/invitations:accept { token }
     if inv is null or inv.expires_at <= now() or inv.accepted_at is not null or inv.revoked_at is not null:
         raise 410 platform.invitation_invalid
     if lower(inv.email) <> currentUser.email: raise 403 platform.invitation_email_mismatch
+    m := existing membership (inv.tenant_id, currentUser.id)   -- SEC-ID-17
+    if m.status = 'ACTIVE':   raise 409 platform.already_member
+    if m.status = 'DISABLED': raise 403 platform.membership_disabled
     platform.fn_accept_invitation(h, currentUser.id)           -- membership ACTIVE + user_company_role мөрүүд, нэг transaction
     audit.fn_log_security_event(inv.tenant_id, NULL, 'MEMBERSHIP_ACCEPTED', currentUser.id)
     session.erp_tid := inv.tenant_id                           -- шинэ sid (SEC-AUTH-17)
@@ -511,6 +516,10 @@ BC-ийн загварыг (R-PLATFORM-SECURITY-API-01…07) өгөгдөл бо
 | `party.ledger_entry.edit` | Нээлттэй entry-ийн due date, on hold (R-PLATFORM-SECURITY-API-20, `platform.fn_ledger_update`) | `ERP_RECEIVABLES`, `ERP_PAYABLES` | — | — | CR-23 |
 | `sales.document.preview` | Борлуулалтын баримтын preview | `ERP_SALES_EDIT` | — | — | seed |
 | `sales.document.send` | Баримтыг имэйлээр илгээх | `ERP_SALES_EDIT` | — | — | CR-23 |
+| `sales.document.print` | Posted баримт хэвлэх, eBarimt-ийн QR-тай хэвлэх (`:send-and-print`), ХУУЛБАР (12 §18.2) | `ERP_SALES_POST` | — | — | CR-23 (8) |
+| `purchase.document.preview` | Худалдан авалтын баримтын preview | `ERP_PURCH_EDIT` | — | — | CR-23 (8) |
+| `gl.journal.preview` | Журналын preview (ROLLBACK-тай posting, 05) | `ERP_JOURNALS_EDIT` | — | — | CR-23 (8) |
+| `ebarimt.document.override` | eBarimt-гүй (`NONE` + шалтгаан) борлуулалт, `reportMonth`-ийн цонх хаагдсаны дараах засвар (12 TYP-03, §12.6) | `ERP_EBARIMT_OVERRIDE` (built-in role-д оноохгүй; Owner `ERP_SUPER`-аар) | ✔ | ✔ | CR-23 (8) |
 | `sales.document.edit_any` | Бусдын үүсгэсэн ноорог засах, батлах (SEC-REC-03) | `ERP_SALES_ANY` | — | — | CR-23 |
 | `sales.invoice.post`, `sales.pos.post` | Нэхэмжлэх батлах, бэлэн борлуулалт (D-F5) | `ERP_SALES_POST` | — | — | seed |
 | `sales.creditmemo.post`, `sales.invoice.cancel` | Кредит нот батлах, нэхэмжлэх цуцлах | seed: `ERP_SALES_POST` → **CR-23: `ERP_SALES_RETURN` руу шилжүүлэх** | — | — | seed / CR-23 |
@@ -527,7 +536,7 @@ BC-ийн загварыг (R-PLATFORM-SECURITY-API-01…07) өгөгдөл бо
 | `tax.vat.settle` | НӨАТ-ын хаалт | `ERP_VAT` | — | — | seed |
 | `tax.vat_return.submit` | НӨАТ-ын үеийг "илгээсэн" (`SUBMITTED`, эцсийн) болгох | `ERP_VAT` | ✔ | ✔ | seed |
 | `tax.vat_entry.confirm_deductible` | Орцын НӨАТ-ыг ДДТД-ээр баталгаажуулах (D-E4) | `ERP_VAT` | — | — | seed |
-| `ebarimt.merchant.register`, `ebarimt.unknown.resolve` | Мерчант бүртгэх; UNKNOWN/ERROR-ийг гараар шийдэх (D-J2) | `ERP_EBARIMT_OPS` | — | — | seed |
+| `ebarimt.merchant.register`, `ebarimt.unknown.resolve` | Мерчант бүртгэх; UNKNOWN/ERROR-ийг гараар шийдэх (D-J2): дахин илгээх, цуцлах, порталын цуцлалтыг бүртгэх, backfill (12 §18.2) | `ERP_EBARIMT_OPS` | — | — | seed |
 | `ebarimt.send_data.trigger` | `sendData`-г гараар дуудах | `ERP_EBARIMT_OPS` | — | — | CR-23 |
 | `rpt.export.excel`, `rpt.ebalance.keying_sheet` | Тайлан экспорт, e-balance-ийн шивэх хуудас | `ERP_FIN_REPORTS` | — | — | seed |
 | `audit.export` | Аудитын лог экспорт | `ERP_AUDIT_READ` | — | — | CR-23 |
@@ -535,7 +544,7 @@ BC-ийн загварыг (R-PLATFORM-SECURITY-API-01…07) өгөгдөл бо
 
 `REPORT` объект (seed): `rpt.trial_balance`, `rpt.gl_detail`, `rpt.account_statement`, `rpt.balance_sheet`, `rpt.income_statement`, `rpt.equity_statement`, `rpt.cash_flow`, `rpt.sales_journal`, `rpt.purchase_journal` (`ERP_FIN_REPORTS`); `rpt.customer_aging`, `rpt.customer_statement` (`ERP_RECEIVABLES`); `rpt.vendor_aging` (`ERP_PAYABLES`); `rpt.vat_return` (`ERP_VAT`); `audit.integrity` (`ERP_AUDIT_READ`). **CR-23:** `rpt.customer_aging`, `rpt.vendor_aging`, `rpt.customer_statement`, `rpt.vat_return`-ийг `ERP_FIN_REPORTS`-д мөн нэмэх (Viewer унших); шинэ `rpt.daily_sales` (`ERP_SALES_EDIT`, `ERP_FIN_REPORTS`), `rpt.navigate` (`ERP_FIN_REPORTS`), `rpt.period_close_checklist` (`ERP_PERIOD_CLOSE`). Тайлангийн эцсийн нэрийг тайлангийн spec баталгаажуулна.
 
-**Тайлбар.** Компанийн posting цонх (`allow_posting_from/to`) нь `platform.company_setup`-ийн багана тул тусдаа ACTION-гүй: `ERP_SETUP`-ийн `TABLE platform.company_setup` M + MFA (SEC-POST-07). Журналын preview нь `TABLE gl.journal_line` R; НӨАТ-ын үеийг `CLOSED` болгох нь `TABLE tax.vat_return_period` M (`ERP_VAT`); харилцагчийн Excel импорт нь `TABLE party.customer` I.
+**Тайлбар.** Компанийн posting цонх (`allow_posting_from/to`) нь `platform.company_setup`-ийн багана тул тусдаа ACTION-гүй: `ERP_SETUP`-ийн `TABLE platform.company_setup` M + MFA (SEC-POST-07). Журналын preview нь `gl.journal.preview` X (CR-23 (8); seed-д нэмэгдэх хүртэл `TABLE gl.journal_line` R-ээр шалгана); НӨАТ-ын үеийг `CLOSED` болгох нь `TABLE tax.vat_return_period` M (`ERP_VAT`); харилцагчийн Excel импорт нь `TABLE party.customer` I.
 
 **Хавсралт (FR-PLT-011).** Ноорогт хавсралт нэмэх, устгах нь тухайн ноорогийн `TABLE` M эрхээр. Posted баримтад хавсралт **нэмэх** нь `platform.attachment.add`. Posted баримтын хавсралтыг устгахгүй. Хавсралт унших эрх нь эх баримтын R эрхийг дагана.
 
@@ -561,7 +570,7 @@ Seed-д 30 set бий (`ERP_BASIC` … `ERP_PII_UNMASK`, `assignable = true`). I
 | `ERP_INV_EDIT`, `ERP_FA_VIEW`, `ERP_FA_EDIT` | D365 INV / FA | R2 | Тийм | seed |
 | `ERP_FIN_REPORTS` | D365 FINANCIAL REP. | Санхүүгийн тайлан X, `rpt.export.excel`, e-balance шивэх хуудас. **CR-23:** насжилт, НӨАТ, `rpt.daily_sales`, `rpt.navigate` | Тийм | seed / CR-23 |
 | `ERP_VAT` | D365 ACCOUNTANTS-ийн хэсэг | `tax.vat_return_period` RIM, `tax.vat_entry` `Rm`, НӨАТ-ын тайлан, хаалт, submit, орц баталгаажуулах | Тийм | seed |
-| `ERP_PERIOD_CLOSE` / `ERP_PERIOD_REOPEN` | D365 ACCOUNTANTS-ийн хэсэг | Сар/жил хаах, түгжих, ханшийн тэгшитгэл / дахин нээх | Тийм | seed |
+| `ERP_PERIOD_CLOSE` / `ERP_PERIOD_REOPEN` | D365 ACCOUNTANTS-ийн хэсэг | Сар/жил хаах, түгжих, ханшийн тэгшитгэл / дахин нээх | Тийм / **Үгүй** (CR-23 (9), D-D3: зөвхөн Owner `ERP_SUPER`-аар) | seed / CR-23 |
 | `ERP_SETUP` | D365 SETUP | `T_SETUP` RIMD/RM, `platform.company.setup` X | Тийм | seed |
 | `ERP_SECURITY` | SECURITY | `T_SECURITY` RIMD, `platform.security.manage`, `platform.user.invite` X. **CR-23:** `audit.security_event`, `audit.security_incident` R-ийг энд (`ERP_AUDIT_READ`-ээс шилжүүлэх) | Тийм | seed / CR-23 |
 | `ERP_EBARIMT_OPS` | — | eBarimt-ийн баримт ба түүх, мерчант, UNKNOWN шийдэх. **CR-23:** `ebarimt.ebarimt_document` `RM` → `Rm` (төлвийг зөвхөн `ebarimt.unknown.resolve`-ээр), `ebarimt.send_data.trigger` | Тийм | seed / CR-23 |
@@ -574,10 +583,11 @@ Seed-д 30 set бий (`ERP_BASIC` … `ERP_PII_UNMASK`, `assignable = true`). I
 | `ERP_SUPPORT_READ` | — | `ERP_BASIC`, `ERP_READ_ALL`, `ERP_FIN_REPORTS` (`rpt.export.excel`-гүй), `audit.row_change`, `audit.posting_log`, `audit.security_event` R | **Үгүй** (зөвхөн support grant) | **CR-23 (шинэ)** |
 | `ERP_SUPPORT_WRITE` | — | `ERP_SUPPORT_READ` + `ERP_SETUP` (`platform.company.setup`-гүй), `ERP_CUSTOMER_EDIT`, `ERP_VENDOR_EDIT`, `ERP_ITEM_EDIT`, `ERP_SALES_EDIT`, `ERP_PURCH_EDIT`, `ERP_JOURNALS_EDIT`. **Батлах, буцаах, хаах, гарын үсэг, экспорт, PII, аюулгүй байдлын эрх байхгүй** | **Үгүй** | **CR-23 (шинэ)** |
 | `ERP_SYSTEM_JOB` | — | Системийн ажилд (`SystemScope`) дотооддоо | **Үгүй** | **CR-23 (шинэ)** |
+| `ERP_EBARIMT_OVERRIDE` | — | `ebarimt.document.override` X (12 TYP-03). Built-in role-д оноохгүй; Owner `ERP_SUPER`-аар авна, custom role-д Owner л оноож болно (SEC-AZ-15) | Тийм | **CR-23 (8, шинэ)** |
 
 ### 6.5 Built-in role (тенант бүрд provisioning-ээр, `is_builtin = true`)
 
-Role нь тенантын түвшний мөр (`platform.role.tenant_id NOT NULL`) тул тенант үүсгэх transaction-д `platform.fn_seed_builtin_roles(tenant_id)` (CR-23) үүсгэнэ.
+Role нь тенантын түвшний мөр (`platform.role.tenant_id NOT NULL`) тул тенант үүсгэх transaction-д seed-ийн одоо байгаа функц `platform.fn_mn_seed_roles()` ([db/seed/mn_60_security.sql](./db/seed/mn_60_security.sql); `app.tenant_id` контекстоор ажиллана, байхгүй мөрийг л нэмнэ) үүсгэнэ. Функцийн одоогийн role → set харгалзуулалт доорх хүснэгтээс **зөрүүтэй** (OWNER = `'*'` бүх системийн set; ACCOUNTANT ба EXTERNAL_ACCOUNTANT-д `ERP_PII_UNMASK` байгаа нь FR-PTY-004-ийн "задлах эрх анхдагчаар зөвхөн Owner"-тэй зөрчилдөнө); засварыг CR-23 (7)-д тусгасан. Доорх хүснэгт норматив.
 
 | Role код | Нэр (mn / en) | Permission set | MFA |
 |---|---|---|---|
@@ -630,6 +640,7 @@ Role нь тенантын түвшний мөр (`platform.role.tenant_id NOT N
 | 33 | Үе / жил түгжих (`gl.period.lock`) | X | X | — | — | X |
 | 34 | Хаагдсан үеийг дахин нээх (`gl.period.reopen`) | X | — | — | — | — |
 | 35 | eBarimt: UNKNOWN шийдэх, мерчант бүртгэх, `sendData` (`ERP_EBARIMT_OPS`) | X | X | — | — | X |
+| 35a | eBarimt-гүй борлуулалт / цонхны дараах засвар (`ebarimt.document.override`, CR-23 (8)) | X | — | — | — | — |
 | 36 | eBarimt баримт (`ebarimt.ebarimt_document`) | R | R | R | R | R |
 | 37 | Санхүүгийн тайлан (гүйлгээ баланс, ерөнхий дэвтэр, Маягт А, насжилт, НӨАТ …) | X | X | — | X | X |
 | 38 | Өдрийн борлуулалтын тайлан (`rpt.daily_sales`) | X | X | X | X | X |
@@ -639,7 +650,7 @@ Role нь тенантын түвшний мөр (`platform.role.tenant_id NOT N
 | 42 | Гарын үсэг: бэлтгэсэн / хянасан / кассчин / хүлээн авсан | X | X | X | — | X |
 | 43 | Гарын үсэг: баталсан / захирал / ерөнхий нягтлан | X (томилогдсон бол, SEC-SIG-04) | X (томилогдсон бол) | — | — | X (томилогдсон бол) |
 | 44 | Хавсралт (`platform.attachment`, CR-22): ноорогт — ноорогийн M эрхээр; posted баримтад — `platform.attachment.add` | RI | RI | RI | R | RI |
-| 45 | Background job: өөрийн (`GET /api/v1/me/jobs`) / компанийн бүх (`integration.job_run`) | R / R | R / R | R own / — | R own / R | R / R |
+| 45 | Background job: өөрийн (`GET /api/v1/companies/{companyId}/jobs`, 14 API-JOB-07) / бусдын job | R own / — | R own / — | R own / — | R own / — | R own / — |
 | 46 | R2: ханш, ханшийн тэгшитгэл, ҮХ, бараа | X, RIMD | X, RIMD | — | R | X, RIMD |
 
 ### 6.7 Үр дүнгийн эрхийг тооцох алгоритм
@@ -728,7 +739,7 @@ BC-ийн security filter R1-д байхгүй (R-PLATFORM-SECURITY-API-09). Д�
 | SEC-REC-06 | `audit.row_change`-ийн `company_id IS NULL` (тенантын түвшний) мөрийг зөвхөн `ERP_SECURITY` set-тэй хэрэглэгч уншина. Компанийн мөрийг тухайн компанид `ERP_AUDIT_READ`-тэй хэрэглэгч уншина. `company_id` nullable учраас RLS-ийн компанийн policy үйлчлэхгүй — апп заавал шүүнэ | Query handler (`WHERE company_id = @company`) |
 | SEC-REC-07 | Хэрэглэгч **өөрийнхөө** role оноолтыг өөрчлөхгүй (`403 platform.self_assignment_forbidden`). Үл хамаарах: Owner өөрийн Owner role-ийг өөр идэвхтэй Owner байгаа үед хасах | Handler + SEC-ID-06 |
 | SEC-REC-08 | Support `READ_WRITE` session батлах, буцаах, хаах, гарын үсэг зурах, экспорт хийх, PII задлах боломжгүй (`ERP_SUPPORT_WRITE`-д эдгээр эрх байхгүй) | §6.4 |
-| SEC-REC-09 | Хэрэглэгч өөрийн үүсгэсэн job-ийг `GET /api/v1/me/jobs`-оор (`created_by = өөрөө`, эрх шаардахгүй) харна; компанийн бүх job-ийг `integration.job_run` R (`ERP_READ_ALL`)-тэй хэрэглэгч | Query handler |
+| SEC-REC-09 | Хэрэглэгч зөвхөн өөрийн үүсгэсэн job-ийг `GET /api/v1/companies/{companyId}/jobs[/{jobId}]`-оор (`created_by = өөрөө`) харна, цуцална; бусдын job → `404` (14 API-JOB-07). `ERP_READ_ALL`-ийн `TABLE '*'` R нь бусдын job-ийн `parameters`/`result`-ийг **нээхгүй** (job-ийн endpoint нь `created_by` шүүлтүүрийг үргэлж тавина). Компанийн бүх job-ийг харах самбар R2 | Query handler |
 | SEC-REC-10 | Гарын үсгийн үүрэг ба үүргийн тусгаарлалт (SoD) | §15.4 (SEC-SIG-03, SEC-SIG-04) |
 
 ### 6.9 Эрхийн удирдлагын дүрэм (SEC-AZ)
@@ -744,7 +755,7 @@ BC-ийн security filter R1-д байхгүй (R-PLATFORM-SECURITY-API-09). Д�
 | SEC-AZ-07 | `403 platform.permission_denied` бүр `PERMISSION_DENIED` security event (`details`: `type`, `name`, `right`, `route`) бичнэ. Ижил (хэрэглэгч, эрх, компани)-д 10 минутад нэг удаа (dedupe). Метрик `erp_permission_denied_total{module}`. |
 | SEC-AZ-08 | Кэш 60 s + `pg_notify` (§6.7). |
 | SEC-AZ-09 | Системийн set (`tenant_id NULL`) ба built-in role-ийг тенант засахгүй, устгахгүй (`409 platform.system_object_read_only`). RLS `tenant_read_system` policy нь уншихыг л зөвшөөрнө. |
-| SEC-AZ-10 | Custom role ба set нь системийн set-ийг include хийж, өөрийн мөр нэмж болно. `assignable = false` set (`ERP_SUPER`, `ERP_SUPPORT_READ`, `ERP_SUPPORT_WRITE`, `ERP_SYSTEM_JOB`)-ийг include хийх, role-д оноохыг хориглоно (`422 platform.permission_set_not_assignable`). |
+| SEC-AZ-10 | Custom role ба set нь системийн set-ийг include хийж, өөрийн мөр нэмж болно. `assignable = false` set (`ERP_SUPER`, `ERP_SUPPORT_READ`, `ERP_SUPPORT_WRITE`, `ERP_SYSTEM_JOB`, `ERP_PERIOD_REOPEN`)-ийг include хийх, role-д оноохыг хориглоно (`422 platform.permission_set_not_assignable`). |
 | SEC-AZ-11 | Include-ийн давталт (A → B → A) ба гүн > 8-ыг хадгалах үед татгалзана (`422 platform.permission_set_cycle`). DB зөвхөн өөрийгөө include хийхийг хориглодог. |
 | SEC-AZ-12 | Ашиглагдаж буй role-ийг устгахгүй (`409 platform.role_in_use`). |
 | SEC-AZ-13 | Role, set, оноолтын өөрчлөлт бүр: `audit.row_change` (CR-01) + `ROLE_ASSIGNED`/`ROLE_REVOKED`/`PERMISSION_SET_CHANGED` security event + кэш цэвэрлэх. |
@@ -752,7 +763,7 @@ BC-ийн security filter R1-д байхгүй (R-PLATFORM-SECURITY-API-09). Д�
 | SEC-AZ-15 | **Эрх нэмэгдүүлэхгүй (no privilege escalation).** Хэрэглэгч role оноох, set-д мөр нэмэх, интеграцийн client-д set оноохдоо **өөрт тухайн хүрээнд (компани эсвэл бүх компани) байгаа эрхийн** дэд олонлогийг л олгоно (`403 platform.privilege_escalation`). `OWNER` role-ийг зөвхөн Owner ононо. |
 | SEC-AZ-16 | `platform.permission.object_name` нь каталогид (§6.3) эсвэл DB-ийн хүснэгтийн жагсаалтад байх ёстой; байхгүй нэр → `422 platform.permission_unknown_object`. |
 | SEC-AZ-17 | Үүргийн тусгаарлалт (SoD) R1-д заавал биш (D-I4). Санал болгох тохиргоо: нэг хэрэглэгч кредит нот бэлтгэж, өөрөө батлахгүй — R3-ийн approval-тай хамт. |
-| SEC-AZ-18 | Төлөвийн багана (`gl.accounting_period.status`, `gl.fiscal_year.status`, `tax.vat_return_period.status`, `ebarimt.ebarimt_document.status`) бүхий хүснэгтэд `TABLE` M эрх (жишээ нь seed-ийн `ERP_PERIOD_CLOSE`-ийн `gl.accounting_period` `RM`) нь **төлвийг өөрчлөхгүй**: ерөнхий PATCH endpoint `status`-ийг хүлээн авахгүй (`400`), төлвийг зөвхөн тусгай ACTION (`gl.period.close`, `gl.period.reopen`, `gl.period.lock`, `tax.vat_return.submit`, `ebarimt.unknown.resolve`)-оор. |
+| SEC-AZ-18 | Төлөвийн багана (`gl.accounting_period.status`, `gl.fiscal_year.status`, `tax.vat_return_period.status`, `ebarimt.ebarimt_document.status`) бүхий хүснэгтэд `TABLE` M эрх (жишээ нь seed-ийн `ERP_PERIOD_CLOSE`-ийн `gl.accounting_period` `RM`) нь **төлвийг өөрчлөхгүй**: ерөнхий PATCH endpoint `status`-ийг хүлээн авахгүй (`400 api.read_only_field`, 14 §9), төлвийг зөвхөн тусгай ACTION (`gl.period.close`, `gl.period.reopen`, `gl.period.lock`, `tax.vat_return.submit`, `ebarimt.unknown.resolve`)-оор. |
 | SEC-AZ-19 | **Хамгаалагдсан объект** (§6.2: `T_SECURITY`, `T_AUDIT`, `identity.*`) `TABLE '*'` wildcard-аар хамрагдахгүй; зөвхөн нэрээр олгосон мөрөөр. Ингэснээр `ERP_READ_ALL` (Viewer) эрх, аудит, аюулгүй байдлын логийг уншихгүй. `ERP_SUPER` тэдгээрийг нэрээр агуулна (CR-23). |
 
 ---
@@ -835,7 +846,8 @@ pipeline HandleRequest(http):
 | SEC-RLS-07 | Тенантын түвшний endpoint (`/api/v1/tenant/...`) `app.company_id = ''`-тай ажиллана; компанийн хүснэгтэд хандвал fail-closed алдаа гарна (зориуд). Компани хоорондын тайлан R2-т SECURITY DEFINER aggregator-оор ([03-domain-model.md](./03-domain-model.md) §8). |
 | SEC-RLS-08 | **DB нууц үг = бүх тенант.** `app.*` GUC-ийг холбогдсон client өөрөө тохируулж чаддаг тул RLS нь аппын алдаанаас л хамгаална, DB-ийн нууц үг эзэмшсэн халдагчаас хамгаалахгүй. Иймд: `erp_app`/`erp_worker`-ийн нууц үг зөвхөн app host-ын `/run/secrets`-д; PostgreSQL-ийн порт зөвхөн app VLAN-аас (`pg_hba` `hostssl` + IP); хүн эдгээр login-оор холбогдохгүй; break-glass нь тусдаа, бичлэгтэй login (§7.9). |
 | SEC-RLS-09 | PgBouncer transaction горимтой нийцнэ (бүх тохиргоо transaction-local). `LISTEN` (`erp_cache`, outbox) нь PgBouncer-ийг тойрсон тусдаа холболтоор. |
-| SEC-RLS-10 | DB-ийн `SECURITY DEFINER` функц бүр `SET search_path = pg_catalog, pg_temp`-тэй, зөвхөн id/тоо буцаана (payload, нэр, PII буцаахгүй), `EXECUTE`-ийг тодорхой role-д л олгоно (§7.6). |
+| SEC-RLS-10 | DB-ийн `SECURITY DEFINER` функц бүр `SET search_path = pg_catalog, pg_temp`-тэй, `EXECUTE`-ийг тодорхой role-д л олгоно (`REVOKE ALL … FROM PUBLIC`, §7.6). Тенант хоорондын (`app_rls_bypass`) функц зөвхөн id/тоо/төлөв буцаана (payload, PII буцаахгүй). Үл хамаарах хоёр: `platform.fn_list_user_tenants` нь **дуудагч хэрэглэгчийн өөрийн** `ACTIVE` гишүүнчлэлтэй тенантын нэрийг; `platform.fn_find_invitation` нь яг тэр токены hash-тай **нэг** урилгын тенант, имэйл, хугацааг буцаана. |
+| SEC-RLS-16 | **Тенант сонгохоос өмнөх DB хандалт.** `platform.app_user`-ийн `app_user_visible` policy нь `tenant_membership`-ийн subquery-тэй бөгөөд тэр хүснэгтийн policy `platform.current_tenant_id()`-г дууддаг тул `app.tenant_id` тохируулаагүй (эсвэл `''`) үед алдаа өгч болно (OR-ийн short-circuit баталгаагүй). Иймд нэвтрэлт, `last_login_at` шинэчлэх, `/api/v1/me` (тенантгүй) зэрэг тенант сонгохоос өмнөх `platform.*` хандалт нь `fn_set_context(NIL_UUID, NULL, <userId>, 'req:…')`-ээр явагдана: nil тенант ямар ч гишүүнчлэлтэй таарахгүй, `id = current_user_id()` салаа хэрэглэгчийн өөрийн мөрийг л нээнэ. |
 
 ### 7.5 Ажил (job) ба outbox-ийн контекст
 
@@ -881,10 +893,10 @@ until batch is empty
 | ID | Дүрэм |
 |---|---|
 | SEC-JOB-01 | Ажил бүр **нэг тенант, нэг компанийн** контекстод ажиллана (`TenantScope`), эсвэл тенантгүй глобал өгөгдөлд `SystemScope`-оор (nil uuid). Тенант хоорондын ажлыг зөвхөн `integration.fn_claim_outbox`, `platform.fn_list_active_companies` (id л буцаана) хийнэ. |
-| SEC-JOB-02 | Хэрэглэгчийн эхлүүлсэн ажлын actor нь `outbox.created_by` (BC R-47: enqueue хийсэн хэрэглэгч). Гүйцэтгэхийн өмнө actor-ийн эрхийг **дахин шалгана**; эрх хасагдсан бол outbox `DEAD`, `job_run` `FAILED`, retry хийхгүй, хэрэглэгчид мэдэгдэл. |
+| SEC-JOB-02 | Хэрэглэгчийн эхлүүлсэн ажлын actor нь `outbox.created_by` (BC R-47: enqueue хийсэн хэрэглэгч). Гүйцэтгэхийн өмнө actor-ийн эрхийг **дахин шалгана**; эрх хасагдсан бол outbox `DEAD`, `job_run` `FAILED` (`last_error = 'platform.actor_permission_revoked'`), retry хийхгүй, хэрэглэгчид мэдэгдэл. **Үл хамаарах:** posting-ийн transaction-д үүссэн хуулийн үүргийн мессеж (`ebarimt.receipt.*` ба eBarimt-ийн буцаалт/засвар, `TopicPolicy.requiresActorPermission = false`) — шийдвэр нь батлах үед гарсан тул actor-ийн эрх хасагдах, тенант `READ_ONLY`/`SUSPENDED` болох (§7.7) нь илгээлтийг зогсоохгүй (D-J2, CMP-023); ийм мессежийг системийн principal-ийн эрхээр (`ERP_SYSTEM_JOB`) гүйцэтгэж, аудитад `created_by`-г хадгална. |
 | SEC-JOB-03 | Системийн ажлын actor нь системийн principal (CR-09); `app.request_id = 'job:<job_run_id>'` эсвэл `'outbox:<id>'`. Аудитын `changed_by` нь системийн principal-ийн uuid. |
 | SEC-JOB-04 | Нэг ажлын transaction ≤ 30 s; урт ажлыг хэсэглэнэ (ADR-0018). |
-| SEC-JOB-05 | Worker-ийн HTTP client (eBarimt, Монголбанк, SMTP) зөвхөн allow-list-ийн хост руу (egress firewall + `HttpClient`-ийн BaseAddress). Хэрэглэгчийн өгсөн URL татахгүй (SSRF, R1-д webhook байхгүй). |
+| SEC-JOB-05 | Worker-ийн HTTP client (eBarimt, Монголбанк, SMTP) зөвхөн allow-list-ийн хост руу (egress firewall + `HttpClient`-ийн BaseAddress). Хэрэглэгчийн өгсөн URL татахгүй (SSRF, R1-д webhook байхгүй). R2-ийн webhook (14 §11) нь тусдаа egress proxy-оор: зөвхөн `https`, DNS шийдсэн IP бүр private/loopback/link-local/metadata (`10/8`, `172.16/12`, `192.168/16`, `127/8`, `169.254/16`, `::1`, `fc00::/7`) биш байх, redirect дагахгүй, хариуг ≤ 64 KB-аар таслах. |
 | SEC-JOB-06 | Payload-д нууц, PII-S, `qrData`/`lottery` орохгүй (DB CHECK `fn_has_forbidden_ebarimt_keys` + код). Payload нь id ба бизнесийн түлхүүр агуулна; өгөгдлийг гүйцэтгэх үед тенантын контекстоор уншина. |
 | SEC-JOB-07 | Системийн цэвэрлэгээ (idempotency 7 хоног, outbox/job_run) тенант хооронд RLS-ээр устгаж чадахгүй тул SECURITY DEFINER цэвэрлэх функц (CR-16) эсвэл тенант бүрд fan-out ашиглана. |
 
@@ -901,7 +913,19 @@ until batch is empty
 | `platform.fn_find_invitation(bytea)`, `platform.fn_accept_invitation(bytea, uuid)` | `app_rls_bypass` | `app_user` | invitation-ийн id, тенант, имэйл, хугацаа | CR-04 |
 | `integration.fn_purge_expired(...)` | `app_rls_bypass` | `app_worker` | устгасан мөрийн тоо | CR-16 |
 
-CI-ийн тест (SEC-T-02) нь `pg_proc`-оос `prosecdef = true` функц бүрийг энэ жагсаалттай тулгана; жагсаалтад байхгүй SECURITY DEFINER функц, эсвэл `search_path` түгжээгүй функц илэрвэл CI унана.
+**Тенант доторх SECURITY DEFINER функц** (эзэмшигч `app_owner` — NOBYPASSRLS, FORCE RLS түүнд ч үйлчилнэ; зорилго нь RLS-ийг тойрох биш, `app_user`-д шууд DML эрхгүй хүснэгтэд хяналттай бичих):
+
+| Функц | Эзэмшигч | EXECUTE | Зорилго | Төлөв |
+|---|---|---|---|---|
+| `platform.fn_next_document_no(text, date)`, `platform.fn_next_entry_no(text, integer)`, `ebarimt.fn_next_bill_seq(uuid)` | `app_owner` | `app_user` | Counter (`number_series_counter`, `ledger_counter`, `pos_counter`)-т бичих цорын ганц зам | Схемд бий |
+| `platform.fn_ledger_update(text, bigint, jsonb)` | `app_owner` | `app_user` | Ledger-ийн whitelisted багана (SEC-REC-02) | Схемд бий |
+| `party.fn_detailed_cust_ledger_entry_after_insert()`, `party.fn_detailed_vendor_ledger_entry_after_insert()` | `app_owner` | trigger | `remaining_amount`/`open` кэш | Схемд бий |
+| `audit.fn_purge_expired(text, timestamptz, integer)` | `app_owner` | `app_worker` | Аудитын хадгалалтын устгал (§12.4) | CR-21 |
+| `audit.fn_purge_platform_rows(timestamptz, integer)` | `app_rls_bypass` | `app_worker` | Тенантгүй аудитын мөрийн устгал (SEC-RET-11); тоо буцаана | CR-21 |
+| `platform.fn_set_tenant_status(uuid, text, text)` | `app_rls_bypass` | ops role | Тенантын төлөв (§7.8) | CR-11 |
+| CR-20-ийн snapshot нэргүйжүүлэх функц | `app_owner` | `app_worker` | R3 | CR-20 |
+
+CI-ийн тест (SEC-T-02) нь `pg_proc`-оос `prosecdef = true` функц бүрийг **дээрх хоёр жагсаалтын нийлбэртэй** тулгана (эзэмшигч ба EXECUTE-ийн эрх хүртэл); жагсаалтад байхгүй SECURITY DEFINER функц, `search_path` түгжээгүй функц, эсвэл `app_rls_bypass`-ийн эзэмшилтэй боловч эхний жагсаалтад байхгүй функц илэрвэл CI унана.
 
 ### 7.7 Тенант ба компанийн төлөвийн нөлөө
 
@@ -964,7 +988,8 @@ stateDiagram-v2
 Posting engine бүх алдааг цуглуулж нэг удаа буцаана (FR-GL-008). DB-ийн trigger нь хоёр дахь хамгаалалт.
 
 ```text
-function AssertPostingAllowed(ctx, postingDate, vatDate?, isClosing) -> List<Error>:
+function AssertPostingAllowed(ctx, postingDate, vatDate?, isClosing, vatEntryType?) -> List<Error>:
+    -- vatEntryType: 'SETTLEMENT' бол НӨАТ-ын хаалттай үеийн шалгалтыг алгасна (trg_vat_entry_period-тэй ижил)
     errs := []
     s := SELECT allow_posting_from, allow_posting_to FROM platform.company_setup WHERE company_id = ctx.company
     if (s.from is not null and postingDate < s.from) or (s.to is not null and postingDate > s.to):
@@ -980,7 +1005,7 @@ function AssertPostingAllowed(ctx, postingDate, vatDate?, isClosing) -> List<Err
     else if p.status <> 'OPEN' or fy.status <> 'OPEN':  errs += gl.period_closed
     if vatDate is not null:
         v := vat_return_period covering vatDate
-        if v exists and v.status <> 'OPEN' and entryType <> 'SETTLEMENT': errs += tax.vat_period_closed
+        if v exists and v.status <> 'OPEN' and vatEntryType is distinct from 'SETTLEMENT': errs += tax.vat_period_closed
         if u exists and vatDate ∉ [u.allow_vat_date_from, u.allow_vat_date_to]: errs += tax.vat_date_outside_user_window   -- R2
     return errs
 ```
@@ -1001,13 +1026,14 @@ stateDiagram-v2
 | ID | Дүрэм |
 |---|---|
 | SEC-POST-01 | Компанийн цонхоос гадуурх огноотой posting-ийг **Owner ч** хийж чадахгүй (D-D3, FR-GL-023). |
-| SEC-POST-02 | `CLOSED` үеийг дахин нээх нь зөвхөн `gl.period.reopen` (анхдагчаар `OWNER`), step-up, шалтгааны текст ≥ 10 тэмдэгт (`422 gl.reopen_reason_required`), шалтгааны код (`platform.reason_code`) сонголттой. |
+| SEC-POST-02 | `CLOSED` үеийг дахин нээх нь зөвхөн `gl.period.reopen` X **ба** тенант даяарх (`company_id NULL`) built-in `OWNER` role-той хэрэглэгч (D-D3 "зөвхөн Owner"; custom role-оор `ERP_PERIOD_REOPEN` олгож тойрохгүй — CR-23 (9): `ERP_PERIOD_REOPEN.assignable = false`; Owner биш бол `403 platform.permission_denied`), step-up, шалтгааны текст ≥ 10 тэмдэгт (`422 gl.reopen_reason_required`), шалтгааны код (`platform.reason_code`) сонголттой. |
 | SEC-POST-03 | `LOCKED` үе ба жилийг ямар ч эрхээр нээхгүй; UI ба API-д ийм үйлдэл байхгүй (FR-GL-024 AC3). DB: `ERP02`. |
-| SEC-POST-04 | `CLOSED` санхүүгийн жилийн үеийг нээхэд жил ч мөн `OPEN` болно (нэг transaction, тус тусдаа лог). `LOCKED` жил → `409 gl.fiscal_year_locked`. |
+| SEC-POST-04 | `CLOSED` санхүүгийн жилийн үеийг нээхэд жил ч мөн `OPEN` болно (нэг transaction). Үеийн шилжилт `gl.accounting_period_status_log`-д, жилийн шилжилт `audit.row_change`-д (`gl.fiscal_year`, `changed_columns ⊇ {status}`; схемд жилийн тусдаа төлөвийн лог байхгүй) ба `PERIOD_REOPEN`-ий `details.fiscal_year_reopened = true`-д бичигдэнэ. `LOCKED` жил → `409 gl.fiscal_year_locked`. |
 | SEC-POST-05 | Үеийн төлөвийн шилжилт бүр `gl.accounting_period_status_log` (append-only, `to_status = 'OPEN'` бол `reason_text` заавал — DB CHECK) + `audit.row_change`. Дахин нээх ба түгжих нь мөн `PERIOD_REOPEN` / `PERIOD_LOCK` security event. |
 | SEC-POST-06 | Дахин нээсний дараа тухайн компанийн бүх Owner ба Accountant-д мэдэгдэл (outbox `notify.period_reopened`). Самбарт "Нээлттэй хуучин үе" анхааруулга хаагдах хүртэл. |
 | SEC-POST-07 | Компанийн цонхыг өөрчлөх нь `TABLE platform.company_setup` M (`ERP_SETUP`) + MFA (`PATCH …/settings/posting-window`); `audit.row_change` ба `POSTING_WINDOW_CHANGED`-д бичигдэнэ. Цонхыг хаагдсан үе рүү өргөсгөх нь posting-ийг зөвшөөрөхгүй (P2 хэвээр). |
-| SEC-POST-08 | Үе түгжих нь `SUBMITTED` НӨАТ-ын үе эсвэл e-balance илгээсэн нотолгоотой үед санал болгогдоно; түгжихээс өмнө "буцаагдахгүй" баталгаажуулалтын цонх, step-up. |
+| SEC-POST-08 | Үе түгжих нь `SUBMITTED` НӨАТ-ын үе эсвэл e-balance илгээсэн нотолгоотой үед санал болгогдоно; түгжихээс өмнө "буцаагдахгүй" баталгаажуулалтын цонх, step-up. Зөвхөн `CLOSED` үеийг түгжинэ: `OPEN` үе → `409 gl.period_not_closed` (DB-ийн `trg_accounting_period_status` нь `OPEN → LOCKED`-ийг хориглодоггүй тул апп заавал шалгана). Жил түгжихэд жилийн бүх сар `CLOSED` эсвэл `LOCKED` байх ёстой, түгжихэд бүгд `LOCKED` болно. |
+| SEC-POST-11 | Жилийн хаалт (`fiscal_year.closing_transaction_no IS NOT NULL`) хийгдсэн жилийн үеийг дахин нээж posting хийсэн бол хаалтын бичилт хуучирна: самбарт "Хаалт хийгдсэний дараа өөрчлөгдсөн жил" анхааруулга гарч, жилийг дахин `CLOSED` болгохын тулд `gl.year.close`-ийг дахин ажиллуулна (зөрүүгийн ваучер, [05](./05-posting-engine.md) BR-PST-57, E-I). |
 | SEC-POST-09 | Хаагдсан үеийн алдааг тухайн үеийг нээхгүйгээр одоогийн нээлттэй үед залруулах бичилтээр засна (D-D5). Буцаалт нь эх гүйлгээний огноогоор хийгддэг тул тэр үе нээлттэй байх ёстой. |
 | SEC-POST-10 | Үе хаах, нээх, түгжих, жилийн хаалт нь компанийн posting advisory lock-ийг (`platform.fn_lock_company_posting`) авна (02 §6.9) — posting-той давхцахгүй. |
 
@@ -1016,6 +1042,7 @@ stateDiagram-v2
 ```text
 command ReopenPeriod(companyId, periodId, reasonCodeId?, reasonText):
     require ACTION gl.period.reopen, step-up ≤ 15 мин                         -- 403
+    require user holds built-in OWNER (company_id NULL, хугацаа дуусаагүй)    -- SEC-POST-02, D-D3; эс бөгөөс 403
     if len(trim(reasonText)) < 10: raise 422 gl.reopen_reason_required
     BEGIN; fn_set_context(...); SELECT platform.fn_lock_company_posting(tenant, company)
     p := SELECT * FROM gl.accounting_period WHERE company_id = @c AND id = @periodId FOR UPDATE
@@ -1084,7 +1111,7 @@ command ReopenPeriod(companyId, periodId, reasonCodeId?, reasonText):
 | SEC-AUD-07 | `platform.app_user.last_login_at` нь аудитын шуугиан үүсгэхгүй байх ёстой (CR-11: trigger-ийн ignore жагсаалтад). |
 | SEC-AUD-08 | Аудит унших: компанийн мөр — `ERP_AUDIT_READ` (тухайн компани); тенантын түвшний мөр (`company_id IS NULL`) — `ERP_SECURITY` (SEC-REC-06). |
 | SEC-AUD-09 | Аудитын экспорт (`audit.export`, CSV/XLSX) нь async job, `EXPORT` security event (`details`: шүүлтүүр, мөрийн тоо). |
-| SEC-AUD-10 | `platform.app_user` (глобал) өөрчлөгдөхөд мөр нь өөрчлөлт хийсэн контекстийн тенантад л бичигдэнэ; тенантгүй контекстод (нэвтрэх үе) бичигдэхгүй (`fn_row_change` NULL буцаана). Профайлын өөрчлөлтийг иймд `/api/v1/me`-ээр идэвхтэй тенантын контекстод хийнэ (Q17). |
+| SEC-AUD-10 | `platform.app_user` (глобал) өөрчлөгдөхөд мөр нь өөрчлөлт хийсэн контекстийн тенантад л бичигдэнэ. `app.tenant_id` огт тохируулаагүй бол бичигдэхгүй (`fn_row_change` NULL буцаана); SEC-RLS-16-ийн nil тенантын контекстод бол `tenant_id = 00000000-0000-0000-0000-000000000000`-тэй мөр болж бичигдэнэ (ямар ч тенантад харагдахгүй, платформын аюулгүй байдлын баг ops view-ээр уншина, хадгалалт SEC-RET-11). Профайлын өөрчлөлтийг иймд `/api/v1/me`-ээр идэвхтэй тенантын контекстод хийнэ (Q17). `last_login_at`-ийн шинэчлэл аудит үүсгэхгүй (SEC-AUD-07). |
 
 ### 9.3 Ledger — аудитын мөр
 
@@ -1191,6 +1218,7 @@ command ReopenPeriod(companyId, periodId, reasonCodeId?, reasonText):
 | 12 | Гарын үсэг зурсан хүн, MFA-ийн нотолгоо | `platform.document_signature` | Ажилтан | PII-P | Хуулийн нотолгоо | Энгийн | `ERP_DOC_SIGN`, `ERP_READ_ALL` | Архив | Баримттай хамт |
 | 13 | Хавсралт (скан) | object storage (`platform.attachment`, CR-22) | Олон | PII-P агуулж болно | Анхан шатны баримт | LUKS2, санамсаргүй object key | Эх баримтын R эрх | Бүрэн экспорт | Баримттай хамт |
 | 14 | Цалингийн журнал импорт (R2) | `gl.journal_line` (дансаар нэгтгэсэн) | Ажилтан | — (хувь хүнээр хадгалахгүй) | НББ | — | — | — | — |
+| 15 | **Өөрийн** компани хувь хүн бизнес эрхлэгч бол мерчантын `civil_id` | `platform.company_setup.tin`, `ebarimt.ebarimt_setup.merchant_tin`, `ebarimt.ebarimt_document.merchant_tin`, `ebarimt.ebarimt_sub_receipt.merchant_tin` | Тенант өөрөө (хянагч) | BUS (§10.1, **үл хамаарах**) | PosAPI-ийн `merchantTin` заавал (хуулийн үүрэг; 12 SEC-06), баримт бүрд хэвлэгдэнэ | Энгийн текст (RLS + эрх) | Ердийн | Ердийн | Баримттай хамт. DPA-д тэмдэглэнэ |
 
 ### 10.3 ТТД, регистр, `civil_id`, `consumerNo`-ийн дүрэм
 
@@ -1303,11 +1331,14 @@ command AnonymizeParty(companyId, partyType, partyId, requestedBy):
     if today < h: raise 409 platform.retention_active { horizon: h }
     if exists open (remaining ≠ 0) ledger entry for party: raise 409 party.open_entries
     UPDATE party.<customer|vendor>
-       SET name = 'Нэргүйжүүлсэн-' || left(id::text, 8), search_name = NULL, phone = NULL, email = NULL,
-           address = NULL, personal_id_enc = NULL, personal_id_hmac = NULL, personal_id_hint = NULL,
+       SET name = 'Нэргүйжүүлсэн-' || left(id::text, 8), name_en = NULL, search_name = NULL, phone = NULL, email = NULL,
+           address = NULL, city = NULL, foreign_tax_id = NULL, registration_no = NULL,
+           personal_id_enc = NULL, personal_id_hmac = NULL, personal_id_hint = NULL,
            personal_tin_enc = NULL, personal_tin_hmac = NULL, personal_tin_hint = NULL,
-           ebarimt_consumer_no = NULL, blocked = 'ALL'
-     WHERE company_id = @c AND id = @partyId
+           blocked = 'ALL'
+           -- customer бол нэмж: ebarimt_consumer_no = NULL; vendor бол: ebarimt_merchant_tin = NULL
+           -- (tin, registration_no нь kind = 'INDIVIDUAL'-д CR-06-ийн дараа аль хэдийн NULL; LEGAL хуулийн этгээдийг нэргүйжүүлэхгүй)
+     WHERE company_id = @c AND id = @partyId AND kind <> 'LEGAL'     -- LEGAL → 409 platform.not_personal_data
     DELETE FROM party.vendor_bank_account WHERE company_id = @c AND vendor_id = @partyId     -- vendor бол
     log security_event 'PII_ANONYMIZED' {party_type, party_id}
     -- Posted баримтын snapshot (customer_name г.м.) өөрчлөгдөхгүй; тенантын purge (§12.5) эсвэл CR-20 (R3) хүртэл үлдэнэ.
@@ -1355,13 +1386,13 @@ command AnonymizeParty(companyId, partyType, partyId, requestedBy):
 
 | Түлхүүр | Зорилго | Хадгалах газар | Алгоритм | Солих | Эзэн | Устгах |
 |---|---|---|---|---|---|---|
-| KEK (`/run/secrets/Secrets__Kek`) | Тенантын DEK ба нууцыг ороох | `/run/secrets`, infra repo-д SOPS + age; оффлайн escrow (2 хүн) | AES-256 (AES-GCM wrap) | Жил бүр + сэжиг гарвал даруй | Platform/DevOps | Бүх DEK шинэ KEK-ээр ороогдож, нөөцийн PITR цонх (35 хоног) өнгөрсний дараа |
+| KEK (`/run/secrets/Secrets__Kek`) | Тенантын DEK ба нууцыг ороох | `/run/secrets`, infra repo-д SOPS + age; оффлайн escrow (2 хүн) | AES-256 (AES-GCM wrap) | Жил бүр + сэжиг гарвал даруй | Platform/DevOps | Бүх DEK шинэ KEK-ээр ороогдож, нөөцийн PITR цонх (35 хоног) өнгөрсний дараа `/run/secrets`-ээс хасна; оффлайн escrow-д repo2-ийн хугацаа (12 сар) дуустал хадгална (§11.4) |
 | Тенантын `PII_ENC` DEK | PII-S | `platform.tenant_key` (CR-07, ороосон) | AES-256-GCM | Шинэ хувилбар жил бүр; хуучныг тайлахад хадгална | Систем | Тенант purge (crypto-shredding) |
 | Тенантын `PII_HMAC` түлхүүр | Blind index | `platform.tenant_key` | HMAC-SHA256, 256 бит | Солихгүй (алдагдвал дахин индекслэх) | Систем | Тенант purge |
 | Тенантын `SECRET_ENC` DEK | Гуравдагч талын нууц | `platform.tenant_key` | AES-256-GCM | Жил бүр | Систем | Тенант purge |
 | Платформын `EMAIL_HMAC` түлхүүр | `LOGIN_FAILED`-ийн `email_hmac` | `/run/secrets` | HMAC-SHA256 | Солихгүй | Platform | — |
 | OIDC signing / encryption | Токен | `/run/secrets` (X.509) | ES256 / RSA-OAEP-256 | 90 хоног, хуучнаар ≥ 8 цаг шалгана | DevOps | Давхцах хугацааны дараа |
-| Data Protection key ring | Cookie, ticket, TOTP | DB (X.509-ээр шифрлэсэн) | AES-256-CBC + HMACSHA256 (DP анхдагч) | 90 хоног автомат | Систем | Хуучныг 12 цаг+ хадгална |
+| Data Protection key ring | Cookie, ticket, TOTP | DB (X.509-ээр шифрлэсэн) | AES-256-CBC + HMACSHA256 (DP анхдагч) | 90 хоног автомат (шинэ түлхүүрээр шифрлэнэ) | Систем | **Хуучин түлхүүрийг устгахгүй** (DP-ийн анхдагч зан төлөв: хугацаа дууссан түлхүүр тайлахад ашиглагдсаар). TOTP нууц нь хэрэглэгч MFA-гаа дахин бүртгэх хүртэл олон жил хадгалагддаг тул түлхүүр устгавал MFA эвдэрнэ. Түлхүүр алдагдсан гэж сэжиглэвэл түлхүүрийг revoke хийж, бүх хэрэглэгчийн TOTP-ийг дахин бүртгүүлнэ (PB-05) |
 | pgBackRest cipher pass | Нөөц | DB host-ын `/run/secrets` + escrow | AES-256-CBC | Repo дахин үүсгэхэд л | DevOps (2 хүн) | Repo устгахад |
 | DB нууц үг (`erp_app`, `erp_worker`, `erp_migrator`) | DB нэвтрэх | `/run/secrets` | SCRAM-SHA-256 | 180 хоног | DevOps | — |
 | PosAPI операторын нууц, `X-API-KEY` | eBarimt | `/run/secrets` | — | Ажилтан солигдох бүрт | eBarimt-owners | — |
@@ -1448,6 +1479,7 @@ function AuditPurgeCutoff(today):                                               
 | SEC-RET-03 | Хуулийн хяналт (legal hold): `tenant.legal_hold_until` (CR-19) өнгөрөөгүй бол ямар ч хадгалалтын устгал (аудитын ч) зогсоно (`409 platform.legal_hold`). Татварын шалгалт, шүүхийн хүсэлтээр платформын оператор тавина. |
 | SEC-RET-04 | Хадгалах жилийн параметр зөвхөн **өсгөж** болно (≥ хуулийн 10): `retention_years_override < years` → `422 platform.retention_below_legal_minimum`. |
 | SEC-RET-05 | Хадгалалтын устгал бүр `RETENTION_PURGE` security event (`table`, `cutoff`, `rows`). |
+| SEC-RET-11 | **Тенантгүй аудитын мөр** (`audit.security_event.tenant_id IS NULL` — тенант сонгохоос өмнөх нэвтрэлт, `BREAK_GLASS_ACCESS`, `TENANT_PURGED`; nil тенантын `audit.row_change`, SEC-AUD-10) тенантын fan-out-д хамрагдахгүй. Тэдгээрийг сар бүр платформын системийн ажил (`SystemScope`, nil контекст) ижил `AuditPurgeCutoff`-оор устгана; `tenant_id IS NULL` мөрийг RLS-ээр харах боломжгүй тул CR-21-ийн тусдаа функц `audit.fn_purge_platform_rows` (`app_rls_bypass`-ийн эзэмшилтэй) ашиглана. Purge хийгдсэн тенантын (`PURGED`) аудитын мөр purge-ээр аль хэдийн устсан. |
 
 ### 12.4 Аудитын хадгалалтын ажил
 
@@ -1481,9 +1513,17 @@ procedure PurgeTenant(tenantId)                          -- erp_migrator → SET
     assert бүх компанийн жил бүрийн архивын багц байгаа, manifest шалгагдсан (§12.6)
     assert integration.outbox-д PENDING/PROCESSING eBarimt мессеж байхгүй
     BEGIN
-      SELECT set_config('app.tenant_id', tenantId, true), set_config('erp.purge_tenant', tenantId, true);
-      DELETE хүснэгт бүрээс хүүхдээс эцэг рүү дарааллаар WHERE tenant_id = tenantId
-            -- append-only guard нь erp.purge_tenant + PURGE_APPROVED үед л зөвшөөрнө (CR-17)
+      -- app_owner нь NOBYPASSRLS, FORCE RLS-тэй: company_id NOT NULL хүснэгтийн RESTRICTIVE company_isolation
+      -- policy нь app.company_id-гүйгээр алдаа өгнө. Иймд компани бүрийн хэсгийг тухайн компанийн контекстоор устгана.
+      for c in SELECT id FROM platform.company WHERE tenant_id = tenantId:
+          SELECT platform.fn_set_context(tenantId, c, NULL, 'purge:' || ticket);
+          SELECT set_config('erp.purge_tenant', tenantId::text, true);
+          DELETE company_id NOT NULL хүснэгт бүрээс хүүхдээс эцэг рүү дарааллаар WHERE company_id = c
+            -- append-only guard нь erp.purge_tenant + PURGE_APPROVED + current_user = app_owner үед л зөвшөөрнө (CR-17)
+            -- deferred constraint trigger-гүй (DELETE-д ажиллахгүй) тул контекст солих нь COMMIT-ийн шалгалтад нөлөөлөхгүй
+      SELECT platform.fn_set_context(tenantId, NULL, NULL, 'purge:' || ticket)    -- company_id '' (тенантын түвшин)
+      DELETE company_id nullable / company_id-гүй тенантын хүснэгтээс (audit.row_change, audit.security_event,
+             integration.*, platform.user_company_role, platform.role*, platform.tenant_membership, platform.company …)
       DELETE FROM platform.tenant_key WHERE tenant_id = tenantId                  -- crypto-shredding
       UPDATE platform.tenant SET status = 'PURGED', name = 'purged:' || left(encode(digest(name,'sha256'),'hex'), 12)
       INSERT INTO platform.tenant_purge_log (tenant_id, purged_at, operator_ids, ticket, row_counts)   -- CR-17
@@ -1819,7 +1859,7 @@ public sealed record SignRequest(Guid TenantId, Guid CompanyId, string DocumentT
 
 | ASVS 5.0 бүлэг | Гол L2 шаардлага (товч) | Манай хяналт | Шалгах |
 |---|---|---|---|
-| V1 Encoding and Sanitization | Injection-ээс сэргийлэх, гаралтын кодчилол | Зөвхөн параметртэй SQL (Dapper/EF), SQL string залгахгүй; React-ийн автомат escaping; CSV/XLSX экспортод formula injection-ийг (`=`, `+`, `-`, `@`, Tab, CR-ээр эхэлсэн нүдэнд `'` угтвар) саармагжуулна | SAST, SEC-T-12 |
+| V1 Encoding and Sanitization | Injection-ээс сэргийлэх, гаралтын кодчилол | Зөвхөн параметртэй SQL (Dapper/EF), SQL string залгахгүй; React-ийн автомат escaping; CSV/XLSX экспортод formula injection-ийг (`=`, `+`, `-`, `@`, Tab, CR-ээр эхэлсэн **текст** нүдэнд `'` угтвар) саармагжуулна. Мөнгө, тоо хэмжээ, огноо нь XLSX-д тоон/огнооны төрлийн нүд, CSV-д `^-?[0-9]+(\.[0-9]+)?$` хэлбэрийн утга тул угтваргүй (сөрөг дүн `-1500.00` эвдрэхгүй) | SAST, SEC-T-12 |
 | V2 Validation and Business Logic | Оролтын шалгалт, бизнесийн хязгаар, давтагдах үйлдэл | `AddValidation()`, мөнгө string, idempotency, posting-ийн invariant (Σ=0), rate limit | Unit/integration, SEC-T-11 |
 | V3 Web Frontend Security | CSP, cookie, clickjacking, browser storage | CSP `default-src 'self'; script-src 'self'; style-src 'self' 'nonce-…'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`; `__Host-` cookie; токен browser-т байхгүй; localStorage-д нууц/PII хадгалахгүй | SEC-T-10, Playwright |
 | V4 API and Web Service | HTTP method, content type, mass assignment | DTO-д зөвхөн зөвшөөрсөн талбар; `Content-Type: application/json` шаардах; body ≤ 1 MB; OpenAPI | Contract тест, ZAP |
@@ -1916,10 +1956,18 @@ public sealed record SignRequest(Guid TenantId, Guid CompanyId, string DocumentT
 | `platform.signature_role_not_designated` | 403 | SEC-SIG-04 | `SIGNATURE_CREATED` (DENIED) |
 | `platform.signature_sod_violation` | 409 | SEC-SIG-03 | `SIGNATURE_CREATED` (DENIED) |
 | `platform.signature_already_exists` | 409 | Ижил үүрэг, ижил hash | — |
-| `platform.immutable_record` | 409 | DB `ERL01` апп-д хүрсэн (кодын алдаа) | P2 alert |
+| `platform.immutable_record` | 500 | DB `ERL01` апп-д хүрсэн (кодын алдаа; 14 §9.6, 05 §18-тэй нэгтгэв) | P2 alert |
+| `platform.actor_permission_revoked` | — (job-ийн `last_error`) | SEC-JOB-02: enqueue хийсэн хэрэглэгчийн эрх гүйцэтгэхээс өмнө хасагдсан | Хэрэглэгчид мэдэгдэл |
+| `platform.already_member` | 409 | Урилга хүлээн авагч тухайн тенантад аль хэдийн `ACTIVE` (SEC-ID-17) | — |
+| `platform.membership_disabled` | 403 | Урилга хүлээн авагчийн гишүүнчлэл `DISABLED` (SEC-ID-17) | `MEMBERSHIP_ACCEPTED` (DENIED) |
+| `platform.number_series_missing_line` | 422 | `ERN01`: цуврал/огнооны мөр байхгүй (жилийн цуврал, D-C7) | — |
+| `platform.number_series_date_order` | 422 | `ERN02`: огнооны дараалал зөрсөн | — |
+| `platform.number_series_exhausted` | 422 | `ERN03`: цуврал дууссан | — |
+| `gl.period_not_closed` | 409 | `OPEN` үеийг түгжих (SEC-POST-08) | — |
 | `platform.context_error` | 500 | SEC-RLS-05 (`ERT01`, `42501`, контекст) | `RLS_CONTEXT_ERROR`, P1 |
 | `party.invalid_personal_id` | 422 | SEC-PII-02 | — |
 | `party.open_entries` | 409 | Нээлттэй entry-тэй харилцагчийг нэргүйжүүлэх | — |
+| `platform.not_personal_data` | 409 | `kind = 'LEGAL'` (хуулийн этгээд) харилцагч/нийлүүлэгчийг нэргүйжүүлэх (§10.8) | — |
 | `gl.posting_date_outside_window` | 422 | P1 цонх (SEC-POST-01) | — |
 | `gl.posting_date_outside_user_window` | 422 | P5 (R2) | — |
 | `gl.period_not_found` | 422 / 404 | Огноонд үе байхгүй | — |
@@ -1936,12 +1984,15 @@ public sealed record SignRequest(Guid TenantId, Guid CompanyId, string DocumentT
 | SQLSTATE | Эх (db/README) | Апп-ийн код | Тайлбар |
 |---|---|---|---|
 | `ERP01` | Үе/цонх (`gl.fn_assert_posting_date_allowed`) | `gl.period_closed` эсвэл `gl.posting_date_outside_window` (мессежээр) | Апп урьдчилж шалгадаг тул ховор; гарвал P3 (урьдчилсан шалгалт дутуу) |
-| `ERP02` | Үе / НӨАТ-ын үеийн төлөвийн машин | `gl.period_locked` | |
+| `ERP02` | Үе / НӨАТ-ын үеийн төлөвийн машин | `gl.period_locked` (үе, жил); `tax.vat_period_closed` (`tax.vat_return_period` `SUBMITTED`) | Апп урьдчилж шалгадаг; гарвал P3 |
+| `ERN01` / `ERN02` / `ERN03` | Дугаарлалт (`platform.fn_next_document_no`) | `platform.number_series_missing_line` / `_date_order` / `_exhausted` | 05 BR-PST-26 |
+| `ERB02`, `ERC01`, `ERG01`, `ERD01` | Voucher-ийн огноо, касс сөрөг, posting биш данс, dimension | [05-posting-engine.md](./05-posting-engine.md) §8.8-ийн харгалзуулалт (`ERB02` → 500 `api.internal_error`, `ERC01` → `bank.cash_negative_balance`, `ERG01` → `gl.account_not_posting`, `ERD01` → `gl.dimension_value_not_found`) | Энэ баримтын хамрах хүрээнээс гадуур |
+| `23514` | CHECK зөрчил (жишээ нь CR-06-ийн PII CHECK, D-J3-ийн `fn_has_forbidden_ebarimt_keys`) | `api.internal_error` (500) | Кодын алдаа; `qrData`/PII CHECK бол P1 (PB-10) |
 | `ERV01` | НӨАТ-ын үе | `tax.vat_period_closed` | |
 | `ERL01` | Append-only | `platform.immutable_record` | P2 alert |
 | `ERT01` | Контекст/тенант | `platform.context_error` | P1 alert |
 | `42501` | Эрх (`insufficient_privilege`) эсвэл RLS-ийн `WITH CHECK` | `platform.context_error` | P1 alert |
-| `ERB01` | Тэнцээгүй гүйлгээ | `500` (02 §6.10) | P1 alert |
+| `ERB01` | Тэнцээгүй гүйлгээ | `500 api.internal_error` (02 §6.10, 05 §8.8) | P1 alert |
 | `55P03` / `57014` | `lock_timeout` / `statement_timeout` | `503` + `Retry-After: 2` (02 §6.10) | Метрик |
 
 ---
@@ -2005,11 +2056,12 @@ public sealed record SignRequest(Guid TenantId, Guid CompanyId, string DocumentT
 - **AT-SEC-005** (SEC-ID-08). **Өгөгдсөн нь** `sara@x.mn`-д урилга илгээсэн; **Хэрэв** `other@x.mn`-ээр нэвтэрсэн хэрэглэгч токеныг хүлээн авбал; **Тэгэхэд** `403 platform.invitation_email_mismatch`. **Мөн** 8 хоногийн дараа зөв хэрэглэгч хүлээн авахад `410 platform.invitation_invalid`.
 - **AT-SEC-006** (SEC-ID-10). **Өгөгдсөн нь** Төмөр К1-д нэхэмжлэхийн жагсаалт нээсэн; **Хэрэв** Болд Төмөрийн гишүүнчлэлийг идэвхгүй болговол; **Тэгэхэд** ≤ 60 секундэд Төмөрийн дараагийн хүсэлт `404 platform.tenant_not_found`. **Мөн** `MEMBERSHIP_DISABLED` бичигдэнэ.
 - **AT-SEC-007** (SEC-ID-07, CR-02). **Өгөгдсөн нь** Ганаагийн К1-ийн role `expires_at = 2027-06-30T23:59:59+08`; **Хэрэв** 2027-07-01-нд К1-д хандвал; **Тэгэхэд** 404. **Мөн** `user_company_role` мөр устаагүй.
+- **AT-SEC-008** (SEC-ID-17). **Өгөгдсөн нь** Төмөр Т1-д `DISABLED`; Болд Төмөрийн имэйлд шинэ урилга илгээх гэвэл `409`; **Хэрэв** өмнө үүссэн хүчинтэй урилгыг Төмөр хүлээн авбал; **Тэгэхэд** `403 platform.membership_disabled`, гишүүнчлэл `DISABLED` хэвээр. **Мөн** `ACTIVE` гишүүн урилга хүлээн авбал `409 platform.already_member`, `user_company_role` нэмэгдэхгүй.
 
 ### 20.2 Нэвтрэлт
 
 - **AT-SEC-010** (FR-PLT-007 AC1). **Өгөгдсөн нь** MFA тохируулаагүй Сараа; **Хэрэв** нэвтэрч К1-ийн API дуудвал; **Тэгэхэд** `403 platform.mfa_enrollment_required` (`enrollUrl`-тэй). **Мөн** `/api/v1/me/mfa/totp:begin` ажиллана.
-- **AT-SEC-011** (FR-PLT-007 AC2). **Өгөгдсөн нь** Цэцэг 5 удаа дараалан буруу нууц үг оруулсан; **Хэрэв** 6 дахь удаа зөв нууц үг оруулбал; **Тэгэхэд** "Хэт олон оролдлого" (`429 platform.too_many_attempts`), 15 минутын дараа нэвтэрнэ. **Мөн** `LOGIN_FAILED` × 5 ба `ACCOUNT_LOCKED` бичигдэж, Цэцэгт имэйл очно.
+- **AT-SEC-011** (FR-PLT-007 AC2). **Өгөгдсөн нь** Цэцэг 5 удаа дараалан буруу нууц үг оруулсан; **Хэрэв** 6 дахь удаа зөв нууц үг оруулбал; **Тэгэхэд** "Хэт олон оролдлого" (`429 platform.too_many_attempts`), 15 минутын дараа нэвтэрнэ. **Мөн** `LOGIN_FAILED` × 5 (`reason = bad_password`), `ACCOUNT_LOCKED` × 1, 6 дахь оролдлогод `LOGIN_FAILED` (`reason = locked`) × 1 бичигдэж, Цэцэгт имэйл очно.
 - **AT-SEC-012** (SEC-AUTH-07, SEC-AUD-15). **Өгөгдсөн нь** бүртгэлгүй `nobody@x.mn`; **Хэрэв** нэвтрэх гэвэл; **Тэгэхэд** бүртгэлтэй хэрэглэгчийнхтэй **ижил** мессеж. **Мөн** `LOGIN_FAILED` (`tenant_id NULL`, `details.email_hmac`) бичигдэж, Т1-ийн `GET /api/v1/tenant/security-events`-д харагдахгүй. **Мөн** `details`-д имэйлийн энгийн текст байхгүй.
 - **AT-SEC-013** (SEC-AUTH-05). **Өгөгдсөн нь** Цэцэг 61 минут идэвхгүй; **Хэрэв** хүсэлт илгээвэл; **Тэгэхэд** `401 platform.session_expired`.
 - **AT-SEC-014** (SEC-AUTH-02). **Өгөгдсөн нь** нэвтэрсэн Сараа; **Хэрэв** `X-CSRF` header-гүй `PATCH /customers/{id}` илгээвэл; **Тэгэхэд** `400 platform.csrf_header_missing`, өгөгдөл өөрчлөгдөхгүй.
@@ -2042,6 +2094,7 @@ public sealed record SignRequest(Guid TenantId, Guid CompanyId, string DocumentT
 - **AT-SEC-037** (L5). **Өгөгдсөн нь** контекст Т1/К1; **Хэрэв** `SELECT count(*) FROM party.customer WHERE company_id = К2` ажиллуулбал; **Тэгэхэд** 0.
 - **AT-SEC-038** (SEC-JOB-01). **Өгөгдсөн нь** Т1 ба Т2-ийн outbox мессеж; **Хэрэв** worker Т1-ийн мессежийг боловсруулж байх үед Т2-ийн `outbox.payload`-ийг уншихыг оролдвол; **Тэгэхэд** 0 мөр. **Мөн** `app_user` (API) `integration.fn_claim_outbox` дуудвал `42501`.
 - **AT-SEC-039** (SEC-JOB-02). **Өгөгдсөн нь** Сараа Excel экспорт дараалалд оруулсан; **Хэрэв** ажил эхлэхээс өмнө Сараагийн role хасагдвал; **Тэгэхэд** outbox мессеж `DEAD`, `job_run` `FAILED` (`platform.actor_permission_revoked`), retry хийгдэхгүй, файл үүсэхгүй.
+- **AT-SEC-039a** (SEC-JOB-02, үл хамаарах). **Өгөгдсөн нь** Төмөр нэхэмжлэх батлаж `ebarimt.receipt.send` outbox `PENDING` болсон; **Хэрэв** илгээхээс өмнө Төмөрийн гишүүнчлэл `DISABLED` болж, тенант `READ_ONLY` болбол; **Тэгэхэд** мессеж `DEAD` болохгүй, eBarimt илгээгдэж ДДТД бүртгэгдэнэ; `ebarimt_document.created_by` = Төмөр хэвээр.
 
 ### 20.5 Posting-ийн хязгаар
 
@@ -2049,8 +2102,9 @@ public sealed record SignRequest(Guid TenantId, Guid CompanyId, string DocumentT
 - **AT-SEC-041** (FR-GL-024 AC2). **Өгөгдсөн нь** 2027-03 `CLOSED`; **Хэрэв** Сараа `:reopen` дуудвал; **Тэгэхэд** 403. **Мөн** Болд step-up хийж "Банкны хуулга дутуу тулгагдсан байсан" шалтгаантай нээвэл `OPEN`, `accounting_period_status_log` (`CLOSED → OPEN`, шалтгаан), `PERIOD_REOPEN` event, Сараад мэдэгдэл.
 - **AT-SEC-042** (SEC-POST-02). **Хэрэв** Болд "тест" (4 тэмдэгт) шалтгаантай нээх гэвэл; **Тэгэхэд** `422 gl.reopen_reason_required`.
 - **AT-SEC-043** (FR-GL-024 AC3). **Өгөгдсөн нь** 2027-03 `LOCKED`; **Хэрэв** Болд `:reopen` дуудвал; **Тэгэхэд** `409 gl.period_locked`. **Мөн** шууд `UPDATE gl.accounting_period SET status = 'OPEN'` → `ERP02`.
-- **AT-SEC-044** (SEC-POST-04). **Өгөгдсөн нь** 2027 оны жил `CLOSED` (жилийн хаалт хийсэн), 12-р сар `CLOSED`; **Хэрэв** Болд 12-р сарыг нээвэл; **Тэгэхэд** сар ба жил хоёулаа `OPEN`, хоёр лог мөр. **Мөн** жил `LOCKED` бол `409 gl.fiscal_year_locked`.
+- **AT-SEC-044** (SEC-POST-04). **Өгөгдсөн нь** 2027 оны жил `CLOSED` (жилийн хаалт хийсэн), 12-р сар `CLOSED`; **Хэрэв** Болд 12-р сарыг нээвэл; **Тэгэхэд** сар ба жил хоёулаа `OPEN`; `gl.accounting_period_status_log`-д нэг мөр (`CLOSED → OPEN`), `audit.row_change`-д `gl.fiscal_year`-ийн `status` өөрчлөлтийн мөр, `PERIOD_REOPEN` (`details.fiscal_year_reopened = true`). **Мөн** жил `LOCKED` бол `409 gl.fiscal_year_locked`.
 - **AT-SEC-045** (P4). **Өгөгдсөн нь** 2027-03-ийн НӨАТ-ын үе `SUBMITTED`; **Хэрэв** Сараа VAT date 2027-03-20-той худалдан авалт батлах гэвэл; **Тэгэхэд** `422 tax.vat_period_closed`.
+- **AT-SEC-046** (SEC-POST-08, CR-24). **Өгөгдсөн нь** 2027-04 `OPEN`; **Хэрэв** Сараа step-up хийж `:lock` дуудвал; **Тэгэхэд** `409 gl.period_not_closed`, төлөв `OPEN` хэвээр. **Мөн** Сараа 2027-03 (`CLOSED`)-ийг `:reopen` дуудвал (custom role-д `ERP_PERIOD_REOPEN` include хийх оролдлого `422 platform.permission_set_not_assignable`) `403`.
 
 ### 20.6 Аудит
 
@@ -2058,7 +2112,7 @@ public sealed record SignRequest(Guid TenantId, Guid CompanyId, string DocumentT
 - **AT-SEC-051** (CR-01, SEC-AZ-13). **Хэрэв** Болд Төмөрт К2-ийн `SALES_CLERK` role оновол; **Тэгэхэд** `audit.row_change` (`platform.user_company_role`, `I`) ба `ROLE_ASSIGNED` хоёулаа бичигдэнэ.
 - **AT-SEC-052** (FR-PLT-009 AC2). **Тэгэхэд** OpenAPI-д аудитыг унтраах, аудитын мөр устгах endpoint байхгүй (архитектурын тест). **Мөн** `erp_app`-аар `DELETE FROM audit.row_change` → `42501`.
 - **AT-SEC-053** (SEC-AUD-12). **Өгөгдсөн нь** хаагдсан үеийн огноотой нэхэмжлэх; **Хэрэв** батлах гэвэл; **Тэгэхэд** posting rollback, гэхдээ `audit.posting_log`-д `status = 'FAILED'`, `error_code = 'gl.period_closed'` мөр үлдэнэ.
-- **AT-SEC-054** (SEC-AUD-05). **Өгөгдсөн нь** `changed_at` нь 9 жилийн өмнөх аудитын мөр; **Хэрэв** эзэмшигч (`app_owner`) устгах гэвэл; **Тэгэхэд** `ERL01`. **Мөн** 10 жил 1 сарын өмнөх мөрийг хадгалалтын ажил устгана, `RETENTION_PURGE`.
+- **AT-SEC-054** (SEC-AUD-05, §12.2). **Өгөгдсөн нь** өнөөдөр 2038-03-15 (`AuditPurgeCutoff` = 2028-01-01 Улаанбаатарын цаг); аудитын мөрүүд: А `changed_at = 2029-03-10` (9 жил), Б `2027-12-20` (10 жил 2 сар гаруй), В `2028-02-01` (10 жил 1.5 сар); **Хэрэв** эзэмшигч (`app_owner`) А-г шууд устгах гэвэл; **Тэгэхэд** `ERL01`. **Мөн** сарын хадгалалтын ажил Б-г устгаж `RETENTION_PURGE` бичнэ. **Мөн** В нь 10 жилээс хуучин боловч cutoff-оос хойш тул **устгагдахгүй** (2039-01-01-ний cutoff-оор устна) — хуанлийн жилээр бүхэлд нь устгах дүрэм.
 - **AT-SEC-055** (SEC-REC-06). **Өгөгдсөн нь** Сараа зөвхөн К1-д `ERP_AUDIT_READ`; **Хэрэв** `GET /api/v1/tenant/audit/row-changes` дуудвал; **Тэгэхэд** 403. **Мөн** К1-ийн аудитад К2-ийн мөр гарахгүй.
 
 ### 20.7 Хувь хүний мэдээлэл
@@ -2067,10 +2121,10 @@ public sealed record SignRequest(Guid TenantId, Guid CompanyId, string DocumentT
 - **AT-SEC-061** (§10.5). **Хэрэв** Болд step-up хийж `:unmask` (`fields = [personalId]`, `reasonCode = TAX_AUDIT`) дуудвал; **Тэгэхэд** `УБ99112233`, `Cache-Control: no-store`. **Мөн** `PII_UNMASK` event-д утга байхгүй. **Мөн** Сараа дуудвал 403.
 - **AT-SEC-062** (SEC-T-09). **Тэгэхэд** DB-ийн бүх text/jsonb баганаас (`audit.row_change` орно) `УБ99112233` олдохгүй; `personal_id_enc` нь ciphertext, `personal_id_hint = 'УБ******33'`.
 - **AT-SEC-063** (SEC-PII-08). **Хэрэв** Сараа "УБ99112233"-ээр харилцагч хайвал; **Тэгэхэд** HMAC-аар яг тэр харилцагч олдоно. **Мөн** "УБ9911"-ээр хайхад үр дүн байхгүй (хэсэгчилсэн хайлт PII-S-д ажиллахгүй). **Мөн** латин "UB99112233"-ээр ижил үр дүн (нормчлол).
-- **AT-SEC-064** (FR-PTY-003 AC1). **Тэгэхэд** "ТТД-ээр татах" UI ба API нь зөвхөн 11 оронтой ТТД хүлээн авна; регистрийн дугаар оруулахад `422 party.invalid_personal_id` ба гадаад дуудлага хийгдэхгүй.
+- **AT-SEC-064** (FR-PTY-003 AC1, SEC-PII-01). **Тэгэхэд** "ТТД-ээр татах" UI ба API нь зөвхөн татвар төлөгчийн дугаар хүлээн авна: ААН-ийн 11 оронтой ТТД эсвэл хувь хүн бизнес эрхлэгчийн 12–14 оронтой `civil_id` (`getInfo?tin=`; `civil_id`-ийн хариуг PII-S-ээр хадгална, CR-06). Иргэний регистрийн дугаар (`УБ99112233` хэлбэр) оруулахад `422 party.invalid_personal_id` ба гадаад дуудлага хийгдэхгүй (`getTinInfo?regNo=` иргэнд 2026-06-15-аас хаагдсан).
 - **AT-SEC-065** (NFR-041, CMP-024). **Өгөгдсөн нь** stub PosAPI `qrData = 'QR-CANARY-<guid>'`, `lottery = 'LOT-CANARY-<guid>'` буцаадаг; **Хэрэв** нэхэмжлэх батлаж, хэвлэвэл; **Тэгэхэд** canary утга DB, Loki, Tempo-оос олдохгүй.
 - **AT-SEC-066** (SEC-PII-04). **Хэрэв** хувь хүн харилцагчид нэхэмжлэх батлавал; **Тэгэхэд** `sales.sales_invoice_header.customer_registration_no = 'УБ******33'`. **Мөн** бүтэн утгыг шууд INSERT хийвэл CR-06-ийн CHECK (`23514`).
-- **AT-SEC-067** (V1). **Өгөгдсөн нь** нэр нь `=HYPERLINK("http://evil","x")` харилцагч; **Хэрэв** харилцагчийн жагсаалтыг CSV/XLSX-ээр экспортлох; **Тэгэхэд** нүд `'=HYPERLINK(…`-ээр эхэлнэ (томьёо ажиллахгүй).
+- **AT-SEC-067** (V1). **Өгөгдсөн нь** нэр нь `=HYPERLINK("http://evil","x")` харилцагч; **Хэрэв** харилцагчийн жагсаалтыг CSV/XLSX-ээр экспортлох; **Тэгэхэд** нүд `'=HYPERLINK(…`-ээр эхэлнэ (томьёо ажиллахгүй). **Мөн** ижил экспортын `-1500.00` үлдэгдэл XLSX-д тоон нүд, CSV-д `-1500.00` хэвээр (угтваргүй).
 - **AT-SEC-068** (SEC-PII-11). **Өгөгдсөн нь** МХ-2, хүлээн авагчийн регистр шифрлэгдсэн; **Хэрэв** Сараа албан маягтыг PDF-ээр хэвлэвэл; **Тэгэхэд** PDF-д бүтэн регистр, `PII_UNMASK` (`purpose = 'PRINT_FORM'`). **Мөн** CSV экспортод hint.
 
 ### 20.8 Хадгалалт, архив, нөөц
@@ -2123,9 +2177,10 @@ public sealed record SignRequest(Guid TenantId, Guid CompanyId, string DocumentT
 | CR-18 | Low (R2/R3) | `platform.tenant_secret (id, tenant_id, company_id NULL, kind, ciphertext bytea, key_version, last4, created_at, rotated_at, row_version)` | Банкны API, QPay-ийн нууц (02 §10.4, SEC-KEY-02) |
 | CR-19 | Low | `platform.tenant`: `require_mfa_all_users boolean DEFAULT false`, `legal_hold_until date NULL`, `retention_years_override smallint NULL CHECK (retention_years_override >= 10)` | Тенантын MFA бодлого (R2), legal hold (SEC-RET-03), хадгалалт (SEC-RET-04) |
 | CR-20 | Low (R3) | Хадгалалтын хил өнгөрсөн posted баримтын snapshot PII-г (`customer_name`, `customer_address`, `customer_registration_no`, `ebarimt_consumer_no`) нэргүйжүүлэх SECURITY DEFINER функц (`posting_date < horizon` нөхцөлтэй), `platform.ledger_guard`-д тусгай зөвшөөрөл | ХХМХТХ-ийн "шаардлагагүй болсон мэдээллийг хадгалахгүй" зарчим, тенант идэвхтэй хэвээр 10+ жил (§10.8, Q2) |
-| CR-21 | Low | `audit.fn_purge_expired(p_table text, p_cutoff timestamptz, p_limit integer) RETURNS integer` — тенантын контекстод, `audit.row_change`, `audit.security_event`, `audit.posting_log`, `ebarimt.ebarimt_document_event`-ийн allow-list | `app_user`/`app_worker` audit-д DELETE эрхгүй (§12.4) |
+| CR-21 | Low | `audit.fn_purge_expired(p_table text, p_cutoff timestamptz, p_limit integer) RETURNS integer` — SECURITY DEFINER, эзэмшигч `app_owner`, тенантын контекстод, `audit.row_change`, `audit.security_event`, `audit.posting_log`, `ebarimt.ebarimt_document_event`-ийн allow-list; EXECUTE `app_worker`. Мөн `audit.fn_purge_platform_rows(p_cutoff timestamptz, p_limit integer)` — эзэмшигч `app_rls_bypass`, зөвхөн `audit.security_event.tenant_id IS NULL` ба `audit.row_change.tenant_id = '00000000-0000-0000-0000-000000000000'` мөр (SEC-RET-11) | `app_user`/`app_worker` audit-д DELETE эрхгүй (§12.4); тенантгүй мөр RLS-ээр харагдахгүй |
 | CR-22 | Medium | `platform.attachment (id, tenant_id, company_id, owner_table, owner_id, file_name, media_type, byte_size, sha256, object_key, av_status CHECK IN ('PENDING','CLEAN','INFECTED'), created_at, created_by)`; posted баримтын хавсралт append-only | FR-PLT-011, §6.4-ийн хавсралтын дүрэм, ASVS V5 |
-| CR-23 | High | **Seed `db/seed/mn_00_catalogs.sql` §4-ийн өөрчлөлт** (системийн permission set): (1) шинэ set: `ERP_SALES_RETURN` (`sales.creditmemo.post`, `sales.invoice.cancel`; include `ERP_SALES_EDIT`), `ERP_SALES_ANY` (`sales.document.edit_any`), `ERP_ARCHIVE` (`platform.archive.download`), `ERP_DOC_SIGN` (`platform.document.sign`, `platform.document_signature` R), `ERP_DOC_APPROVE` (`platform.document.approve_sign`; include `ERP_DOC_SIGN`), `ERP_TENANT_ADMIN` (`platform.company.create`, `platform.company.archive`, `platform.tenant.manage`, `platform.data.export`) — `assignable = true`; `ERP_SUPER` (`TABLE '*'` RIMD, `ACTION '*'` X, `REPORT '*'` X + `T_SECURITY` RIMD ба `T_AUDIT` R нэрээр), `ERP_SUPPORT_READ`, `ERP_SUPPORT_WRITE`, `ERP_SYSTEM_JOB` — `assignable = false` (§6.4); (2) `ERP_SALES_POST`-оос `sales.creditmemo.post`, `sales.invoice.cancel`-ийг хасах; (3) `audit.security_event` R-ийг `ERP_AUDIT_READ`-ээс `ERP_SECURITY` руу шилжүүлж, `audit.security_incident` R нэмэх; (4) `ERP_EBARIMT_OPS`-ийн `ebarimt.ebarimt_document` `RM` → `Rm`; (5) шинэ ACTION: `platform.pii.anonymize` (`ERP_PII_UNMASK`), `sales.document.send` (`ERP_SALES_EDIT`), `purchase.invoice.cancel` (`ERP_PURCH_POST`), `party.ledger_entry.edit` (`ERP_RECEIVABLES`, `ERP_PAYABLES`), `ebarimt.send_data.trigger` (`ERP_EBARIMT_OPS`), `audit.export` (`ERP_AUDIT_READ`), `platform.attachment.add` (`ERP_SALES_POST`, `ERP_PURCH_POST`, `ERP_JOURNALS_POST`, `ERP_BANKING`, `ERP_CASH_RECEIPT`); (6) REPORT: `rpt.customer_aging`, `rpt.vendor_aging`, `rpt.customer_statement`, `rpt.vat_return`, `rpt.daily_sales`, `rpt.navigate`-ийг `ERP_FIN_REPORTS`-д; `rpt.daily_sales`-ийг `ERP_SALES_EDIT`-д; `rpt.period_close_checklist`-ийг `ERP_PERIOD_CLOSE`-д. **Мөн** built-in role-ийг тенант үүсгэх transaction-д үүсгэх `platform.fn_seed_builtin_roles(p_tenant uuid)` (§6.5-ын role → set) | §6.3–§6.6-ийн эрхийн загвар ба матриц (SEC-T-01); Sales clerk кредит нот батлахгүй (Q10), Accountant аюулгүй байдлын лог уншихгүй, Owner-ийн бүх эрхийг wildcard-аар (шинэ эрх нэмэгдэхэд тенант бүрийн role-ийг migration-оор засах шаардлагагүй), support-ийн хязгаарлагдмал эрх, built-in role-ийн seed байхгүй |
+| CR-23 | High | **Seed `db/seed/mn_00_catalogs.sql` §4-ийн өөрчлөлт** (системийн permission set): (1) шинэ set: `ERP_SALES_RETURN` (`sales.creditmemo.post`, `sales.invoice.cancel`; include `ERP_SALES_EDIT`), `ERP_SALES_ANY` (`sales.document.edit_any`), `ERP_ARCHIVE` (`platform.archive.download`), `ERP_DOC_SIGN` (`platform.document.sign`, `platform.document_signature` R), `ERP_DOC_APPROVE` (`platform.document.approve_sign`; include `ERP_DOC_SIGN`), `ERP_TENANT_ADMIN` (`platform.company.create`, `platform.company.archive`, `platform.tenant.manage`, `platform.data.export`) — `assignable = true`; `ERP_SUPER` (`TABLE '*'` RIMD, `ACTION '*'` X, `REPORT '*'` X + `T_SECURITY` RIMD ба `T_AUDIT` R нэрээр), `ERP_SUPPORT_READ`, `ERP_SUPPORT_WRITE`, `ERP_SYSTEM_JOB` — `assignable = false` (§6.4); (2) `ERP_SALES_POST`-оос `sales.creditmemo.post`, `sales.invoice.cancel`-ийг хасах; (3) `audit.security_event` R-ийг `ERP_AUDIT_READ`-ээс `ERP_SECURITY` руу шилжүүлж, `audit.security_incident` R нэмэх; (4) `ERP_EBARIMT_OPS`-ийн `ebarimt.ebarimt_document` `RM` → `Rm`; (5) шинэ ACTION: `platform.pii.anonymize` (`ERP_PII_UNMASK`), `sales.document.send` (`ERP_SALES_EDIT`), `purchase.invoice.cancel` (`ERP_PURCH_POST`), `party.ledger_entry.edit` (`ERP_RECEIVABLES`, `ERP_PAYABLES`), `ebarimt.send_data.trigger` (`ERP_EBARIMT_OPS`), `audit.export` (`ERP_AUDIT_READ`), `platform.attachment.add` (`ERP_SALES_POST`, `ERP_PURCH_POST`, `ERP_JOURNALS_POST`, `ERP_BANKING`, `ERP_CASH_RECEIPT`); (6) REPORT: `rpt.customer_aging`, `rpt.vendor_aging`, `rpt.customer_statement`, `rpt.vat_return`, `rpt.daily_sales`, `rpt.navigate`-ийг `ERP_FIN_REPORTS`-д; `rpt.daily_sales`-ийг `ERP_SALES_EDIT`-д; `rpt.period_close_checklist`-ийг `ERP_PERIOD_CLOSE`-д; (7) **`db/seed/mn_60_security.sql`-ийн `platform.fn_mn_seed_roles()`-ийн харгалзуулалтыг §6.5-тай тааруулах:** `OWNER` → зөвхөн `ERP_SUPER` (одоогийн `'*'` нь шинэ `assignable = false` set-үүдийг (`ERP_SUPPORT_*`, `ERP_SYSTEM_JOB`) ч оноох тул SEC-AZ-10-ийг зөрчинө); `ACCOUNTANT`, `EXTERNAL_ACCOUNTANT`-аас `ERP_PII_UNMASK`-ийг хасаж `ERP_SALES_RETURN`, `ERP_SALES_ANY`, `ERP_ARCHIVE`, `ERP_DOC_APPROVE` нэмэх; `SALES_CLERK`-д `ERP_DOC_SIGN` нэмэх; аль хэдийн provision хийсэн тенантын built-in role-ийн мөрийг migration-оор засах (функц нь зөвхөн дутуу мөр нэмдэг, илүүг хасахгүй); (8) бусад spec-ийн хүссэн ACTION: `sales.document.print` (`ERP_SALES_POST`; 12 §18.2, 14), `gl.journal.preview` (`ERP_JOURNALS_EDIT`; 05, 15 OQ-UI-23), `purchase.document.preview` (`ERP_PURCH_EDIT`; 14), `ebarimt.document.override` — шинэ set `ERP_EBARIMT_OVERRIDE` (`assignable = true`, built-in role-д оноохгүй; Owner `ERP_SUPER`-ийн `ACTION '*'`-аар авна; 12 TYP-03); (9) `ERP_PERIOD_REOPEN`-ийг `assignable = false` болгох (D-D3: дахин нээх нь зөвхөн Owner; SEC-POST-02) | §6.3–§6.6-ийн эрхийн загвар ба матриц (SEC-T-01); Sales clerk кредит нот батлахгүй (Q10), Accountant аюулгүй байдлын лог уншихгүй ба PII задлахгүй (FR-PTY-004), Owner-ийн бүх эрхийг wildcard-аар (шинэ эрх нэмэгдэхэд тенант бүрийн role-ийг migration-оор засах шаардлагагүй), support-ийн хязгаарлагдмал эрх |
+| CR-24 | Low | `910_ledger_guards.sql`-ийн `gl.fn_accounting_period_status()`-д `OLD.status = 'OPEN' AND NEW.status = 'LOCKED'`-ийг `ERP02`-оор татгалзах (зөвхөн `CLOSED → LOCKED`); `gl.fn_fiscal_year_status()`-д жилийн бүх сар `LOCKED` биш бол жилийг `LOCKED` болгохыг татгалзах | SEC-POST-08: одоо апп л шалгадаг; DB-ийн хоёр дахь хамгаалалт (D-D3) |
 
 ---
 
@@ -2171,7 +2226,7 @@ public sealed record SignRequest(Guid TenantId, Guid CompanyId, string DocumentT
 | FR-PLT-016 | §7.9 | SEC-RLS-11…15 | AT-SEC-030…032 |
 | FR-PLT-017 | §10.7, §19 | — | AT-SEC-073 |
 | FR-PLT-018 | §12 | SEC-RET-01…05 | AT-SEC-029, AT-SEC-070, AT-SEC-071 |
-| FR-GL-023, FR-GL-024, FR-GL-027 | §8 | SEC-POST-01…10 | AT-SEC-040…045 |
+| FR-GL-023, FR-GL-024, FR-GL-027 | §8 | SEC-POST-01…11 | AT-SEC-040…046 |
 | FR-GL-028 | §9.4, CR-15 | — | AT-SEC-091 |
 | FR-PTY-003, FR-PTY-004 | §10 | SEC-PII-01…12 | AT-SEC-060…068 |
 | FR-PTY-017 | §10.7 | — | — |
@@ -2193,3 +2248,63 @@ public sealed record SignRequest(Guid TenantId, Guid CompanyId, string DocumentT
 | CMP-024 | §10.1 | SEC-PII-18 | AT-SEC-065 |
 | CMP-026, CMP-030 | §10.3 | SEC-PII-01…08 | AT-SEC-063, AT-SEC-064 |
 | CMP-029 | §10, §16.4 | SEC-PII-13…17 | AT-SEC-092 |
+
+---
+
+## Хяналтын тэмдэглэл (Review log)
+
+**Огноо:** 2026-10-07. **Хэлбэр:** adversarial review — DECISIONS.md, 02-architecture.md, ADR, `db/schema/*.sql` ба `db/seed/*.sql` (нэрийг grep-ээр тулгасан), research notes, 05/12/14/15 spec, eBarimt PosAPI 3.0 skill (v3.2.48)-тай тулгав. `api/openapi.yaml`-д `npx @redocly/cli lint` дахин ажиллуулсан: **valid, алдаа 0** (энэ баримт OpenAPI-г засаагүй).
+
+**Тоо:** илэрсэн 34, энэ баримтад зассан 29, бусад баримтын эзэнд шилжүүлсэн 5.
+
+### Зассан зүйлс
+
+| # | Хэсэг | Асуудал | Засвар |
+|---|---|---|---|
+| R1 | §6.5, CR-23 (7) | `platform.fn_seed_builtin_roles` гэсэн функц байхгүй; seed-д `platform.fn_mn_seed_roles()` аль хэдийн бий ("built-in role-ийн seed байхгүй" гэдэг худал). Түүний харгалзуулалт (`OWNER = '*'`, ACCOUNTANT/EXTERNAL-д `ERP_PII_UNMASK`) FR-PTY-004 ба §6.5-тай зөрчилдөнө | Одоо байгаа функцийг иш татаж, засварыг CR-23 (7)-д нарийвчилсан (provision хийгдсэн тенантын migration орно) |
+| R2 | §7.6, SEC-T-02 | SECURITY DEFINER-ийн жагсаалтад `fn_next_document_no`, `fn_next_entry_no`, `fn_ledger_update`, `ebarimt.fn_next_bill_seq`, `party.fn_detailed_*_after_insert` байхгүй → SEC-T-02 одоогийн схем дээр унах байсан | Тенант доторх (`app_owner`) SECURITY DEFINER функцийн хоёр дахь хүснэгт, тестийн дүрэм |
+| R3 | SEC-RLS-10 | "Зөвхөн id/тоо буцаана" нь CR-04-ийн `fn_list_user_tenants` (нэр), `fn_find_invitation` (имэйл)-тэй зөрчилдөнө | Тенант хоорондын функцэд хамааруулж, хоёр үл хамаарлыг тодорхойлсон |
+| R4 | SEC-RLS-16 (шинэ), SEC-AUD-10 | `app_user_visible` policy-ийн `tenant_membership` subquery нь fail-closed тул тенант сонгохоос өмнө (`last_login_at` г.м.) алдаа өгч болно | Nil тенантын контекстийн дүрэм; nil тенантын `row_change` мөрийн зан төлөв |
+| R5 | §12.5 PurgeTenant | `app_owner` NOBYPASSRLS + RESTRICTIVE `company_isolation` тул `app.tenant_id`-ийг л тохируулсан DELETE компанийн хүснэгтэд алдаа өгнө | Компани бүрийн контекстоор устгах алхам |
+| R6 | §11.3 | Data Protection-ийн хуучин түлхүүрийг "12 цаг+" хадгалах нь TOTP нууцыг (олон жил) тайлах боломжгүй болгоно | Хуучин түлхүүрийг устгахгүй; compromise үед TOTP дахин бүртгэл |
+| R7 | §11.3 | KEK-ийн устгах хугацаа §11.4-ийн escrow 12 сартай зөрүүтэй | Нэгтгэв |
+| R8 | AT-SEC-054 | "10 жил 1 сарын өмнөх мөр устгагдана" нь `AuditPurgeCutoff`-ийн хуанлийн жилийн дүрэмтэй зөрчилдөнө (2038-03-15-нд 2028-02-ийн мөр устахгүй) | Тодорхой огноотой гурван мөрийн жишээ |
+| R9 | AT-SEC-011 | 6 дахь оролдлогын `LOGIN_FAILED (locked)` тоологдоогүй | Үйл явдлын яг тоо |
+| R10 | §8.2 | `entryType` тодорхойлогдоогүй хувьсагч | `vatEntryType` параметр |
+| R11 | SEC-POST-04, AT-SEC-044 | "Тус тусдаа лог / хоёр лог мөр" — схемд санхүүгийн жилийн төлөвийн лог хүснэгт байхгүй | `audit.row_change` + `PERIOD_REOPEN.details` |
+| R12 | SEC-POST-08, CR-24 | DB `OPEN → LOCKED`-ийг хориглодоггүй; апп-ийн дүрэм байхгүй | `409 gl.period_not_closed`, CR-24, AT-SEC-046 |
+| R13 | SEC-POST-11 (шинэ) | Жилийн хаалтын дараа үе нээж posting хийхэд хаалтын бичилт хуучирна | 05 BR-PST-57-ийн дахин хаалттай холбосон |
+| R14 | SEC-POST-02, §8.4, CR-23 (9) | D-D3 "дахин нээх нь зөвхөн Owner" боловч `ERP_PERIOD_REOPEN` `assignable = true` тул custom role-оор тойрох боломжтой | Owner role-ийн шалгалт + `assignable = false` |
+| R15 | SEC-JOB-02 | Actor-ийн эрх хасагдах эсвэл `READ_ONLY` нь батлагдсан баримтын eBarimt мессежийг `DEAD` болгох байсан (D-J2, CMP-023-ийн зөрчил) | Хуулийн үүргийн topic-ийн үл хамаарал, AT-SEC-039a |
+| R16 | §18.1 | `platform.immutable_record` 409 гэж бичсэн; 14 §9.6 ба 05 нь 500 | 500 |
+| R17 | §18.1 | Хэрэглэсэн боловч каталогид байхгүй код: `platform.actor_permission_revoked`; 05/06-ийн иш татсан `platform.number_series_*`; шинэ `gl.period_not_closed`, `platform.already_member`, `platform.membership_disabled`, `platform.not_personal_data` | Нэмсэн |
+| R18 | §18.2 | `ERN01–03`, `ERB02`, `ERC01`, `ERG01`, `ERD01`, `23514`, НӨАТ-ын `ERP02`-ийн харгалзуулалт дутуу | 05 §8.8-тай нэгтгэсэн мөрүүд |
+| R19 | SEC-AZ-18 | `400`-ийн код тодорхойгүй | `api.read_only_field` (14) |
+| R20 | SEC-ID-17 (шинэ), §4.7 | Урилга хүлээн авагч аль хэдийн `ACTIVE`/`DISABLED` бол тодорхойгүй (DISABLED-ийг урилгаар сэргээх цоорхой) | Дүрэм, алгоритм, AT-SEC-008 |
+| R21 | §10.8 | Нэргүйжүүлэлтэд `name_en`, `city`, `foreign_tax_id`, `registration_no` орхигдсон; vendor-т `ebarimt_consumer_no` багана байхгүй; LEGAL этгээдийг хамгаалаагүй | Багануудыг схемтэй тулгаж засав |
+| R22 | §17.1 V1 | Formula injection-ийн `-` угтвар нь сөрөг дүнг (`-1500.00`) эвдэнэ | Зөвхөн текст нүдэнд; AT-SEC-067-д шалгалт |
+| R23 | AT-SEC-064 | "Зөвхөн 11 оронтой ТТД" нь SEC-PII-01 (хувь хүний `civil_id` 12–14 нь татвар төлөгчийн дугаар) ба PosAPI skill-тэй зөрчилдөнө | ТТД эсвэл `civil_id`; регистрээр хайхгүй (2026-06-15) |
+| R24 | SEC-REC-09, §6.6 #45 | `GET /api/v1/me/jobs` ба "компанийн бүх job"-ийг READ_ALL-аар харах нь 14 API-JOB-07 (зөвхөн өөрийн, бусдынх 404) ба OpenAPI-тай зөрүүтэй | 14-тэй нэгтгэсэн |
+| R25 | §6.3, §6.4, §6.6 | 05/12/14/15-ийн хүссэн `sales.document.print`, `gl.journal.preview`, `purchase.document.preview`, `ebarimt.document.override` (+ `ERP_EBARIMT_OVERRIDE`) каталогид байхгүй; `ebarimt.unknown.resolve`-ийн хамрах хүрээ | Каталог, set, матриц (#35a), CR-23 (8) |
+| R26 | §10.2 #15 | Өөрийн компани хувь хүн бизнес эрхлэгч бол `merchant_tin` (`civil_id`) ил хадгалагдах үл хамаарал (12 SEC-06) тэмдэглэгдээгүй | PII каталогид нэмсэн |
+| R27 | SEC-RET-11 (шинэ), CR-21 | `tenant_id IS NULL` / nil тенантын аудитын мөрийн 10 жилийн устгал тодорхойгүй (тенантын fan-out-д хамрагдахгүй) | Платформын ажил ба `audit.fn_purge_platform_rows` |
+| R28 | SEC-JOB-05 | R2 webhook (14 §11)-ийн SSRF хамгаалалт байхгүй | Egress proxy-ийн дүрэм |
+| R29 | §7.6 | CR-21-ийн функц жагсаалтад байхгүй | Нэмсэн |
+
+PosAPI-ийн дүрмийг skill-тэй тулгасан (зөрчил илрээгүй): `consumerNo` 8 орон зөвхөн `B2C_RECEIPT`; `customerTin` зөвхөн `B2B_*`; `merchantTin` ААН 11, хувь хүн 12–14; `qrData`/`lottery` хадгалахгүй (DB CHECK ба redaction); `sendData`-ийн 72 цагийн (3 хоног) хязгаар; PosAPI local HTTP (токенгүй, дотоод сүлжээ), ITC руу зөвхөн Монголын IP; `getTinInfo?regNo=` иргэнд 2026-06-15-аас хаагдсан; Монпасс 2025-05-22-оос дэмжигдэхгүй.
+
+### Бусад баримтын эзэнд (энэ баримтад засаагүй)
+
+| # | Баримт | Асуудал | Санал |
+|---|---|---|---|
+| X1 | 14-api, `api/openapi.yaml` | `x-permission`-ийн нэр seed/13-ийн каталогоос зөрүүтэй (D-K1): `sales.credit_memo.post` (→ `sales.creditmemo.post`), `purchase.credit_memo.post` (→ `purchase.creditmemo.post`), `tax.vat_period.submit` (→ `tax.vat_return.submit`), `tax.vat_period.close` (→ `TABLE tax.vat_return_period M`), `ebarimt.document.resolve` (→ `ebarimt.unknown.resolve`), `rpt.ar_aging`/`rpt.ap_aging` (→ `rpt.customer_aging`/`rpt.vendor_aging`), `rpt.report.export` (→ `rpt.export.excel`), `gl.year.lock` (→ `gl.period.lock`), `gl.posting_window.manage` (→ `TABLE platform.company_setup M`); шинэ `rpt.financial_statements`, `tax.vat_return.export`, `gl.year.create`, `platform.webhook.manage`-ийг CR-23-тай нэг дор seed-д нэмэх эсэхийг шийдэх | 14 нь seed-ийн нэрээр засах, эсвэл шинэ нэрийг CR-23-д нэмэх хүсэлт гаргах |
+| X2 | 14-api API-JOB-07 | Эрх хасагдсан job-ийн код `platform.permission_denied`; 13 SEC-JOB-02 нь `platform.actor_permission_revoked` | Нэг кодоор нэгтгэх |
+| X3 | `api/openapi.yaml` | §19-ийн аюулгүй байдлын endpoint (`/api/v1/me*`, `/api/v1/tenant/*`, `/api/v1/support/*`, `:unmask`, `:anonymize`, `signatures`, `archives`, `audit`) OpenAPI-д байхгүй | 14 нэмэх |
+| X4 | DECISIONS.md D-K1/D-B3 | Схемийн жагсаалтад `identity` байхгүй (CR-03) | Шийдвэрт нэмэх |
+| X5 | 02-architecture §7.7 | Гэрээ дууссанаас 12 сарын дараа purge (Z5) хэвээр | 02-ыг 13 §12.5-тай тааруулах |
+
+### Схемийн өөрчлөлтийн хүсэлтийн өөрчлөлт (энэ review)
+
+- **CR-21** өргөтгөв: `audit.fn_purge_platform_rows(timestamptz, integer)` (`app_rls_bypass`) нэмэгдэв.
+- **CR-23** өргөтгөв: (7) `platform.fn_mn_seed_roles()`-ийн харгалзуулалт, (8) шинэ ACTION ба `ERP_EBARIMT_OVERRIDE`, (9) `ERP_PERIOD_REOPEN.assignable = false`.
+- **CR-24** шинэ: `OPEN → LOCKED`-ийг DB-д хориглох, жилийг бүх сар түгжигдээгүй үед түгжихгүй.

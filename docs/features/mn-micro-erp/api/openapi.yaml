@@ -192,8 +192,8 @@ paths:
       description: |-
         D-D3: цонхноос гадуур posting бүх эрхэд хориотой. `If-Match` = компанийн ETag.
 
-        **Эрх:** `ACTION gl.posting_window.manage X (MFA)`. **Хувилбар:** R1. **Шаардлага:** FR-GL-023.
-      x-permission: ACTION gl.posting_window.manage X (MFA)
+        **Эрх:** `TABLE platform.company_setup M (MFA; 13 SEC-POST-07)`. **Хувилбар:** R1. **Шаардлага:** FR-GL-023.
+      x-permission: TABLE platform.company_setup M (MFA; 13 SEC-POST-07)
       x-release: R1
       x-requirements: [FR-GL-023]
       parameters:
@@ -2184,8 +2184,8 @@ paths:
       description: |-
         Нэг DB transaction, компанийн advisory lock (D-C6). Хууль ёсны завсаргүй дугаар (D-C7). Id тогтвортой (§2.4). Бүх урьдчилсан шалгалтын алдааг 422 `errors[]`-д. Аль хэдийн posted бол 409 `api.document_already_posted` (ижил Idempotency-Key бол хадгалсан хариу).
 
-        **Эрх:** `ACTION sales.invoice.post X`. **Хувилбар:** R1. **Шаардлага:** FR-SAL-005, FR-SAL-006, FR-EBR-006, FR-INT-001, FR-INT-002.
-      x-permission: ACTION sales.invoice.post X
+        **Эрх:** `ACTION sales.invoice.post X` (төлбөрийн хэлбэр нь balancing данстай бэлэн борлуулалт бол `ACTION sales.pos.post X`, D-F5; 13 §6.3). **Хувилбар:** R1. **Шаардлага:** FR-SAL-005, FR-SAL-006, FR-EBR-006, FR-INT-001, FR-INT-002.
+      x-permission: ACTION sales.invoice.post X | sales.pos.post X (бэлэн, D-F5)
       x-release: R1
       x-requirements: [FR-SAL-005, FR-SAL-006, FR-EBR-006, FR-INT-001, FR-INT-002]
       parameters:
@@ -2317,7 +2317,7 @@ paths:
       summary: Цуцлах (бүтэн кредит нот)
       tags: [Sales Invoices]
       description: |-
-        D-F6: эх мөр/дүнгээр бүтэн кредит нот батлаж, тулгаж, `cancelled_document`-д холбоно. Төлбөрт тулгагдсан бол 409 `sales.invoice_has_applications` (эхлээд unapply); аль хэдийн цуцлагдсан бол 409 `sales.invoice_already_cancelled`. `Location` = кредит нот.
+        D-F6: эх мөр/дүнгээр бүтэн кредит нот батлаж, тулгаж, `cancelled_document`-д холбоно. Төлбөрт тулгагдсан бол 409 `sales.invoice_has_applications` (эхлээд unapply); аль хэдийн цуцлагдсан бол 409 `sales.invoice_already_cancelled`; ноорог бол 409 `api.document_not_posted`; кредит нотын огнооны үе хаалттай бол 422 `gl.period_closed`; eBarimt-ийн гинжинд UNKNOWN бол 409 `ebarimt.predecessor_unknown`, SENT бол 409 `ebarimt.predecessor_in_flight` (14-api API-ACT-14). `Location` = кредит нот.
 
         **Эрх:** `ACTION sales.invoice.cancel X`. **Хувилбар:** R1. **Шаардлага:** FR-SAL-008, FR-SAL-009.
       x-permission: ACTION sales.invoice.cancel X
@@ -2835,8 +2835,8 @@ paths:
       description: |-
         Нэг DB transaction, компанийн advisory lock (D-C6). Хууль ёсны завсаргүй дугаар (D-C7). Id тогтвортой (§2.4). Бүх урьдчилсан шалгалтын алдааг 422 `errors[]`-д. Аль хэдийн posted бол 409 `api.document_already_posted` (ижил Idempotency-Key бол хадгалсан хариу).
 
-        **Эрх:** `ACTION sales.credit_memo.post X`. **Хувилбар:** R1. **Шаардлага:** FR-SAL-007, FR-EBR-009, FR-EBR-010.
-      x-permission: ACTION sales.credit_memo.post X
+        **Эрх:** `ACTION sales.creditmemo.post X`. **Хувилбар:** R1. **Шаардлага:** FR-SAL-007, FR-EBR-009, FR-EBR-010.
+      x-permission: ACTION sales.creditmemo.post X
       x-release: R1
       x-requirements: [FR-SAL-007, FR-EBR-009, FR-EBR-010]
       parameters:
@@ -3452,7 +3452,7 @@ paths:
       summary: Цуцлах (бүтэн кредит нот)
       tags: [Purchase Invoices]
       description: |-
-        D-F6: эх мөр/дүнгээр бүтэн кредит нот батлаж, тулгаж, `cancelled_document`-д холбоно. Төлбөрт тулгагдсан бол 409 `sales.invoice_has_applications` (эхлээд unapply); аль хэдийн цуцлагдсан бол 409 `sales.invoice_already_cancelled`. `Location` = кредит нот.
+        D-F6 / FR-PUR-006: эх мөр/дүнгээр бүтэн худалдан авалтын кредит нот батлаж, тулгаж, `purchase.cancelled_document`-д холбоно. Төлбөрт тулгагдсан бол 409 `purchase.invoice_has_applications` (эхлээд unapply); аль хэдийн цуцлагдсан бол 409 `purchase.invoice_already_cancelled`; ноорог бол 409 `api.document_not_posted`; кредит нотын огнооны үе хаалттай бол 422 `gl.period_closed`; НӨАТ-ын үе хаалттай бол 422 `tax.vat_period_closed`. eBarimt хамаарахгүй (API-ACT-16). `Location` = кредит нот.
 
         **Эрх:** `ACTION purchase.invoice.cancel X`. **Хувилбар:** R1. **Шаардлага:** FR-PUR-006.
       x-permission: ACTION purchase.invoice.cancel X
@@ -3901,8 +3901,8 @@ paths:
       description: |-
         Нэг DB transaction, компанийн advisory lock (D-C6). Хууль ёсны завсаргүй дугаар (D-C7). Id тогтвортой (§2.4). Бүх урьдчилсан шалгалтын алдааг 422 `errors[]`-д. Аль хэдийн posted бол 409 `api.document_already_posted` (ижил Idempotency-Key бол хадгалсан хариу).
 
-        **Эрх:** `ACTION purchase.credit_memo.post X`. **Хувилбар:** R1. **Шаардлага:** FR-PUR-005.
-      x-permission: ACTION purchase.credit_memo.post X
+        **Эрх:** `ACTION purchase.creditmemo.post X`. **Хувилбар:** R1. **Шаардлага:** FR-PUR-005.
+      x-permission: ACTION purchase.creditmemo.post X
       x-release: R1
       x-requirements: [FR-PUR-005]
       parameters:
@@ -5885,8 +5885,8 @@ paths:
       description: |-
         CLOSED → LOCKED, буцаагдахгүй (SEC-POST-03).
 
-        **Эрх:** `ACTION gl.year.lock X (MFA, step-up)`. **Хувилбар:** R1. **Шаардлага:** FR-INT-006.
-      x-permission: ACTION gl.year.lock X (MFA, step-up)
+        **Эрх:** `ACTION gl.period.lock X (MFA, step-up)`. **Хувилбар:** R1. **Шаардлага:** FR-INT-006.
+      x-permission: ACTION gl.period.lock X (MFA, step-up)
       x-release: R1
       x-requirements: [FR-INT-006]
       parameters:
@@ -6125,6 +6125,67 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
         default: {$ref: '#/components/responses/ServerError'}
+  /companies/{companyId}/vat-entries:
+    parameters:
+    - {$ref: '#/components/parameters/CompanyId'}
+    get:
+      operationId: listVatEntries
+      summary: НӨАТ-ын бичилт (VAT entry)
+      tags: [VAT]
+      description: |-
+        `tax.vat_entry` (BC T254). Зөвхөн унших (append-only, D-C4). Тэмдэг DB-ийнхээр: борлуулалтын `base`/`amount` < 0, худалдан авалтынх > 0 (API-JSON-07). Анхдагч эрэмбэ `entryNo` (өсөх); `entryNoFrom`-оор change feed. НӨАТ-ын тайлангийн drill-down (UI S-TAX-04).
+
+        **Эрх:** `TABLE tax.vat_entry R`. **Хувилбар:** R1. **Шаардлага:** FR-TAX-007, FR-TAX-013.
+      x-permission: TABLE tax.vat_entry R
+      x-release: R1
+      x-requirements: [FR-TAX-007, FR-TAX-013]
+      parameters:
+      - {$ref: '#/components/parameters/Limit'}
+      - {$ref: '#/components/parameters/After'}
+      - {$ref: '#/components/parameters/Sort'}
+      - {$ref: '#/components/parameters/PostingDateFrom'}
+      - {$ref: '#/components/parameters/PostingDateTo'}
+      - {$ref: '#/components/parameters/DocumentNoQ'}
+      - {name: vatDateFrom, in: query, required: false, description: 'VAT date ≥ (D-E9).', schema: {type: string, format: date}}
+      - {name: vatDateTo, in: query, required: false, description: 'VAT date ≤.', schema: {type: string, format: date}}
+      - {name: entryType, in: query, required: false, description: 'SALE, PURCHASE, SETTLEMENT.', schema: {type: string, enum: [SALE, PURCHASE, SETTLEMENT]}}
+      - {name: vatReturnPeriodId, in: query, required: false, description: 'Хаалтаар оноогдсон НӨАТ-ын үе.', schema: {type: string, format: uuid}}
+      - {name: closed, in: query, required: false, description: 'Хаалтад орсон эсэх.', schema: {type: boolean}}
+      - {name: deductibleConfirmed, in: query, required: false, description: 'Орцын НӨАТ баталгаажсан эсэх (D-E4).', schema: {type: boolean}}
+      - {name: transactionNo, in: query, required: false, description: 'Ваучерын дугаар.', schema: {type: integer, format: int64}}
+      - {name: entryNoFrom, in: query, required: false, description: 'entryNo ≥ (sync-д).', schema: {type: integer, format: int64}}
+      responses:
+        '200':
+          description: VAT entry
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/VatEntryList'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        default: {$ref: '#/components/responses/ServerError'}
+  /companies/{companyId}/vat-entries/{id}:
+    parameters:
+    - {$ref: '#/components/parameters/CompanyId'}
+    - {$ref: '#/components/parameters/Id'}
+    get:
+      operationId: getVatEntry
+      summary: НӨАТ-ын бичилт
+      tags: [VAT]
+      description: '**Эрх:** `TABLE tax.vat_entry R`. **Хувилбар:** R1.'
+      x-permission: TABLE tax.vat_entry R
+      x-release: R1
+      responses:
+        '200':
+          description: Entry
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/VatEntry'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        default: {$ref: '#/components/responses/ServerError'}
   /companies/{companyId}/vat-return-periods:
     parameters:
     - {$ref: '#/components/parameters/CompanyId'}
@@ -6185,8 +6246,8 @@ paths:
       operationId: closeVatReturnPeriod
       summary: НӨАТ-ын үе хаах
       tags: [VAT]
-      description: '**Эрх:** `ACTION tax.vat_period.close X`. **Хувилбар:** R1. **Шаардлага:** FR-TAX-015.'
-      x-permission: ACTION tax.vat_period.close X
+      description: '**Эрх:** `ACTION tax.vat.settle X (НӨАТ-ын хаалт, 08 §3.11)`. **Хувилбар:** R1. **Шаардлага:** FR-TAX-015.'
+      x-permission: ACTION tax.vat.settle X (НӨАТ-ын хаалт, 08 §3.11)
       x-release: R1
       x-requirements: [FR-TAX-015]
       parameters:
@@ -6218,8 +6279,8 @@ paths:
       description: |-
         CLOSED → SUBMITTED (буцаагдахгүй, `ERP02`).
 
-        **Эрх:** `ACTION tax.vat_period.submit X (MFA, step-up)`. **Хувилбар:** R1. **Шаардлага:** FR-TAX-015.
-      x-permission: ACTION tax.vat_period.submit X (MFA, step-up)
+        **Эрх:** `ACTION tax.vat_return.submit X (MFA, step-up)`. **Хувилбар:** R1. **Шаардлага:** FR-TAX-015.
+      x-permission: ACTION tax.vat_return.submit X (MFA, step-up)
       x-release: R1
       x-requirements: [FR-TAX-015]
       parameters:
@@ -6252,8 +6313,8 @@ paths:
       operationId: exportVatReturn
       summary: ТТ-03а туслах файл (async)
       tags: [VAT]
-      description: '**Эрх:** `ACTION tax.vat_return.export X`. **Хувилбар:** R1. **Шаардлага:** FR-TAX-013, FR-TAX-014.'
-      x-permission: ACTION tax.vat_return.export X
+      description: '**Эрх:** `ACTION rpt.export.excel X + REPORT rpt.vat_return X`. **Хувилбар:** R1. **Шаардлага:** FR-TAX-013, FR-TAX-014.'
+      x-permission: ACTION rpt.export.excel X + REPORT rpt.vat_return X
       x-release: R1
       x-requirements: [FR-TAX-013, FR-TAX-014]
       parameters:
@@ -6319,8 +6380,8 @@ paths:
       description: |-
         `party.fn_customer_aging(asOf)`. 5 000-аас олон мөр бол 422 `api.result_too_large` — `:export` ашиглана.
 
-        **Эрх:** `REPORT rpt.ar_aging X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-004.
-      x-permission: REPORT rpt.ar_aging X
+        **Эрх:** `REPORT rpt.customer_aging X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-004.
+      x-permission: REPORT rpt.customer_aging X
       x-release: R1
       x-requirements: [FR-RPT-004]
       parameters:
@@ -6355,8 +6416,8 @@ paths:
       description: |-
         `party.fn_vendor_aging(asOf)`. 5 000-аас олон мөр бол 422 `api.result_too_large` — `:export` ашиглана.
 
-        **Эрх:** `REPORT rpt.ap_aging X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-005.
-      x-permission: REPORT rpt.ap_aging X
+        **Эрх:** `REPORT rpt.vendor_aging X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-005.
+      x-permission: REPORT rpt.vendor_aging X
       x-release: R1
       x-requirements: [FR-RPT-005]
       parameters:
@@ -6460,8 +6521,8 @@ paths:
       description: |-
         Аюулгүй (safe) тооцоо: Idempotency-Key шаардахгүй. Маягт А p95 ≤ 5 s.
 
-        **Эрх:** `REPORT rpt.financial_statements X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-008, FR-RPT-009, FR-RPT-010, FR-RPT-011.
-      x-permission: REPORT rpt.financial_statements X
+        **Эрх:** `REPORT rpt.balance_sheet | rpt.income_statement | rpt.equity_statement | rpt.cash_flow X (тайлангийн төрлөөр)`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-008, FR-RPT-009, FR-RPT-010, FR-RPT-011.
+      x-permission: REPORT rpt.balance_sheet | rpt.income_statement | rpt.equity_statement | rpt.cash_flow X (тайлангийн төрлөөр)
       x-release: R1
       x-requirements: [FR-RPT-008, FR-RPT-009, FR-RPT-010, FR-RPT-011]
       requestBody:
@@ -6481,6 +6542,226 @@ paths:
         '429': {$ref: '#/components/responses/TooManyRequests'}
         '503': {$ref: '#/components/responses/ServiceUnavailable'}
         default: {$ref: '#/components/responses/ServerError'}
+  /companies/{companyId}/reports/general-ledger:
+    parameters:
+    - {$ref: '#/components/parameters/CompanyId'}
+    get:
+      operationId: getGeneralLedgerReport
+      summary: Ерөнхий дэвтэр
+      tags: [Reports]
+      description: |-
+        Данс бүрийн хэсэг: эхний үлдэгдэл, бичилт (огноо, баримт, тайлбар, харьцсан данс, Дт, Кт, үлдэгдэл), эцсийн үлдэгдэл (FR-RPT-002). `glAccountId` өгөөгүй бол хөдөлгөөнтэй бүх posting данс. Эцсийн үлдэгдэл = гүйлгээ балансын мөр (AC1). Хариу нь `TabularReport` (баганын жагсаалт 14-api §15.6). 5 000-аас олон мөр бол 422 `api.result_too_large` — `:export` ашиглана.
+
+        **Эрх:** `REPORT rpt.gl_detail X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-002.
+      x-permission: REPORT rpt.gl_detail X
+      x-release: R1
+      x-requirements: [FR-RPT-002]
+      parameters:
+      - {$ref: '#/components/parameters/DateFrom'}
+      - {$ref: '#/components/parameters/DateTo'}
+      - {$ref: '#/components/parameters/GlAccountIdQ'}
+      - {$ref: '#/components/parameters/IncludeClosing'}
+      - {$ref: '#/components/parameters/Dim1Q'}
+      - {$ref: '#/components/parameters/Dim2Q'}
+      responses:
+        '200':
+          description: Тайлан
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TabularReport'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default: {$ref: '#/components/responses/ServerError'}
+  /companies/{companyId}/reports/customer-statement:
+    parameters:
+    - {$ref: '#/components/parameters/CompanyId'}
+    get:
+      operationId: getCustomerStatementReport
+      summary: Харилцагчийн дансны хуулга
+      tags: [Reports]
+      description: |-
+        Нэг харилцагч: эхний үлдэгдэл (`dateFrom`-оос өмнөх Σ detailed entry), баримт бүр (нэхэмжлэх, төлбөр, кредит нот, тулгалт), эцсийн үлдэгдэл = `dateTo` хүртэлх Σ detailed entry (FR-RPT-003 AC1). Тооцоо нийлсэн актын PDF нь `:export` (`format = PDF`). Хариу нь `TabularReport` (баганын жагсаалт 14-api §15.6). 5 000-аас олон мөр бол 422 `api.result_too_large` — `:export` ашиглана.
+
+        **Эрх:** `REPORT rpt.customer_statement X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-003.
+      x-permission: REPORT rpt.customer_statement X
+      x-release: R1
+      x-requirements: [FR-RPT-003]
+      parameters:
+      - {name: customerId, in: query, required: true, description: 'Харилцагч (заавал).', schema: {type: string, format: uuid}}
+      - {$ref: '#/components/parameters/DateFrom'}
+      - {$ref: '#/components/parameters/DateTo'}
+      responses:
+        '200':
+          description: Тайлан
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TabularReport'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default: {$ref: '#/components/responses/ServerError'}
+  /companies/{companyId}/reports/vendor-statement:
+    parameters:
+    - {$ref: '#/components/parameters/CompanyId'}
+    get:
+      operationId: getVendorStatementReport
+      summary: Нийлүүлэгчийн дансны хуулга
+      tags: [Reports]
+      description: |-
+        `customer-statement`-ийн толин тусгал (дүн нийлүүлэгчийн өнцгөөс эерэг). Хариу нь `TabularReport` (баганын жагсаалт 14-api §15.6). 5 000-аас олон мөр бол 422 `api.result_too_large` — `:export` ашиглана.
+
+        **Эрх:** `REPORT rpt.vendor_statement X (санал, SCR-API-09)`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-003.
+      x-permission: REPORT rpt.vendor_statement X (санал, SCR-API-09)
+      x-release: R1
+      x-requirements: [FR-RPT-003]
+      parameters:
+      - {name: vendorId, in: query, required: true, description: 'Нийлүүлэгч (заавал).', schema: {type: string, format: uuid}}
+      - {$ref: '#/components/parameters/DateFrom'}
+      - {$ref: '#/components/parameters/DateTo'}
+      responses:
+        '200':
+          description: Тайлан
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TabularReport'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default: {$ref: '#/components/responses/ServerError'}
+  /companies/{companyId}/reports/cash-bank-book:
+    parameters:
+    - {$ref: '#/components/parameters/CompanyId'}
+    get:
+      operationId: getCashBankBookReport
+      summary: Касс ба банкны дэвтэр
+      tags: [Reports]
+      description: |-
+        Нэг мөнгөний данс: эхний үлдэгдэл, баримт бүр (МХ-1/МХ-2 дугаар, банкны баримт, харьцсан тал, орлого, зарлага, үлдэгдэл), эцсийн үлдэгдэл = банкны дансны posting group-ийн G/L дансны үлдэгдэл (FR-RPT-006 AC1). Хариу нь `TabularReport` (баганын жагсаалт 14-api §15.6). 5 000-аас олон мөр бол 422 `api.result_too_large` — `:export` ашиглана.
+
+        **Эрх:** `REPORT rpt.account_statement X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-006.
+      x-permission: REPORT rpt.account_statement X
+      x-release: R1
+      x-requirements: [FR-RPT-006]
+      parameters:
+      - {name: bankAccountId, in: query, required: true, description: 'Мөнгөний данс (заавал).', schema: {type: string, format: uuid}}
+      - {$ref: '#/components/parameters/DateFrom'}
+      - {$ref: '#/components/parameters/DateTo'}
+      responses:
+        '200':
+          description: Тайлан
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TabularReport'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default: {$ref: '#/components/responses/ServerError'}
+  /companies/{companyId}/reports/sales-journal:
+    parameters:
+    - {$ref: '#/components/parameters/CompanyId'}
+    get:
+      operationId: getSalesJournalReport
+      summary: Борлуулалтын журнал
+      tags: [Reports]
+      description: |-
+        Posted нэхэмжлэх ба кредит нот (кредит нот хасах тэмдэгтэй): огноо, дугаар, харилцагч, ТТД, цэвэр дүн, НӨАТ, НХАТ, нийт, eBarimt ДДТД (FR-RPT-007). Нийт цэвэр дүн = борлуулалтын дансны кредит гүйлгээ (AC1). Хариу нь `TabularReport` (баганын жагсаалт 14-api §15.6). 5 000-аас олон мөр бол 422 `api.result_too_large` — `:export` ашиглана.
+
+        **Эрх:** `REPORT rpt.sales_journal X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-007.
+      x-permission: REPORT rpt.sales_journal X
+      x-release: R1
+      x-requirements: [FR-RPT-007]
+      parameters:
+      - {$ref: '#/components/parameters/DateFrom'}
+      - {$ref: '#/components/parameters/DateTo'}
+      - {$ref: '#/components/parameters/CustomerIdQ'}
+      responses:
+        '200':
+          description: Тайлан
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TabularReport'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default: {$ref: '#/components/responses/ServerError'}
+  /companies/{companyId}/reports/purchase-journal:
+    parameters:
+    - {$ref: '#/components/parameters/CompanyId'}
+    get:
+      operationId: getPurchaseJournalReport
+      summary: Худалдан авалтын журнал
+      tags: [Reports]
+      description: |-
+        Posted худалдан авалтын нэхэмжлэх ба кредит нот: огноо, дугаар, нийлүүлэгчийн нэхэмжлэхийн дугаар, нийлүүлэгч, ТТД, цэвэр дүн, НӨАТ (хасагдах/хасагдахгүй), нийт, нийлүүлэгчийн ДДТД (FR-RPT-007). Хариу нь `TabularReport` (баганын жагсаалт 14-api §15.6). 5 000-аас олон мөр бол 422 `api.result_too_large` — `:export` ашиглана.
+
+        **Эрх:** `REPORT rpt.purchase_journal X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-007.
+      x-permission: REPORT rpt.purchase_journal X
+      x-release: R1
+      x-requirements: [FR-RPT-007]
+      parameters:
+      - {$ref: '#/components/parameters/DateFrom'}
+      - {$ref: '#/components/parameters/DateTo'}
+      - {$ref: '#/components/parameters/VendorIdQ'}
+      responses:
+        '200':
+          description: Тайлан
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TabularReport'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default: {$ref: '#/components/responses/ServerError'}
+  /companies/{companyId}/reports/ebalance-keying-sheet:
+    parameters:
+    - {$ref: '#/components/parameters/CompanyId'}
+    get:
+      operationId: getEbalanceKeyingSheet
+      summary: e-balance-ийн шивэх хуудас
+      tags: [Reports]
+      description: |-
+        Маягт А-гийн мөрийг e-balance-ийн дарааллаар **мянган төгрөгөөр**: мөр бүрийг эхлээд Nearest-ээр бөөрөнхийлж, дараа нь нийлбэрлэнэ; бодит нийлбэрийн бөөрөнхийлсөн утгатай зөрүүг `ROUNDING_DIFFERENCE` мөрөнд гаргана (D-C2, FR-RPT-013 AC1–AC2). Хариу нь `TabularReport` (баганын жагсаалт 14-api §15.6). 5 000-аас олон мөр бол 422 `api.result_too_large` — `:export` ашиглана.
+
+        **Эрх:** `ACTION rpt.ebalance.keying_sheet X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-013.
+      x-permission: ACTION rpt.ebalance.keying_sheet X
+      x-release: R1
+      x-requirements: [FR-RPT-013]
+      parameters:
+      - {name: financialReportId, in: query, required: true, description: 'Маягт А-гийн тайлан (`rpt.financial_report`).', schema: {type: string, format: uuid}}
+      - {$ref: '#/components/parameters/DateFrom'}
+      - {$ref: '#/components/parameters/DateTo'}
+      responses:
+        '200':
+          description: Тайлан
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TabularReport'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default: {$ref: '#/components/responses/ServerError'}
   /companies/{companyId}/reports/{reportCode}:export:
     parameters:
     - {$ref: '#/components/parameters/CompanyId'}
@@ -6492,8 +6773,8 @@ paths:
       description: |-
         Компанид минутад 10 (§13). Үр дүн `Job.result.file.downloadUrl`.
 
-        **Эрх:** `ACTION rpt.report.export X + тухайн REPORT X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-014.
-      x-permission: ACTION rpt.report.export X + тухайн REPORT X
+        **Эрх:** `ACTION rpt.export.excel X + тухайн REPORT X`. **Хувилбар:** R1. **Шаардлага:** FR-RPT-014.
+      x-permission: ACTION rpt.export.excel X + тухайн REPORT X
       x-release: R1
       x-requirements: [FR-RPT-014]
       parameters:
@@ -6603,10 +6884,10 @@ paths:
       summary: UNKNOWN-ийг гараар шийдэх
       tags: [eBarimt]
       description: |-
-        12 §11.2. `NOT_REGISTERED` нь sendData + 30 мин-ээс өмнө 409 `ebarimt.resolution_too_early`; дүн зөрвөл 422 `ebarimt.resolution_amount_mismatch`; ДДТД давхардвал 409 `ebarimt.ddtd_duplicate`.
+        12 §11.2. Зөвхөн `UNKNOWN` баримтад (бусад төлөвт 409 `ebarimt.invalid_state_transition`). `last_attempt_at`-аас хойш 10 мин өнгөрөөгүй бол аль ч шийдвэрт 409 `ebarimt.resolution_too_early`. `REGISTERED`: `ddtd`, `ebarimtDate`, `totalAmountSeen` заавал; дүн зөрвөл 422 `ebarimt.resolution_amount_mismatch`; ДДТД давхардвал 409 `ebarimt.ddtd_duplicate`; үр дүн SUCCESS (QR/сугалаа сэргэхгүй, D-J3). `NOT_REGISTERED`: `posapi_instance.last_send_data_at > last_attempt_at` **ба** `now() − last_attempt_at ≥ 30 мин` биш бол 409 `ebarimt.resolution_too_early`; үр дүн нь хуучин баримт CANCELLED + шинэ PENDING клон (12 §11.3, шинэ `billIdSuffix`) — `:resend`-ийг тусад нь дуудахгүй. PosAPI-г API шууд дуудахгүй (клон outbox-оор ASYNC).
 
-        **Эрх:** `ACTION ebarimt.document.resolve X`. **Хувилбар:** R1. **Шаардлага:** FR-EBR-007.
-      x-permission: ACTION ebarimt.document.resolve X
+        **Эрх:** `ACTION ebarimt.unknown.resolve X`. **Хувилбар:** R1. **Шаардлага:** FR-EBR-007.
+      x-permission: ACTION ebarimt.unknown.resolve X
       x-release: R1
       x-requirements: [FR-EBR-007]
       parameters:
@@ -6644,10 +6925,10 @@ paths:
       summary: Засаад дахин илгээх (клон)
       tags: [eBarimt]
       description: |-
-        12 §11.3: зөвхөн ERROR эсвэл UNKNOWN (NOT_REGISTERED шийдвэрийн дараа). Хуучин баримт CANCELLED, шинэ billIdSuffix. Өөр төлөвт 409 `ebarimt.invalid_state_transition`.
+        12 §11.3–11.4: зөвхөн `ERROR` баримтад (UNKNOWN-ийг `:resolve` `NOT_REGISTERED`-ээр клонлоно). Хуучин баримт CANCELLED (`RESENT_AS:`), шинэ PENDING баримт шинэ `billIdSuffix`-тэй, outbox-оор ASYNC илгээгдэнэ (`POST /rest/receipt`-ийг автоматаар давтахгүй, D-J2). Дүн, тоо, `taxType`, төрөл, ТТД өөрчлөгдөхгүй; зөвхөн `overrides`-ийн eBarimt шинж ба POS. Өөр төлөвт 409 `ebarimt.invalid_state_transition`.
 
-        **Эрх:** `ACTION ebarimt.document.resolve X`. **Хувилбар:** R1. **Шаардлага:** FR-EBR-007.
-      x-permission: ACTION ebarimt.document.resolve X
+        **Эрх:** `ACTION ebarimt.unknown.resolve X`. **Хувилбар:** R1. **Шаардлага:** FR-EBR-007.
+      x-permission: ACTION ebarimt.unknown.resolve X
       x-release: R1
       x-requirements: [FR-EBR-007]
       parameters:
@@ -6687,8 +6968,8 @@ paths:
       description: |-
         12 §11.4.
 
-        **Эрх:** `ACTION ebarimt.document.resolve X`. **Хувилбар:** R1.
-      x-permission: ACTION ebarimt.document.resolve X
+        **Эрх:** `ACTION ebarimt.unknown.resolve X`. **Хувилбар:** R1.
+      x-permission: ACTION ebarimt.unknown.resolve X
       x-release: R1
       parameters:
       - {$ref: '#/components/parameters/IdempotencyKey'}
@@ -6716,6 +6997,44 @@ paths:
         '429': {$ref: '#/components/responses/TooManyRequests'}
         '503': {$ref: '#/components/responses/ServiceUnavailable'}
         default: {$ref: '#/components/responses/ServerError'}
+  /companies/{companyId}/ebarimt/documents/{id}:confirm-manual-void:
+    parameters:
+    - {$ref: '#/components/parameters/CompanyId'}
+    - {$ref: '#/components/parameters/Id'}
+    post:
+      operationId: confirmManualVoidEbarimtDocument
+      summary: Порталд гараар цуцалсныг бүртгэх (B2B)
+      tags: [eBarimt]
+      description: |-
+        12 RET-51, §18.1. Эх баримтын `chainStatus = MANUAL_VOID_REQUIRED` (SUCCESS `B2B_*` баримт, PosAPI-аар `DELETE` хийх боломжгүй) үед хэрэглэгч eBarimt/e-invoice порталд цуцалсны дараа үүнийг бүртгэнэ. PosAPI-г дуудахгүй. `resolution_note`-д `MANUAL_VOID:<note>` нэмэгдэж, гинж `VOIDED` болно. Өөр нөхцөлд 409 `ebarimt.invalid_state_transition`.
+
+        **Эрх:** `ACTION ebarimt.unknown.resolve X`. **Хувилбар:** R1.
+      x-permission: ACTION ebarimt.unknown.resolve X
+      x-release: R1
+      parameters:
+      - {$ref: '#/components/parameters/IdempotencyKey'}
+      - {$ref: '#/components/parameters/IfMatch'}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/EbarimtManualVoidRequest'}}
+      responses:
+        '200':
+          description: Бүртгэгдсэн
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/EbarimtDocument'}}
+          headers:
+            ETag: {$ref: '#/components/headers/ETag'}
+            Idempotent-Replayed: {$ref: '#/components/headers/IdempotentReplayed'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        default: {$ref: '#/components/responses/ServerError'}
   /companies/{companyId}/ebarimt/documents/{id}:send-and-print:
     parameters:
     - {$ref: '#/components/parameters/CompanyId'}
@@ -6725,7 +7044,7 @@ paths:
       summary: PENDING B2C-г шууд илгээж хэвлэх
       tags: [eBarimt]
       description: |-
-        12 §10.5. `print` зөвхөн энэ хариунд (no-store), хадгалахгүй (D-J3).
+        12 §10.5. Зөвхөн `PENDING`, `B2C_RECEIPT`, `operation = SAVE` баримтад (бусад үед 409 `ebarimt.invalid_state_transition`). PosAPI-г ≤ 20 s timeout-той **нэг удаа** дуудна; timeout бол `UNKNOWN` (давтахгүй, D-J2). Worker баримтыг аль хэдийн авсан (claim амжилтгүй) бол 200 `print = null`. `print` (`qrData`, `lottery`) зөвхөн энэ хариунд (`Cache-Control: no-store`), DB/лог/кэш/idempotency-д хадгалахгүй (D-J3); replay хариунд `print = null`.
 
         **Эрх:** `ACTION sales.document.print X`. **Хувилбар:** R1. **Шаардлага:** FR-EBR-008.
       x-permission: ACTION sales.document.print X
@@ -7806,6 +8125,13 @@ components:
         - vendor-aging
         - vat-return
         - financial-report
+        - general-ledger
+        - customer-statement
+        - vendor-statement
+        - cash-bank-book
+        - sales-journal
+        - purchase-journal
+        - ebalance-keying-sheet
         - gl-entries
         - customer-ledger-entries
         - vendor-ledger-entries
@@ -8297,6 +8623,10 @@ components:
           type: string
           enum: [MANUAL, DUE_DATE]
           description: MANUAL = `entries`-ийн дарааллаар; DUE_DATE = төлөх огноо эртийнхээс (FR-PTY-010).
+        postingDate:
+          type: [string, 'null']
+          format: date
+          description: Тулгалтын огноо. Анхдагч = оролцогч entry-үүдийн хамгийн хожуу `posting_date`; түүнээс эрт бол 422 `party.application_date_before_entries`; үе/цонх нээлттэй байх (06 BR-AR-27, FR-PTY-013).
       required: [applyingEntryId]
     ApplyToEntry:
       type: object
@@ -9184,7 +9514,7 @@ components:
         searchName: {type: [string, 'null']}
         kind: {$ref: '#/components/schemas/PartyKind'}
         tin:
-          $ref: '#/components/schemas/TinOrNull'
+          $ref: '#/components/schemas/TinMaskedOrNull'
           description: ТТД (ААН). B2B баримтад заавал.
         registrationNo:
           type: [string, 'null']
@@ -9209,8 +9539,8 @@ components:
         cityTaxPayer: {type: boolean}
         ebarimtConsumerNo:
           type: [string, 'null']
-          description: Иргэний eBarimt дугаар (B2C). Хариунд маскласан.
-          pattern: ^[0-9]{8}$
+          description: Иргэний eBarimt дугаар (B2C). `party.customer` M эрхтэйд бүтэн, бусдад маск `****5678` (13 §10.2 #5).
+          pattern: ^([0-9]{8}|\*{4}[0-9]{4})$
         defaultEbarimtType: {type: string, enum: [AUTO, B2B, B2C, NONE]}
         customerPostingGroupId: {type: string, format: uuid}
         creditLimitLcy: {$ref: '#/components/schemas/Amount'}
@@ -9629,7 +9959,8 @@ components:
       - UNKNOWN
       - CORRECTED
       - VOIDED
-      description: Эх баримт дээр харагдах eBarimt-ийн гаргасан төлөв (12-ebarimt §9.4). Клиент шинэ утгыг тэвчих ёстой (API-VER-03).
+      - MANUAL_VOID_REQUIRED
+      description: Эх баримт дээр харагдах eBarimt-ийн гаргасан төлөв (12-ebarimt §9.4). `MANUAL_VOID_REQUIRED` = SUCCESS B2B баримтыг порталд гараар цуцлах шаардлагатай (12 RET-51). Клиент шинэ утгыг тэвчих ёстой (API-VER-03).
     EbarimtDocument:
       type: object
       properties:
@@ -9818,6 +10149,16 @@ components:
       type: string
       enum: [B2C_RECEIPT, B2B_RECEIPT, B2C_INVOICE, B2B_INVOICE, NONE]
       description: eBarimt баримтын төрөл. `*_INVOICE` нь R2 (D-J1). Клиент шинэ утгыг тэвчих ёстой (API-VER-03).
+    EbarimtManualVoidRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        voidedAt:
+          type: string
+          format: date-time
+          description: Порталд цуцалсан цаг (ISO 8601, offset-той; UTC болгон хадгална, API-JSON-11).
+        note: {type: string, minLength: 10, maxLength: 1000}
+      required: [voidedAt, note]
     EbarimtResendRequest:
       type: object
       additionalProperties: false
@@ -12409,11 +12750,11 @@ components:
           description: Анхдагч D-J1 модоор (12 §4). `*_INVOICE` R2.
         ebarimtCustomerTin:
           $ref: '#/components/schemas/TinOrNull'
-          description: B2B-д заавал.
+          description: '`B2B_*`-д заавал (11 орон, 12 VAL-18); бусад төрөлд `null` байх ёстой, эс бөгөөс `:post` дээр 422 `ebarimt.customer_tin_invalid` (PosAPI: `customerTin` зөвхөн B2B).'
         ebarimtConsumerNo:
           type: [string, 'null']
-          description: Иргэний дугаар (B2C). Хариунд маскласан `12****78`.
-          pattern: ^([0-9]{8}|[0-9]{2}\*{4}[0-9]{2})$
+          description: Иргэний дугаар (8 орон). **Зөвхөн `B2C_RECEIPT`-д**; бусад төрөлд ирвэл `:post` дээр 422 `ebarimt.consumer_no_invalid` (12 VAL-19, PosAPI дүрэм). Хариунд 13 §10.2 #5-ын дагуу: ноорогт `sales.sales_header` M эрхтэйд бүтэн, posted баримтад ба бусдад маск `****5678`.
+          pattern: ^([0-9]{8}|\*{4}[0-9]{4})$
         amount: {$ref: '#/components/schemas/Amount', readOnly: true}
         vatAmount: {$ref: '#/components/schemas/Amount', readOnly: true}
         cityTaxAmount: {$ref: '#/components/schemas/Amount', readOnly: true}
@@ -12451,6 +12792,10 @@ components:
           type: [string, 'null']
           format: uuid
           description: Залруулж буй posted нэхэмжлэхийн тогтвортой id. `appliesToDocNo`-г автоматаар бөглөж тулгана (D-F6).
+        copyLinesFromInvoice:
+          type: boolean
+          default: false
+          description: '`true` бол `correctedInvoiceId`-ийн posted мөрүүдийг (дүн, хөнгөлөлтийн %, бүлэг, dimension, eBarimt шинж) ноорогт хуулна ("Нэхэмжлэхээс буцаалт", 06 BR-SAL-67); дараа нь мөрийн тоог PATCH-аар багасгана. Энэ үед `lines` хоосон байх ёстой (эс бөгөөс 400 `api.request_invalid`); `correctedInvoiceId`-гүй бол 400.'
         appliesToDocType:
           anyOf:
           - {$ref: '#/components/schemas/DocumentType'}
@@ -12506,11 +12851,11 @@ components:
           description: Анхдагч D-J1 модоор (12 §4). `*_INVOICE` R2.
         ebarimtCustomerTin:
           $ref: '#/components/schemas/TinOrNull'
-          description: B2B-д заавал.
+          description: '`B2B_*`-д заавал (11 орон, 12 VAL-18); бусад төрөлд `null` байх ёстой, эс бөгөөс `:post` дээр 422 `ebarimt.customer_tin_invalid` (PosAPI: `customerTin` зөвхөн B2B).'
         ebarimtConsumerNo:
           type: [string, 'null']
-          description: Иргэний дугаар (B2C). Хариунд маскласан `12****78`.
-          pattern: ^([0-9]{8}|[0-9]{2}\*{4}[0-9]{2})$
+          description: Иргэний дугаар (8 орон). **Зөвхөн `B2C_RECEIPT`-д**; бусад төрөлд ирвэл `:post` дээр 422 `ebarimt.consumer_no_invalid` (12 VAL-19, PosAPI дүрэм). Хариунд 13 §10.2 #5-ын дагуу: ноорогт `sales.sales_header` M эрхтэйд бүтэн, posted баримтад ба бусдад маск `****5678`.
+          pattern: ^([0-9]{8}|\*{4}[0-9]{4})$
         lines:
           type: array
           items: {$ref: '#/components/schemas/SalesLineCreate'}
@@ -12598,11 +12943,11 @@ components:
           description: Анхдагч D-J1 модоор (12 §4). `*_INVOICE` R2.
         ebarimtCustomerTin:
           $ref: '#/components/schemas/TinOrNull'
-          description: B2B-д заавал.
+          description: '`B2B_*`-д заавал (11 орон, 12 VAL-18); бусад төрөлд `null` байх ёстой, эс бөгөөс `:post` дээр 422 `ebarimt.customer_tin_invalid` (PosAPI: `customerTin` зөвхөн B2B).'
         ebarimtConsumerNo:
           type: [string, 'null']
-          description: Иргэний дугаар (B2C). Хариунд маскласан `12****78`.
-          pattern: ^([0-9]{8}|[0-9]{2}\*{4}[0-9]{2})$
+          description: Иргэний дугаар (8 орон). **Зөвхөн `B2C_RECEIPT`-д**; бусад төрөлд ирвэл `:post` дээр 422 `ebarimt.consumer_no_invalid` (12 VAL-19, PosAPI дүрэм). Хариунд 13 §10.2 #5-ын дагуу: ноорогт `sales.sales_header` M эрхтэйд бүтэн, posted баримтад ба бусдад маск `****5678`.
+          pattern: ^([0-9]{8}|\*{4}[0-9]{4})$
       description: '`SalesCreditMemo`-ийн JSON Merge Patch (RFC 7396). Илгээсэн талбар л өөрчлөгдөнө; `null` нь сонголттой
         талбарыг цэвэрлэнэ.'
     SalesInvoice:
@@ -12695,11 +13040,11 @@ components:
           description: Анхдагч D-J1 модоор (12 §4). `*_INVOICE` R2.
         ebarimtCustomerTin:
           $ref: '#/components/schemas/TinOrNull'
-          description: B2B-д заавал.
+          description: '`B2B_*`-д заавал (11 орон, 12 VAL-18); бусад төрөлд `null` байх ёстой, эс бөгөөс `:post` дээр 422 `ebarimt.customer_tin_invalid` (PosAPI: `customerTin` зөвхөн B2B).'
         ebarimtConsumerNo:
           type: [string, 'null']
-          description: Иргэний дугаар (B2C). Хариунд маскласан `12****78`.
-          pattern: ^([0-9]{8}|[0-9]{2}\*{4}[0-9]{2})$
+          description: Иргэний дугаар (8 орон). **Зөвхөн `B2C_RECEIPT`-д**; бусад төрөлд ирвэл `:post` дээр 422 `ebarimt.consumer_no_invalid` (12 VAL-19, PosAPI дүрэм). Хариунд 13 §10.2 #5-ын дагуу: ноорогт `sales.sales_header` M эрхтэйд бүтэн, posted баримтад ба бусдад маск `****5678`.
+          pattern: ^([0-9]{8}|\*{4}[0-9]{4})$
         amount: {$ref: '#/components/schemas/Amount', readOnly: true}
         vatAmount: {$ref: '#/components/schemas/Amount', readOnly: true}
         cityTaxAmount: {$ref: '#/components/schemas/Amount', readOnly: true}
@@ -12780,11 +13125,11 @@ components:
           description: Анхдагч D-J1 модоор (12 §4). `*_INVOICE` R2.
         ebarimtCustomerTin:
           $ref: '#/components/schemas/TinOrNull'
-          description: B2B-д заавал.
+          description: '`B2B_*`-д заавал (11 орон, 12 VAL-18); бусад төрөлд `null` байх ёстой, эс бөгөөс `:post` дээр 422 `ebarimt.customer_tin_invalid` (PosAPI: `customerTin` зөвхөн B2B).'
         ebarimtConsumerNo:
           type: [string, 'null']
-          description: Иргэний дугаар (B2C). Хариунд маскласан `12****78`.
-          pattern: ^([0-9]{8}|[0-9]{2}\*{4}[0-9]{2})$
+          description: Иргэний дугаар (8 орон). **Зөвхөн `B2C_RECEIPT`-д**; бусад төрөлд ирвэл `:post` дээр 422 `ebarimt.consumer_no_invalid` (12 VAL-19, PosAPI дүрэм). Хариунд 13 §10.2 #5-ын дагуу: ноорогт `sales.sales_header` M эрхтэйд бүтэн, posted баримтад ба бусдад маск `****5678`.
+          pattern: ^([0-9]{8}|\*{4}[0-9]{4})$
         lines:
           type: array
           items: {$ref: '#/components/schemas/SalesLineCreate'}
@@ -12864,11 +13209,11 @@ components:
           description: Анхдагч D-J1 модоор (12 §4). `*_INVOICE` R2.
         ebarimtCustomerTin:
           $ref: '#/components/schemas/TinOrNull'
-          description: B2B-д заавал.
+          description: '`B2B_*`-д заавал (11 орон, 12 VAL-18); бусад төрөлд `null` байх ёстой, эс бөгөөс `:post` дээр 422 `ebarimt.customer_tin_invalid` (PosAPI: `customerTin` зөвхөн B2B).'
         ebarimtConsumerNo:
           type: [string, 'null']
-          description: Иргэний дугаар (B2C). Хариунд маскласан `12****78`.
-          pattern: ^([0-9]{8}|[0-9]{2}\*{4}[0-9]{2})$
+          description: Иргэний дугаар (8 орон). **Зөвхөн `B2C_RECEIPT`-д**; бусад төрөлд ирвэл `:post` дээр 422 `ebarimt.consumer_no_invalid` (12 VAL-19, PosAPI дүрэм). Хариунд 13 §10.2 #5-ын дагуу: ноорогт `sales.sales_header` M эрхтэйд бүтэн, posted баримтад ба бусдад маск `****5678`.
+          pattern: ^([0-9]{8}|\*{4}[0-9]{4})$
       description: '`SalesInvoice`-ийн JSON Merge Patch (RFC 7396). Илгээсэн талбар л өөрчлөгдөнө; `null` нь сонголттой талбарыг
         цэвэрлэнэ.'
     SalesLine:
@@ -13115,10 +13460,120 @@ components:
       pattern: ^[0-9]{7,14}$
       description: ТТД (taxpayer id), зөвхөн цифр.
       examples: ['5317878']
+    TinMaskedOrNull:
+      type: [string, 'null']
+      pattern: ^([0-9]{7,14}|\*{4,11}[0-9]{3})$
+      description: 'Хариуны ТТД. ААН-д бүтэн (7–14 цифр); `INDIVIDUAL`-ийн `civil_id` нь маск `*` × (урт − 3) + сүүлийн 3 орон (13 §10.4, жишээ `*********123`). Бүтэн утгыг `:unmask`-аар (13 §10.5).'
     TinOrNull:
       type: [string, 'null']
       pattern: ^[0-9]{7,14}$
       description: ТТД (taxpayer id), зөвхөн цифр. `null` зөвшөөрнө.
+    VatEntry:
+      type: object
+      x-db-table: tax.vat_entry
+      description: НӨАТ-ын бичилт (BC T254). Бүх талбар readOnly.
+      properties:
+        id: {type: string, format: uuid, readOnly: true}
+        entryNo: {type: integer, format: int64, readOnly: true}
+        entryType: {type: string, enum: [SALE, PURCHASE, SETTLEMENT], readOnly: true}
+        postingDate: {type: string, format: date, readOnly: true}
+        vatDate: {type: string, format: date, readOnly: true}
+        documentDate: {type: [string, 'null'], format: date, readOnly: true}
+        documentType: {$ref: '#/components/schemas/DocumentType', readOnly: true}
+        documentNo: {$ref: '#/components/schemas/DocumentNo', readOnly: true}
+        externalDocumentNo: {type: [string, 'null'], readOnly: true}
+        base: {$ref: '#/components/schemas/Amount', readOnly: true}
+        amount: {$ref: '#/components/schemas/Amount', readOnly: true}
+        nonDeductibleBase: {$ref: '#/components/schemas/Amount', readOnly: true}
+        nonDeductibleAmount: {$ref: '#/components/schemas/Amount', readOnly: true}
+        vatDifference: {$ref: '#/components/schemas/Amount', readOnly: true}
+        vatCalculationType: {$ref: '#/components/schemas/VatCalculationType', readOnly: true}
+        vatPercent: {$ref: '#/components/schemas/Percent', readOnly: true}
+        vatIdentifier: {type: [string, 'null'], readOnly: true}
+        vatCategory: {type: [string, 'null'], enum: [VAT10, VAT0, EXEMPT, NOVAT, null], readOnly: true}
+        vatBusPostingGroupCode: {type: [string, 'null'], readOnly: true}
+        vatProdPostingGroupCode: {type: [string, 'null'], readOnly: true}
+        ebarimtTaxType:
+          anyOf:
+          - {$ref: '#/components/schemas/EbarimtTaxType'}
+          - {type: 'null'}
+          readOnly: true
+        billToPayToType: {type: [string, 'null'], enum: [CUSTOMER, VENDOR, null], readOnly: true}
+        billToPayToId: {type: [string, 'null'], format: uuid, readOnly: true}
+        billToPayToNumber: {type: [string, 'null'], readOnly: true}
+        partyTin: {type: [string, 'null'], readOnly: true}
+        transactionNo: {type: integer, format: int64, readOnly: true}
+        glRegisterNo: {type: integer, format: int64, readOnly: true}
+        closed: {type: boolean, readOnly: true}
+        closedByEntryNo: {type: [integer, 'null'], format: int64, readOnly: true}
+        vatReturnPeriodId: {type: [string, 'null'], format: uuid, readOnly: true}
+        deductibleConfirmed: {type: boolean, readOnly: true}
+        deductibleConfirmedAt: {type: [string, 'null'], format: date-time, readOnly: true}
+        supplierEbarimtId: {$ref: '#/components/schemas/DdtdOrNull', readOnly: true}
+        reversed: {type: boolean, readOnly: true}
+        createdAt: {type: string, format: date-time, readOnly: true}
+      required: [id, entryNo, entryType, postingDate, vatDate, documentNo, base, amount, vatPercent, transactionNo, closed, deductibleConfirmed]
+    VatEntryList:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/VatEntry'}}
+        nextCursor:
+          type: [string, 'null']
+          description: Дараагийн хуудасны opaque cursor (`?after=`). Сүүлийн хуудсанд `null`.
+        hasMore: {type: boolean}
+      description: '`VatEntry`-ийн keyset хуудас (§4.1).'
+    TabularReport:
+      type: object
+      description: Ерөнхий хүснэгтэн тайлан (14-api §15.6). Бүх утга string (мөнгө D-C1, огноо `YYYY-MM-DD`) эсвэл `null`. Багана ба хэсгийн бүтэц нь `reportCode`-оос хамаарч тогтмол (v1 дотор зөвхөн нэмэгдэнэ, API-VER-02).
+      properties:
+        reportCode: {type: string, readOnly: true}
+        parameters:
+          type: object
+          description: Хүсэлтийн параметрийн эцсийн (анхдагч утга орсон) хэлбэр.
+          readOnly: true
+        columns:
+          type: array
+          readOnly: true
+          items:
+            type: object
+            properties:
+              key: {type: string, pattern: '^[a-z][A-Za-z0-9]*$'}
+              title: {type: string, description: '`Accept-Language`-ээр орчуулагдсан гарчиг.'}
+              type: {type: string, enum: [TEXT, DATE, AMOUNT, INTEGER]}
+            required: [key, title, type]
+        sections:
+          type: array
+          readOnly: true
+          description: Данс/харилцагч/мөнгөний данс тус бүрийн хэсэг. Журнал ба шивэх хуудсанд нэг хэсэг.
+          items:
+            type: object
+            properties:
+              key: {type: string, description: 'Хэсгийн түлхүүр (жишээ дансны дугаар).'}
+              title: {type: string}
+              openingBalance: {$ref: '#/components/schemas/AmountOrNull'}
+              rows:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    values:
+                      type: object
+                      additionalProperties: {type: [string, 'null']}
+                    rowType: {type: string, enum: [DETAIL, SUBTOTAL, ROUNDING_DIFFERENCE]}
+                    drillDown:
+                      type: [object, 'null']
+                      properties:
+                        resource: {type: string, description: 'Жишээ `gl-transactions`, `sales-invoices`.'}
+                        id: {type: string, format: uuid}
+                  required: [values, rowType]
+              closingBalance: {$ref: '#/components/schemas/AmountOrNull'}
+              totals:
+                type: object
+                additionalProperties: {type: [string, 'null']}
+            required: [key, title, rows]
+        generatedAt: {type: string, format: date-time, readOnly: true}
+      required: [reportCode, parameters, columns, sections, generatedAt]
     TrialBalance:
       type: object
       properties:
@@ -13296,7 +13751,7 @@ components:
         searchName: {type: [string, 'null']}
         kind: {$ref: '#/components/schemas/PartyKind'}
         tin:
-          $ref: '#/components/schemas/TinOrNull'
+          $ref: '#/components/schemas/TinMaskedOrNull'
           description: ТТД (ААН). B2B баримтад заавал.
         registrationNo:
           type: [string, 'null']
@@ -13319,7 +13774,7 @@ components:
         pricesIncludingVat: {type: boolean}
         applicationMethod: {type: string, enum: [MANUAL, APPLY_TO_OLDEST]}
         ebarimtMerchantTin:
-          $ref: '#/components/schemas/TinOrNull'
+          $ref: '#/components/schemas/TinMaskedOrNull'
           description: Нийлүүлэгчийн eBarimt дээрх борлуулагчийн ТТД.
         vendorPostingGroupId: {type: string, format: uuid}
         blocked: {type: string, enum: [NONE, PAYMENT, ALL]}

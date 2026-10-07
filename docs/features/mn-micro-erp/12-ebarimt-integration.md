@@ -1,6 +1,6 @@
 # 12. eBarimt (PosAPI 3.0) интеграц — хөгжүүлэлтэд бэлэн тодорхойлолт
 
-> **Төлөв:** Хөгжүүлэлтэд бэлэн (draft-1). **Огноо:** 2026-10-06. **Хамрах модуль:** `EBarimt` (schema `ebarimt`), Sales/Purchases-ийн eBarimt-тэй харилцах хэсэг, `integration.outbox`.
+> **Төлөв:** Хөгжүүлэлтэд бэлэн (draft-2, adversarial review 2026-10-07 — төгсгөлийн "Хяналтын тэмдэглэл"-ийг үз). **Огноо:** 2026-10-06. **Хамрах модуль:** `EBarimt` (schema `ebarimt`), Sales/Purchases-ийн eBarimt-тэй харилцах хэсэг, `integration.outbox`.
 > **Эх сурвалж (давамгайлах дарааллаар):** [DECISIONS.md](./DECISIONS.md) (D-J1..D-J4, D-K1, D-K4, D-I6, D-E2..D-E6) → [db/schema/130_ebarimt.sql](./db/schema/130_ebarimt.sql) ба бусад `db/schema/*.sql` (**нэрийн цорын ганц эх сурвалж**, D-K1) → [01-requirements.md](./01-requirements.md) FR-EBR-001..021, CMP-022..028 → [02-architecture.md](./02-architecture.md) §4.2.6, §9.1–9.3, §10.4–10.5, §11 → [ADR-0012](./adr/ADR-0012-outbox-idempotency-ebarimt.md), [ADR-0013](./adr/ADR-0013-hosting-in-mongolia-posapi-operator.md), [ADR-0020](./adr/ADR-0020-observability-otel-redaction.md) → [03-domain-model.md](./03-domain-model.md) §3.9, §6.3–6.4 → судалгаа [mn-integrations-market.md](./research/mn-integrations-market.md) §2–3, §11–12, [mn-tax.md](./research/mn-tax.md) R3, R5, R14, R15.
 > **PosAPI-ийн хувилбар:** developer.itc.gov.mn, PosAPI **v3.2.48** (2026-09-15). Тодорхойгүй зүйлийг таамаглаагүй: "UNVERIFIED" гэж тэмдэглээд §27-д асуулт, §25-д staging тест болгосон. Албан ёсны тодруулга: **posapi@itc.gov.mn** (9997-4468).
 
@@ -103,7 +103,7 @@ flowchart LR
 
 - **TOP-01.** Production-ийн бүх PosAPI instance манай Монгол дахь ДЦ-ийн `ebarimt` VLAN-д ажиллана (ADR-0013). Instance бүр `ebarimt.posapi_instance`-д нэг мөртэй (`code`, `environment`, `base_url`, `operator_tin`, `max_merchants`, `status`).
 - **TOP-02.** Мерчант (= компани, нэг ТТД) яг нэг instance-д оноогдоно (`ebarimt_setup.posapi_instance_id`). Оноолт тогтвортой (sticky): автоматаар шилжүүлэхгүй. Шилжүүлэх журам UNVERIFIED (OQ-12).
-- **TOP-03.** Нэг instance-ийн хязгаар: ≤ 1 000 мерчант, ≤ 100 000 баримт/өдөр (PosAPI-ийн дүрэм). Бид **80%**-иар дүүргэнэ: ≤ 800 мерчант, ≤ 70 000 баримт/өдөр (ADR-0013 §3). `posapi_instance.max_merchants`-ийг хатуу хязгаар (1000) гэж үзнэ; зөөлөн хязгаар (800) нь app тохиргоо `Ebarimt:PosApi:MerchantSoftLimit` (SCR-07-оор багана болгох).
+- **TOP-03.** Нэг instance-ийн хязгаар: ≤ 1 000 мерчант, ≤ 100 000 баримт/өдөр (PosAPI-ийн дүрэм). Бид мерчантаар **80%** (≤ 800), баримтаар **70%** (≤ 70 000 баримт/өдөр) хүртэл дүүргэнэ (ADR-0013 §3; 70 000 нь 100 000-ийн 70%, 80% биш). `posapi_instance.max_merchants`-ийг хатуу хязгаар (1000) гэж үзнэ; зөөлөн хязгаар (800) нь app тохиргоо `Ebarimt:PosApi:MerchantSoftLimit` (SCR-07-оор багана болгох).
 - **TOP-04.** `status`: `ACTIVE` (шинэ мерчант авна), `DRAINING` (шинэ мерчант авахгүй, байгаа нь ажиллана), `DISABLED` (илгээлт хийхгүй; §10.2, VAL-01).
 - **TOP-05.** Staging нь тусдаа instance (`environment = 'STAGING'`), ITC-ийн staging-тэй холбогдоно (`st-operator.ebarimt.mn`, auth `https://st.auth.itc.gov.mn/auth/realms/Staging`). Staging-д **ачааллын тест хийхгүй**; ачааллыг stub PosAPI-гаар шалгана.
 - **TOP-06.** `ebarimt_setup.environment` нь оноосон instance-ийн `environment`-тэй тэнцүү байна (VAL-02). Production компанийг staging instance-д оноохыг хориглоно.
@@ -111,19 +111,24 @@ flowchart LR
 ### 2.2 Instance сонгох алгоритм
 
 ```text
-function PickInstance(environment):
-    candidates = SELECT i.*, count(s.id) AS merchants
+function PickInstance(environment, expectedDaily):
+    // ebarimt.fn_instance_merchant_counts() (SCR-07): instance бүрийн нийлбэр л буцаана, тенантын мэдээлэлгүй
+    candidates = SELECT i.*, c.merchants, c.weighted_load, c.expected_receipts
                    FROM ebarimt.posapi_instance i
-                   LEFT JOIN ebarimt.ebarimt_setup s ON s.posapi_instance_id = i.id   -- worker/ops context (глобал)
+                   JOIN ebarimt.fn_instance_merchant_counts() c ON c.posapi_instance_id = i.id
                   WHERE i.environment = environment AND i.status = 'ACTIVE'
-                  GROUP BY i.id
-    candidates = candidates.where(c => c.merchants < SoftLimit(c))      -- 800
-    if candidates is empty: raise ebarimt.no_instance_capacity          -- ops alert P2
-    return candidates.orderBy(c => c.merchants).ThenBy(c => c.code).first()
+    // merchants         = оноогдсон мерчантын тоо
+    // weighted_load     = Σ max(1, coalesce(expected_daily_receipts, 0) / 300)   (TOP-08; SCR-04 хүртэл жин = 1)
+    // expected_receipts = Σ coalesce(expected_daily_receipts, 0)
+    candidates = candidates.where(c => c.merchants < MerchantSoftLimit(c)                        // 800
+                                    and c.expected_receipts + expectedDaily <= ReceiptSoftLimit(c)) // 70 000
+    if candidates is empty: raise ebarimt.no_instance_capacity          // ops alert P2
+    return candidates.orderBy(c => c.weighted_load).ThenBy(c => c.code).first()
 ```
 
-- **TOP-07.** `ebarimt_setup` тенантын хүснэгт тул мерчантын тоолол нь ops/worker-ийн SECURITY DEFINER функцээр явна (энэ функцийг 02-architecture §7.6-ийн `fn_list_active_companies`-тэй ижил загвараар нэмнэ; SCR-07).
-- **TOP-08.** Өдөрт 300-аас олон баримт хүлээгдэж буй мерчант (wizard-ийн асуулт "өдөрт хэдэн баримт") instance-уудад тэнцүү тархана: тооцоонд мерчант бүрийг `max(1, expected_daily/300)` жингээр тоолно.
+- **TOP-07.** `ebarimt_setup` тенантын хүснэгт (RLS) тул тоололыг SECURITY DEFINER `ebarimt.fn_instance_merchant_counts()` (SCR-07) хийнэ; энэ нь зөвхөн instance бүрийн нийлбэр тоог буцаадаг тул wizard-ийг ажиллуулдаг `erp-api` (`app_user`) болон worker (`app_worker`) хоёулаа EXECUTE эрхтэй (02-architecture §7.6-ийн `fn_list_active_companies` загвар, гэхдээ тенантын id буцаахгүй). SCR-07 хүртэл: `PickInstance`-ийг `ebarimt.merchant.register` outbox handler (worker) дотор дуудаж `posapi_instance_id`-г тэнд онооно; wizard зөвхөн `environment`-ийг сонгоно. Зэрэг хоёр wizard зөөлөн хязгаарыг 1-ээр хэтрүүлж болно (зөөлөн хязгаар тул зөвшөөрнө).
+- **TOP-08.** Өдөрт 300-аас олон баримт хүлээгдэж буй мерчант (wizard-ийн асуулт "өдөрт хэдэн баримт", `expected_daily_receipts`, SCR-04) instance-уудад тэнцүү тархана: тооцоонд мерчант бүрийг `max(1, expected_daily/300)` жингээр тоолно (`weighted_load`).
+- **TOP-09 (PosAPI-ийн дэд бүтцийн шаардлага, CMP-027).** Instance бүрийн VM: PosAPI-ийн локал DB-тэй ping **< 100 ms**, чөлөөт диск **≥ 1 GB** (диск 80% дүүрэхэд P2 alert), сүлжээ **≥ 80 Mbps**, зөвхөн дотоод сүлжээ, зөвхөн Монголын IP-ээс гарна (research mn-integrations-market §2.5; skill §9). PosAPI VM бүр дээрх node exporter (ба PosAPI-ийн локал DB-ийн ping-ийг хэмждэг жижиг probe) `erp_posapi_disk_free_bytes`, `erp_posapi_db_ping_seconds` метрик гаргана (§14.3-ийн alert).
 
 ### 2.3 Мерчант бүртгэх урсгал (`saveOprMerchants`)
 
@@ -156,7 +161,7 @@ Schema-д бүртгэлийн төлөвийн багана байхгүй (`re
 ```
 
 - **REG-03.** Амжилттай бол `registered_with_operator_at = now()`. Мерчант өөрөө **e-invoice эсвэл Ebarimt-Mobile**-д нэвтэрч хүсэлтийг баталгаажуулна. Wizard нь энэ алхмыг дэлгэцэнд заавар болгон харуулна.
-- **REG-04.** `AWAITING_CONFIRMATION` үед `ebarimt.info_poll` job 15 мин тутам `/rest/info`-ийн `merchants[].tin`-д ТТД орсон эсэхийг шалгана. Орсон бол `enabled = true` (ACTIVE), `MerchantActivated` event, Owner-т мэдэгдэл.
+- **REG-04.** `AWAITING_CONFIRMATION` үед `ebarimt.info_poll` job (5 мин тутам, §14.1; 02-architecture §9.3-ийн "15 мин" нь энэ job-ийн давтамжаар солигдоно, §28) `/rest/info`-ийн `merchants[].tin`-д ТТД орсон эсэхийг шалгана. Орсон бол `enabled = true` (ACTIVE), `MerchantActivated` event, Owner-т мэдэгдэл.
 - **REG-05.** 14 хоног `AWAITING_CONFIRMATION`-д байвал Owner-т сануулга, манай ops-д мэдэгдэл.
 - **REG-06.** ACTIVE мерчантын ТТД `/rest/info`-оос алга болбол P2 alert, мерчантын шинэ илгээлтийг зогсоохгүй (PosAPI өөрөө ERROR буцаана), гэхдээ хяналтын самбарт "Мерчант PosAPI-д харагдахгүй" анхааруулга гарна.
 
@@ -170,7 +175,7 @@ Schema-д бүртгэлийн төлөвийн багана байхгүй (`re
 |---|---|---|---|
 | 1 | Мерчантын ТТД | `ebarimt_setup.merchant_tin` | анхдагч `company_setup.tin`; `getInfo?tin=` (SET-01) |
 | 2 | Нэр, НӨАТ/НХАТ төлөгч эсэх | `merchant_name`, `vat_payer`, `city_tax_payer` | `getInfo`-ийн `name`, `vatPayer`, `cityPayer` (SET-02) |
-| 3 | Дүүрэг/хороо | `district_code` (4 орон) | `getBranchInfo` жагсаалтаас сонгоно (SET-03) |
+| 3 | Дүүрэг/хороо | `district_code` (4 орон) | анхдагч `company_setup.district_code` (бөглөгдсөн бол); `getBranchInfo` жагсаалтаас сонгоно/баталгаажуулна (SET-03) |
 | 4 | Салбар | `branch_no` (анхдагч `001`) | 3 орон |
 | 5 | POS | `ebarimt.ebarimt_pos` (`pos_no`, `is_default`, `bank_account_id`) | R1: `^[0-9]{3}$` (SET-05) |
 | 6 | B2C анхдагч | `default_b2c_when_no_tin` | анхдагч `true` |
@@ -206,7 +211,7 @@ Schema-д бүртгэлийн төлөвийн багана байхгүй (`re
 ### 3.3 Харилцагчийн ТТД баталгаажуулах
 
 - **SET-10.** Харилцагчийн карт хадгалахад `tin` бөглөгдсөн бол `getInfo?tin=` дуудна. Үр дүнг (олдсон эсэх, нэр, `vatPayer`, `cityPayer`, огноо) SCR-05-ийн кэшид (R1-д түр: API процессын санах ойд 24 цаг + `party.customer.vat_registered`-ийг шинэчлэх санал) хадгална.
-- **SET-11.** Хэрэглэгч хуулийн этгээдийн **7 оронтой улсын бүртгэлийн дугаар** оруулбал `getTinInfo?regNo=` → 11 оронтой ТТД болгоно. **Иргэний регистрээр ТТД хайхыг хориглоно**: 2026-06-15-аас ITC хаасан, мөн хувь хүний мэдээлэл (mn-integrations-market §7). Иргэний регистрийг ТТД-ийн түлхүүр болгож хэрэглэхгүй.
+- **SET-11.** Хэрэглэгч хуулийн этгээдийн **7 оронтой улсын бүртгэлийн дугаар** оруулбал `getTinInfo?regNo=` → 11 оронтой ТТД болгоно. **Иргэний регистрээр ТТД хайхыг хориглоно**: skill-ийн дагуу ITC 2026-06-15-аас иргэний регистрээр хаасан (огноог бие даасан эх сурвалжаар баталгаажуулаагүй — mn-integrations-market §2.1 fact-check: UNVERIFIED; TS-28-аар шалгана), мөн хувь хүний мэдээлэл (mn-integrations-market §7). Иргэний регистрийг ТТД-ийн түлхүүр болгож хэрэглэхгүй.
 - **SET-12.** `getInfo` түр ажиллахгүй (timeout, 5xx) бол харилцагчийг хадгалахыг зогсоохгүй; тэмдэг "ТТД шалгагдаагүй" үлдэж, posting үед дахин шалгана (VAL-18).
 
 ---
@@ -243,25 +248,34 @@ flowchart TD
 ### 4.2 Pseudo-code
 
 ```text
-function DecideType(postedHeader, customer, setup, salesSetup, now):
-    if setup is null or not setup.enabled:            return (NOT_CONFIGURED, null)
-    if not salesSetup.ebarimt_on_posting:             return (NONE, reason='EXTERNAL_ISSUER')
-    requested = draftHeader.ebarimt_receipt_type       // snapshot нь posted header-т орно
+// Зөвхөн БОРЛУУЛАЛТЫН НЭХЭМЖЛЭХэд. Кредит нот төрлөө гинжээс өвлөнө (TYP-06, §12.8) — DecideType-ийг дуудахгүй.
+// Буцаах утга: (outcome, type, customerTin, consumerNo); outcome ∈ {ISSUE, NOT_CONFIGURED, NONE}.
+// type нь posted header-ийн ebarimt_receipt_type-д snapshot болно (TYP-07).
+function DecideType(draftHeader, customer, setup, salesSetup, now):
+    if not salesSetup.ebarimt_on_posting:             return (NONE, 'NONE', null, null)       // reason EXTERNAL_ISSUER (DSP-03)
+    requested = draftHeader.ebarimt_receipt_type
     if requested == 'NONE':
         require permission ebarimt.document.override (X) and draftHeader.reason_code_id is not null
-        return (NONE, reason='USER_OVERRIDE')
+        return (NONE, 'NONE', null, null)                                                      // reason USER_OVERRIDE
     if requested is null:
         requested = switch customer.default_ebarimt_type:
             'B2B'  -> 'B2B_RECEIPT'
             'B2C'  -> 'B2C_RECEIPT'
-            'NONE' -> return (NONE, reason='CUSTOMER_DEFAULT')
-            'AUTO' -> IsB2B(customer, draftHeader) ? 'B2B_RECEIPT' : 'B2C_RECEIPT'
-    if R2 and setup.invoice_flow_enabled and IsCreditSale(draftHeader):   // R2: due_date > posting_date ба bal_account байхгүй
+            'NONE' -> return (NONE, 'NONE', null, null)                                         // reason CUSTOMER_DEFAULT
+            'AUTO' -> IsB2B(customer, draftHeader) ? 'B2B_RECEIPT' : B2cOrRequireTin(customer, setup)   // TYP-08
+    if R2 and setup?.invoice_flow_enabled and IsCreditSale(draftHeader):  // R2: due_date > posting_date ба bal_account байхгүй
         requested = requested.replace('_RECEIPT', '_INVOICE')
     if R1 and requested ends with '_INVOICE': raise ebarimt.invoice_flow_not_available   // D-J1
     customerTin = requested starts 'B2B' ? coalesce(draftHeader.ebarimt_customer_tin, customer.tin) : null
     consumerNo  = requested == 'B2C_RECEIPT' ? coalesce(draftHeader.ebarimt_consumer_no, customer.ebarimt_consumer_no) : null
-    return (requested, customerTin, consumerNo)
+    if setup is null or not setup.enabled:            // төрлийг ШИЙДСЭНИЙ ДАРАА шалгана (TYP-07: snapshot-д төрөл бичигдэнэ)
+        return (NOT_CONFIGURED, requested, customerTin, consumerNo)
+    return (ISSUE, requested, customerTin, consumerNo)
+
+function B2cOrRequireTin(customer, setup):          // TYP-08
+    if setup is not null and setup.default_b2c_when_no_tin == false and customer.kind == 'LEGAL' and customer.country_code == 'MN':
+        raise ebarimt.customer_tin_required           // хүчинтэй 11 оронтой ТТД-гүй ААН-д B2C гаргахыг хориглосон тохиргоо
+    return 'B2C_RECEIPT'
 
 function IsB2B(customer, draftHeader):
     tin = coalesce(draftHeader.ebarimt_customer_tin, customer.tin)
@@ -277,7 +291,8 @@ function IsB2B(customer, draftHeader):
 - **TYP-04.** R1-д B2B нь зөвхөн **11 оронтой ТТД-тэй хуулийн этгээдэд** (D-J1). Хувь хүн бизнес эрхлэгч (12–14 оронтой `civil_id`) `B2C_RECEIPT` авна; түүний `civil_id`-г `customerTin`-д илгээхгүй, `ebarimt_document.customer_tin`-д хадгалахгүй ([13-security-audit-tenancy.md](./13-security-audit-tenancy.md) SEC-PII-03/06: хувь хүний ТТД нь PII-S, шифрлэгдсэн). ITC/татварын зөвлөх хувь хүнд B2B шаардлагатай гэвэл (OQ-23) шифрлэлтийг тайлж илгээх урсгалыг 13-тай хамт тусад нь шийднэ.
 - **TYP-05.** Гадаад харилцагч (`kind = 'FOREIGN'`, Монголын ТТД-гүй) үргэлж `B2C_RECEIPT` (`consumerNo`-гүй).
 - **TYP-06.** Кредит нотын eBarimt төрөл нь засаж буй гинжний **төрлийг өвлөнө** (`ebarimt_type`, `customer_tin`, `consumer_no` ижил). Төрөл солих (B2C → B2B) бол бүтэн цуцлах кредит нот + шинэ нэхэмжлэх (§12.1).
-- **TYP-07.** Posted header-ийн `ebarimt_receipt_type`, `ebarimt_customer_tin`, `ebarimt_consumer_no` нь эцсийн шийдвэрийн snapshot (immutable). NOT_CONFIGURED үед `ebarimt_receipt_type`-д шийдвэрлэсэн төрлийг (жишээ нь `B2C_RECEIPT`) бичнэ; баримт үүсээгүйг `ebarimt_document` байхгүйгээр тодорхойлно.
+- **TYP-07.** Posted header-ийн `ebarimt_receipt_type`, `ebarimt_customer_tin`, `ebarimt_consumer_no` нь эцсийн шийдвэрийн snapshot (immutable). NOT_CONFIGURED үед `ebarimt_receipt_type`-д шийдвэрлэсэн төрлийг (жишээ нь `B2C_RECEIPT`) бичнэ (тиймээс `DecideType` нь setup-ийг төрөл шийдсэний **дараа** шалгана); баримт үүсээгүйг `ebarimt_document` байхгүйгээр тодорхойлно. `ebarimt_on_posting = false` (гадны систем), хэрэглэгчийн override, харилцагчийн `NONE` үед `'NONE'` бичнэ. NONE-ийн шалтгааныг (`USER_OVERRIDE` / `CUSTOMER_DEFAULT` / `EXTERNAL_ISSUER` / `WINDOW_CLOSED_OVERRIDE`) хадгалах багана schema-д байхгүй тул SCR-21; түүнийг хүртэл `reason_code_id` бөглөгдсөн бол `USER_OVERRIDE`, үгүй бол тайланд "тодорхойгүй" гэж харуулна.
+- **TYP-08 (`default_b2c_when_no_tin`).** `ebarimt_setup.default_b2c_when_no_tin = true` (анхдагч): `AUTO` харилцагч B2B-ийн нөхцөлийг (IsB2B) хангахгүй бол `B2C_RECEIPT`. `false`: Монголын `kind = 'LEGAL'` харилцагч хүчинтэй 11 оронтой, `getInfo`-оор олдсон ТТД-гүй бол posting `ebarimt.customer_tin_required` (422)-оор зогсоно (ААН-д B2C баримт андуурч гаргахаас сэргийлэх); `INDIVIDUAL`, `FOREIGN` харилцагчид нөлөөлөхгүй.
 
 ---
 
@@ -285,7 +300,7 @@ function IsB2B(customer, draftHeader):
 
 ### 5.1 Модулийн үүрэг
 
-- **MAP-00.** EBarimt модуль Sales-аас хамаарахгүй (02-architecture §4.2.6). Sales нь `EBarimt.Contracts`-ийн `ReceiptRequest`-ийг бөглөнө (`ISalesEbarimtMapper`): мөр бүрийн дүн, `taxType`, код, `source_line_no`. EBarimt нь (1) төрөл ба ТТД-ийн шалгалт, (2) гинж (`inactiveId`, `reportMonth`), (3) мөрийг item болгох (§6.2), (4) шалгалт (§8), (5) `billIdSuffix`, (6) хадгалалт ба outbox-ийг хариуцна. Хоёулаа **posting transaction дотор** `IEbarimtReceiptQueue.EnqueueAsync(request, tx)`-ээр ажиллана.
+- **MAP-00.** EBarimt модуль Sales-аас хамаарахгүй (02-architecture §4.2.6). Sales нь `EBarimt.Contracts`-ийн `ReceiptRequest`-ийг бөглөнө (`ISalesEbarimtMapper`): мөр бүрийн дүн, `taxType`, код, `source_line_no`. EBarimt нь (1) төрөл ба ТТД-ийн шалгалт, (2) гинж (`inactiveId`, `reportMonth`), (3) мөрийг item болгох (§6.2), (4) шалгалт (§8), (5) `billIdSuffix`, (6) хадгалалт ба outbox-ийг хариуцна. Хоёулаа **posting transaction дотор** ажиллана: posted header-ийг бичихээс өмнө `IEbarimtReceiptQueue.ResolveTypeAsync(draft, customer, tx)` (төрлийн snapshot, TYP-07), posted баримтыг бичсний дараа `IEbarimtReceiptQueue.EnqueueAsync(request, tx)` (§10.1). `ResolveTypeAsync` нь 02-architecture §4.2.6-ийн нийтийн интерфейсэд нэмэгдэх санал (§28).
 
 ### 5.2 Толгой (header)
 
@@ -328,7 +343,7 @@ function IsB2B(customer, draftHeader):
 |---|---|---|
 | `name` | posted мөрийн `description` → бараа/дансны нэр | `trim`, хоосон бол VAL-13. 255 тэмдэгтээс урт бол таслаад `…` (урт хязгаар UNVERIFIED, OQ-18) |
 | `barCode` | posted мөрийн `barcode` (ноорогт `item_unit_of_measure.barcode` → `item.barcode`-оос) | Байхгүй бол MAP-05 |
-| `barCodeType` | `item.barcode_type` (`GS1`/`ISBN`/`UNDEFINED`) | MAP-05/06 |
+| `barCodeType` | Баркод `item.barcode`-оос ирсэн бол `item.barcode_type` (`GS1`/`ISBN`/`UNDEFINED`); `item_unit_of_measure.barcode`-оос ирсэн бол тухайн мөрөнд төрөл хадгалах багана байхгүй (SCR-20) тул GS1 хяналтын орон таарвал `GS1`, эс бөгөөс `UNDEFINED` (MAP-06-ийн шалгалтыг `item_unit_of_measure` хадгалах үед мөн хийнэ) | MAP-05/06. Enqueue үед тогтоож `ebarimt_document_line.bar_code_type`-д snapshot болно |
 | `classificationCode` | posted мөрийн `classification_code` → `item.classification_code` → `ebarimt_setup.default_classification_code` (SCR-04) | **Яг 7 орон**, кэшид байх (VAL-08) |
 | `taxProductCode` | posted мөрийн `tax_product_code` → `item.tax_product_code` → `vat_posting_setup.ebarimt_tax_product_code` | `VAT_ABLE`-д `null`; бусдад **заавал** (VAL-09) |
 | `measureUnit` | `inv.unit_of_measure.ebarimt_measure_unit` (posted `unit_of_measure_code`-оор) → тухайн `code` → `"ш"` | Хоосон байхгүй |
@@ -388,7 +403,7 @@ function IsB2B(customer, draftHeader):
 
 ### 6.1 Хатуу дүрэм
 
-- **AMT-01.** Бүх дүн **НӨАТ ба НХАТ шингэсэн** (`totalAmount`, `unitPrice`). Компанийн үнэ НӨАТ-гүй (`prices_including_vat = false`) байсан ч posted мөрийн `amount_including_vat` (+ `city_tax_amount`)-ийг ашиглана. eBarimt-д НӨАТ-ыг дахин тооцохгүй.
+- **AMT-01.** Бүх дүн **НӨАТ ба НХАТ шингэсэн** (`totalAmount`, `unitPrice`). Баримтын үнэ НӨАТ-гүй (posted header-ийн `prices_including_vat = false`; энэ нь компанийн бус, баримт/харилцагчийн түвшний тохиргоо) байсан ч posted мөрийн `amount_including_vat` (+ `city_tax_amount`)-ийг ашиглана. eBarimt-д НӨАТ-ыг дахин тооцохгүй. ⚠ **`unitPrice` татвар шингэсэн эсэх нь албан ёсны жишээнүүдэд зөрүүтэй** (skill §10). Skill-ийн нийлбэрийн дүрэм (`items[].totalAmount = qty × unitPrice`, татвар шингэсэн) ба skill-ийн жишээ (`unitPrice = totalAmount = 5600`) нь татвар шингэсэн хувилбарыг дэмждэг тул үүнийг анхдагч болгоно. TS-35-аар баталгаажуулж, OQ-24-өөр ITC-ээс бичгээр тодруулна; кодонд `// ⚠ ТОДРУУЛАХ: unitPrice VAT-inclusive (OQ-24)` коммент үлдээнэ.
 - **AMT-02.** Мөрийн бохир дүн `G = amount_including_vat + city_tax_amount`, НӨАТ `V = amount_including_vat − amount`, НХАТ `C = city_tax_amount`. Хөнгөлөлт (мөрийн ба нэхэмжлэхийн) аль хэдийн `amount`-д шингэсэн (D-F2, E3 асуулт).
 - **AMT-03 (гинж).** Яг тэнцүү байна (бөөрөнхийллийн хүлцэлгүй):
   - `items[i].totalAmount = items[i].qty × items[i].unitPrice`;
@@ -396,7 +411,7 @@ function IsB2B(customer, draftHeader):
   - `totalAmount = Σ receipts.totalAmount`, `totalVAT`, `totalCityTax` мөн адил;
   - `Σ payments.paidAmount = totalAmount`.
 - **AMT-04.** Толгой ба дэд баримтын дүнг **доороос дээш нийлбэрээр** гаргана; тусад нь (жишээ нь `total × 10/110`) дахин тооцохгүй.
-- **AMT-05 (ledger-тэй тулгах).** `Σ items.totalAmount = header.amount_including_vat + header.city_tax_amount − Σ(MAP-03 бөөрөнхийллийн мөр)` ба `Σ items.totalVAT = header.vat_amount − Σ(бөөрөнхийллийн мөрийн НӨАТ)`. Зөрвөл posting зогсоно (`ebarimt.ledger_mismatch`) — энэ нь posting engine-ийн алдааг илтгэнэ.
+- **AMT-05 (ledger-тэй тулгах).** `Σ items.totalAmount = header.amount_including_vat + header.city_tax_amount − Σ(MAP-03 бөөрөнхийллийн мөр)` ба `Σ items.totalVAT = header.vat_amount − Σ(бөөрөнхийллийн мөрийн НӨАТ)`. Зөрвөл posting зогсоно (`ebarimt.ledger_mismatch`) — энэ нь posting engine-ийн алдааг илтгэнэ. AMT-05 нь зөвхөн **нэхэмжлэхийн анхны** SAVE баримтад (source = `SALES_INVOICE`); засварын баримт нь кредит нотын header-тэй биш, `NetState`-тэй тэнцэх тул VAL-29 (RET-11)-өөр шалгагдана; DELETE-д хамаарахгүй.
 - **AMT-06 (нарийвчлал).** Дүн 0.01 (MNT, D-C2). `unitPrice` 0.01. `qty` ≤ 5 бутархай орон (D-C1), JSON-д илүү тэгийг хасна. Бөөрөнхийлөлт: `MidpointRounding.AwayFromZero` (18-dev-setup §4 `MoneyMath`).
 - **AMT-07 (валют).** R1-д зөвхөн MNT (`currency_code IS NULL` эсвэл `'MNT'`); бусад нь `ebarimt.currency_not_supported`. R2: мөр бүрийн дүнг header-ийн `amount_including_vat_lcy`-д running remainder-ээр хуваарилж MNT болгоно.
 - **AMT-08 (НӨАТ-ын хуваарилалт).** D-E3: НӨАТ-ыг баримтын түвшинд VAT identifier тус бүрд тооцож мөрүүдэд running remainder-ээр хуваарилсан (posting engine). Иймээс `Σ мөрийн V = баримтын НӨАТ` posting-оос баталгаатай. eBarimt зөвхөн мөрийг хуваах (§6.2) эсвэл сөрөг мөрийг шингээх үед дахин хуваарилна, бас running remainder-ээр.
@@ -415,9 +430,10 @@ function BuildItems(L[]):
         N = L.where(taxType = t and G < 0)
         if N is empty: continue
         if P is empty or Σ|N.G| > Σ P.G: raise ebarimt.negative_line_unabsorbable
-        AllocateProRata(P, field G, amount = Σ N.G)      // сөрөг дүнг нэмнэ = бууруулна
-        AllocateProRata(P, field V, amount = Σ N.V)
-        AllocateProRata(P, field C, amount = Σ N.C)
+        W = snapshot of P.G                              // жин: шингээхээс ӨМНӨХ G (гурван дуудлагад ижил)
+        AllocateProRata(P, W, field G, amount = Σ N.G)   // сөрөг дүнг нэмнэ = бууруулна
+        AllocateProRata(P, W, field V, amount = Σ N.V)
+        AllocateProRata(P, W, field C, amount = Σ N.C)
         remove N from L
     // 3. Тэг мөрийг хасах (MAP-04)
     L = L.where(G > 0)
@@ -433,22 +449,24 @@ function SplitToItems(l):                         // Q = l.qty > 0, G > 0
         return [Item(l, qty=Q, unitPrice=u, total=G, vat=V, city=C)]
     if mode == ROUNDED_UNIT_PRICE:                // зөвхөн ITC хүлцэл баталгаажвал (OQ-03)
         return [Item(l, qty=Q, unitPrice=Round2(u), total=G, vat=V, city=C)]
-    if IsInteger(Q) and Q >= 2:                   // STRICT_SPLIT (анхдагч)
+    if IsInteger(Q) and Q >= 2 and Truncate2(G / Q) >= 0.01:   // STRICT_SPLIT (анхдагч); p = 0 бол доорх fallback
         p  = Truncate2(G / Q)
         gA = p × (Q − 1);  gB = G − gA            // gB = p + үлдэгдэл
         vA = Round2(V × gA / G); vB = V − vA
         cA = Round2(C × gA / G); cB = C − cA
         return [Item(l, qty=Q−1, unitPrice=p,  total=gA, vat=vA, city=cA),
                 Item(l, qty=1,   unitPrice=gB, total=gB, vat=vB, city=cB)]
-    // бутархай тоо хэмжээ, яг илэрхийлэгдэхгүй (жишээ нь 1.237 кг)
+    // бутархай тоо хэмжээ, яг илэрхийлэгдэхгүй (жишээ нь 1.237 кг), эсвэл G/Q < 0.01 (жишээ нь 10 ш × 0.005 ₮)
     return [Item(l, qty=1, unitPrice=G, total=G, vat=V, city=C,
                  name = l.name + " (" + Format(Q) + " " + l.measureUnit + ")")]
 
-function AllocateProRata(P, field, amount):       // running remainder (BC DivideAmount)
-    base = Σ P.G_original                         // шингээхээс өмнөх эерэг мөрүүдийн G
+function AllocateProRata(P, W, field, amount):    // running remainder (BC DivideAmount)
+    // W = P-ийн G-ийн snapshot (дуудагч G, V, C-г хуваарилахаас ӨМНӨ нэг удаа авна).
+    // G-г эхэлж өөрчилсний дараа V-г шинэ G-ээр жинлэвэл V ба G-ийн харьцаа алдагдана — тиймээс W заавал.
+    base = Σ W
     remaining = amount
-    for each p in P except last:
-        share = Round2(amount × p.G_original / base)
+    for each p in P (line_no-оор) except last:
+        share = Round2(amount × W[p] / base)
         p.field += share
         remaining -= share
     last(P).field += remaining                    // үлдэгдэл сүүлийн мөрөнд
@@ -463,7 +481,8 @@ function AllocateProRata(P, field, amount):       // running remainder (BC Divid
 ### 6.3 Canonical JSON ба `request_sha256`
 
 - **AMT-20.** Хүсэлтийн JSON-ийг **posting transaction дотор** бүрэн угсарна (`billIdSuffix`, `inactiveId`, `reportMonth` бүгд мэдэгдэж байна). `request_sha256 = SHA-256(UTF-8 bytes)`-ийг INSERT-ийн үед бичнэ. Шалтгаан: `trg_ebarimt_document_guard` нь `request_sha256`, `inactive_ddtd`, `report_month` зэргийг INSERT-ийн дараа өөрчлөхийг хориглодог (`ERL01`).
-- **AMT-21 (canonical хэлбэр).** `System.Text.Json`, whitespace-гүй. Талбарын дараалал §22-ийн жишээтэй ижил (толгой → `receipts[]` → `items[]` → `payments[]`). Дүн яг 2 бутархай оронтой тоо (`5500.00`). `qty` илүү тэггүй (`2`, `1.237`). `null`/`""` нь MAP-24-ийн дагуу. Тэмдэгт мөрийг NFC болгож normalize хийнэ. Кирилл үсгийг `\uXXXX` болгохгүй (`JavaScriptEncoder.Create(UnicodeRanges.All)`); JSON-ийн заавал escape (`"`, `\`, хяналтын тэмдэгт) хэвээр.
+- **AMT-21 (canonical хэлбэр).** `System.Text.Json`, whitespace-гүй. Талбарын дараалал §22-ийн жишээтэй ижил (толгой → `receipts[]` → `items[]` → `payments[]`). Дүн нь JSON **тоо** (string биш) бөгөөд яг 2 бутархай оронтой (`5500.00`). Энэ нь D-C1-ийн "JSON-д string" дүрмийн **үл хамаарах зүйл**: манай REST API string хэрэглэнэ, харин PosAPI-ийн хүсэлт нь PosAPI-ийн форматаар (тоо) явна. `qty` илүү тэггүй (`2`, `1.237`). `null`/`""` нь MAP-24-ийн дагуу. Тэмдэгт мөрийг NFC болгож normalize хийнэ. Кирилл үсгийг `\uXXXX` болгохгүй (`JavaScriptEncoder.Create(UnicodeRanges.All)`). Анхаар: энэ encoder нь JSON-ийн заавал escape (`"`, `\`, хяналтын тэмдэгт)-аас гадна HTML-д эмзэг тэмдэгтийг (`<`, `>`, `&`, `'`, `+`, `` ` ``) `<` г.м. болгож escape хийдэг. JSON-ийн утга ижил тул PosAPI-д нөлөөгүй; `UnsafeRelaxedJsonEscaping`-ийг **хэрэглэхгүй**. Canonical serializer нь Enqueue ба dispatch-д **нэг ижил** `JsonSerializerOptions` instance байна.
+- **AMT-21a (decimal-ийн scale, hash-ийн тогтвортой байдал).** .NET-ийн `decimal` scale-аа хадгалдаг (`5500.0000m` → `"5500.0000"`). DB-ээс уншсан утга `platform.amount` = `numeric(19,4)`, `unit_price` = `numeric(19,6)`, `qty` = `numeric(19,5)` scale-тай ирдэг тул Enqueue (санах ойн утга) ба dispatch (DB-ээс дахин угсралт)-ийн JSON зөрж, **бүх баримт `ebarimt.request_drift` болно**. Иймээс canonical serializer-т тусгай `JsonConverter<decimal>` заавал: дүн ба `unitPrice` → `decimal.Round(x, 2, MidpointRounding.AwayFromZero)`-ийн дараа scale-ийг яг 2 болгож (`x.ToString("0.00", CultureInfo.InvariantCulture)`) raw тоо болгон бичнэ; `qty` → илүү тэггүй (`x.ToString("0.#####", CultureInfo.InvariantCulture)`). Unit тест: ижил баримтыг санах ойгоос ба DB-ээс угсарсан hash тэнцүү (AT-EB-44).
 - **AMT-22.** Илгээх үед JSON-ийг snapshot-оос **дахин угсарч** hash-ийг харьцуулна; зөрвөл сүлжээнд гаргахгүй (`ebarimt.request_drift`, §10.2). Илгээсэн байт = hash-лагдсан байт.
 - **AMT-23.** Хүсэлтийн JSON-ийг өөрийг нь DB-д хадгалахгүй (schema-ийн шийдвэр: `consumerNo`, `customerTin` агуулдаг). Аудит ба дахин угсралт нь `ebarimt_document` (+ SCR-01 snapshot), `ebarimt_sub_receipt`, `ebarimt_document_line`-аас хийгдэнэ.
 
@@ -498,7 +517,7 @@ function AllocateProRata(P, field, amount):       // running remainder (BC Divid
 | VAL-08 | `classificationCode` `^[0-9]{7}$`, кэшид навч код (MAP-32) | `ebarimt.classification_code_missing` / `_invalid` | ✔ | ✔ |
 | VAL-09 | `VAT_ABLE`-аас бусад мөрөнд `taxProductCode`; кэшид `tax_type` таарсан, огноогоор хүчинтэй | `ebarimt.tax_product_code_missing` / `_invalid` | ✔ | ✔ |
 | VAL-10 | `VAT_ABLE`-аас бусад item-ийн `totalVAT = 0` | `ebarimt.vat_on_exempt_item` | ✔ | ✔ |
-| VAL-11 | `vat_payer = false` мерчантад `VAT_ABLE` мөр байхгүй | `ebarimt.vat_on_non_vat_payer` | ✔ | ✔ |
+| VAL-11 | `vat_payer = false` мерчантад `VAT_ABLE` ба `VAT_ZERO` мөр байхгүй (0% нь НӨАТ төлөгчийн ангилал; зөвхөн SET-09-ийн `NOT_VAT`/`VAT_FREE`, D-E5 ⚠ OQ-04) | `ebarimt.vat_on_non_vat_payer` | ✔ | ✔ |
 | VAL-12 | `measureUnit` хоосон биш, ≤ 20 тэмдэгт | `ebarimt.measure_unit_missing` | ✔ | ✔ |
 | VAL-13 | `name` хоосон биш | `ebarimt.item_name_missing` | ✔ | ✔ |
 | VAL-14 | AMT-12 (эерэг qty, үнэ, дүн; `0 ≤ VAT ≤ дүн`) | `ebarimt.item_amount_invalid` | ✔ | ✔ |
@@ -544,7 +563,7 @@ stateDiagram-v2
     SENT --> SUCCESS : PosAPI SUCCESS + ДДТД
     SENT --> ERROR : PosAPI татгалзсан / TCP холболт тогтоогдоогүй
     SENT --> UNKNOWN : timeout / тасалдал / 5xx / буруу хариу / lease дууссан
-    UNKNOWN --> SUCCESS : гараар — "Бүртгэгдсэн" (ДДТД оруулна)
+    UNKNOWN --> SUCCESS : гараар — "Бүртгэгдсэн" (ДДТД оруулна) / хоцорсон SUCCESS хариу (DSP-14)
     UNKNOWN --> CANCELLED : гараар — "Бүртгэгдээгүй" → шинэ баримт (шинэ billIdSuffix)
     ERROR --> CANCELLED : "Засаад дахин илгээх" (шинэ баримт) / "Цуцлах"
     SUCCESS --> CANCELLED : залгамжлагч (inactiveId эсвэл DELETE) SUCCESS / порталд гараар цуцалсан
@@ -556,39 +575,45 @@ stateDiagram-v2
 | T1 | ∅ → PENDING | Posting | Posting engine | `ebarimt_sub_receipt`, `ebarimt_document_line`, outbox мөр; `outbox_id` |
 | T2 | PENDING → SENT | Claim хийсний дараа | Dispatcher | `attempt_count = attempt_count + 1`, `last_attempt_at = sent_at = now()`. **Тусдаа transaction, сүлжээнээс өмнө commit** |
 | T3 | PENDING → ERROR | Dispatch-ийн шалгалт унасан | Dispatcher | `error_code`, outbox `DEAD` |
-| T4 | PENDING → CANCELLED | §12.8 эсвэл "Цуцлах" | Posting / хэрэглэгч | outbox `CANCELLED`, `resolution_note` |
+| T4 | PENDING → CANCELLED | §12.8 эсвэл "Цуцлах" | Posting / хэрэглэгч | outbox `CANCELLED`, `resolution_note` = `'SUPERSEDED_BY:<memo no>'` (§12.8) эсвэл `'MANUAL_CANCEL:<note>'` (RET-62) |
 | T5 | SENT → SUCCESS | PosAPI SUCCESS | Dispatcher | `ddtd`, `ebarimt_date`, `ebarimt_sub_receipt.sub_receipt_id`; `replaces_document_id` мөр → CANCELLED (T11); outbox `DONE`; event `EbarimtReceiptRegistered` |
 | T6 | SENT → ERROR | Татгалзсан / connect failed | Dispatcher | `error_code`, `error_message` (≤ 500 тэмдэгт); outbox `DEAD`; event `EbarimtReceiptRejected` |
 | T7 | SENT → UNKNOWN | Timeout г.м. (§10.4) эсвэл reaper | Dispatcher / reaper | `error_code`; outbox `DEAD`; event `EbarimtReceiptUnknown`; P2 alert |
-| T8 | UNKNOWN → SUCCESS | "Бүртгэгдсэн" | `ebarimt.document.resolve` X | `ddtd`, `ebarimt_date`, `resolved_at/by`, `resolution_note` заавал; outbox `DONE`; T11 |
-| T9 | UNKNOWN → CANCELLED | "Бүртгэгдээгүй" | `ebarimt.document.resolve` X | `resolved_*`; клон баримт PENDING (§11.3) |
-| T10 | ERROR → CANCELLED | "Засаад дахин илгээх" / "Цуцлах" | `ebarimt.document.resolve` X | клон (дахин илгээх үед) |
-| T11 | SUCCESS → CANCELLED | Залгамжлагч SUCCESS эсвэл "Порталд цуцалсан" | Dispatcher / `ebarimt.document.resolve` X | `resolution_note = 'INACTIVATED_BY:<id>'` эсвэл `'MANUAL_VOID:<note>'` |
+| T8 | UNKNOWN → SUCCESS | "Бүртгэгдсэн", эсвэл reaper-ийн дараа хоцорч ирсэн SUCCESS хариу (DSP-14) | `ebarimt.unknown.resolve` X / Dispatcher | `ddtd`, `ebarimt_date`, `resolved_at/by`, `resolution_note` заавал (автомат бол `'LATE_RESPONSE'`); outbox `DONE`; T11 (STM-07); event `EbarimtReceiptResolved` |
+| T9 | UNKNOWN → CANCELLED | "Бүртгэгдээгүй" | `ebarimt.unknown.resolve` X | `resolved_*`; клон баримт PENDING (§11.3); event `EbarimtReceiptResolved` |
+| T10 | ERROR → CANCELLED | "Засаад дахин илгээх" / "Цуцлах" | `ebarimt.unknown.resolve` X | клон (дахин илгээх үед); "Цуцлах" бол `resolution_note = 'MANUAL_CANCEL:<note>'` (RET-62) |
+| T11 | SUCCESS → CANCELLED | Залгамжлагч SUCCESS эсвэл "Порталд цуцалсан" | Dispatcher / `ebarimt.unknown.resolve` X | `resolution_note = 'INACTIVATED_BY:<id>'` эсвэл `'MANUAL_VOID:<note>'`. Зөвхөн өмнөх нь `SUCCESS` үед (STM-07) |
 
 ### 9.3 Инвариант
 
 - **STM-01.** `SUCCESS`/`CANCELLED`-аас зөвхөн `SUCCESS → CANCELLED` зөвшөөрнө; `ddtd` олгогдсоны дараа өөрчлөгдөхгүй; хүсэлтийн өгөгдөл INSERT-ийн дараа өөрчлөгдөхгүй (`trg_ebarimt_document_guard`, `ERL01`).
-- **STM-02.** `attempt_count` = сүлжээнд гаргахаар commit хийсэн тоо. `max_attempts = 1` (D-I6). CHECK `attempt_count <= max_attempts OR status IN ('ERROR','UNKNOWN','CANCELLED')` нь **хоёр дахь сүлжээний илгээлтийг DB түвшинд** боломжгүй болгоно.
+- **STM-02.** `attempt_count` = сүлжээнд гаргахаар commit хийсэн тоо. `max_attempts = 1` (D-I6). CHECK `attempt_count <= max_attempts OR status IN ('ERROR','UNKNOWN','CANCELLED')` нь T2-д `attempt_count`-ийг **заавал нэмэгдүүлдэг** нөхцөлд хоёр дахь `SENT`-ийг DB түвшинд боломжгүй болгоно. Одоогийн `trg_ebarimt_document_guard` нь `ERROR/UNKNOWN → PENDING` ба `attempt_count`-ийг нэмэгдүүлэлгүй `PENDING → SENT`-ийг **хориглодоггүй** (зөвхөн `SUCCESS/CANCELLED`-ээс гарах шилжилтийг хянадаг). Тиймээс энэ хамгаалалт R1-д app-ийн дүрэм (DSP-11) + integration тест (AT-EB-16..19) дээр тулгуурлана; DB-ийн бүрэн хамгаалалтыг SCR-18 (шилжилтийн whitelist trigger) нэмнэ.
 - **STM-03.** `ERROR → PENDING`-ийг **хэрэглэхгүй** (03-domain-model §6.3-т байгаа ч: хүсэлт immutable, `attempt_count = 1` бол дахин `SENT` болох нь CHECK-ийг зөрчинө). Дахин илгээх = хуучныг `CANCELLED` + шинэ баримт (§11.3). 03-domain-model-ийг шинэчлэх санал §28.
 - **STM-04.** `(company_id, source_type, source_id, operation)`-д `CANCELLED` бус баримт нэгээс илүүгүй (`ux_ebarimt_document__one_open_per_source`).
-- **STM-05.** Гинжинд `operation = 'SAVE'` ба `status = 'SUCCESS'` баримт **нэгээс илүүгүй** байна (идэвхтэй баримт). T5/T8 нь өмнөхийг нь T11-ээр нэг transaction-д CANCELLED болгосноор хангагдана.
+- **STM-05.** Гинжинд `operation = 'SAVE'` ба `status = 'SUCCESS'` баримт **нэгээс илүүгүй** байна (идэвхтэй баримт). T5/T8 нь өмнөхийг нь T11-ээр нэг transaction-д CANCELLED болгосноор хангагдана. Гинж олон эх баримтыг (нэхэмжлэх + кредит нотууд) хамардаг тул энэ нь DB constraint биш, app-ийн инвариант; integration тест ба өдөр тутмын `ebarimt.overdue_check`-ийн нэмэлт шалгалт (зөрвөл P1) хянана.
+- **STM-07 (T11-ийн хамгаалалт).** T5/T8-ийн дараах T11 нь `replaces_document_id`-ийн баримт **`SUCCESS` төлөвтэй үед л** түүнийг `CANCELLED` болгоно. Аль хэдийн `CANCELLED` (жишээ нь §11.2 алхам 6-ийн давхардлыг DELETE хийх) бол өөрчлөхгүй, зөвхөн event-д тэмдэглэнэ.
 - **STM-06.** Шилжилт бүр `ebarimt_document_event`-д trigger-ээр бичигдэнэ (`from_status`, `to_status`, `attempt_count`, `error_code`, `note`, `request_id`), 10 жил хадгална.
 
 ### 9.4 Posted баримт дээр харагдах eBarimt төлөв (read model)
 
 Posted баримтын жагсаалт ба карт дээр дараах **гаргасан** төлөвийг харуулна (view `ebarimt.v_source_document_status`, SCR-12). Нэхэмжлэх дээр **гинжийн** төлөв (RET-01; сүүлийн CANCELLED бус баримт, засвар байвал "засвартай" тэмдэгтэй), кредит нот дээр өөрийн баримтын төлөв:
 
-| UI төлөв | Нөхцөл |
-|---|---|
-| Шаардлагагүй | posted `ebarimt_receipt_type = 'NONE'` |
-| Тохируулаагүй | type ≠ NONE, баримт байхгүй, setup ACTIVE биш |
-| Хүлээгдэж буй | сүүлийн баримт `PENDING` |
-| Илгээж байна | `SENT` |
-| Бүртгэгдсэн (ДДТД) | `SUCCESS` |
-| Татгалзсан | `ERROR` |
-| Тодорхойгүй | `UNKNOWN` |
-| Засварлагдсан (өмнөх хувилбар) | `CANCELLED` + `ddtd` + `resolution_note LIKE 'INACTIVATED_BY:%'` (гинжийн түүхэнд) |
-| Цуцлагдсан | гинж `DELETE` SUCCESS-ээр эсвэл `MANUAL_VOID`-оор дууссан |
+API-д `ebarimt.chainStatus` (14-api API-ACT-20, OpenAPI `EbarimtChainStatus`) нэрээр гарна. Нөхцөлийг дээрээс доош шалгаж, эхний таарсныг авна:
+
+| `chainStatus` | UI төлөв | Нөхцөл |
+|---|---|---|
+| `NOT_REQUIRED` | Шаардлагагүй | posted `ebarimt_receipt_type = 'NONE'` (гадны систем, override, харилцагчийн NONE — TYP-07) |
+| `NOT_CONFIGURED` | Тохируулаагүй | type ≠ NONE, гинжид баримт байхгүй |
+| `UNKNOWN` | Тодорхойгүй | гинжид `UNKNOWN` баримт байна |
+| `SENT` | Илгээж байна | гинжид `SENT` баримт байна |
+| `ERROR` | Татгалзсан | сүүлийн CANCELLED бус баримт `ERROR` |
+| `PENDING` | Хүлээгдэж буй | сүүлийн CANCELLED бус баримт `PENDING` |
+| `MANUAL_VOID_REQUIRED` (**шинэ утга**, 14-д нэмэх хүсэлт §28) | Порталд гараар цуцлах шаардлагатай | `latest` SUCCESS `B2B_*` + NetState хоосон (RET-51), `MANUAL_VOID` хийгдээгүй |
+| `VOIDED` | Цуцлагдсан | гинж `DELETE` SUCCESS-ээр эсвэл `MANUAL_VOID`-оор дууссан, эсвэл бүх баримт CANCELLED ба NetState хоосон |
+| `CORRECTED` | Бүртгэгдсэн, засвартай | `latest` SUCCESS ба `latest.source_type = 'SALES_CR_MEMO'` (гинжид `INACTIVATED_BY` бий) |
+| `SUCCESS` | Бүртгэгдсэн (ДДТД) | `latest` SUCCESS, засваргүй |
+
+Гинжийн түүхэнд (`GET /documents/{id}`) CANCELLED + `ddtd` + `resolution_note LIKE 'INACTIVATED_BY:%'` мөрийг "Засварлагдсан (өмнөх хувилбар)" гэж харуулна. Кредит нот дээр өөрийн баримтын төлвийг (`ebarimt_document.status`) шууд харуулна. API-ийн клиент шинэ утгыг тэвчинэ (API-VER-03).
 
 ---
 
@@ -597,21 +622,27 @@ Posted баримтын жагсаалт ба карт дээр дараах **�
 ### 10.1 Posting transaction дотор (enqueue)
 
 ```text
-// IEbarimtReceiptQueue.EnqueueAsync(ReceiptRequest req, ITransactionalSession tx)
-// Posting engine posted дугаар олгосны ДАРАА, COMMIT-оос ӨМНӨ дуудна.
+// АЛХАМ 1 — IEbarimtReceiptQueue.ResolveTypeAsync(draft, customer, tx):
+//   posted header-ийг INSERT хийхээс ӨМНӨ дуудна (posted header immutable тул snapshot-ыг дараа нь бичих боломжгүй).
+//   Нэхэмжлэх: DecideType (§4.2). Кредит нот: гинжийн төрөл (TYP-06, RET-04) эсвэл 'NONE'.
+//   Үр дүн (type, customerTin, consumerNo)-г Sales posted header-ийн ebarimt_receipt_type/_customer_tin/_consumer_no-д бичнэ.
+// АЛХАМ 2 — IEbarimtReceiptQueue.EnqueueAsync(ReceiptRequest req, ITransactionalSession tx):
+//   posted дугаар олгож posted header/line-ийг бичсний ДАРАА, COMMIT-оос ӨМНӨ дуудна. req нь алхам 1-ийн шийдвэрийг агуулна.
 function Enqueue(req, tx):
     setup = load ebarimt_setup (company)
-    (type, customerTin, consumerNo) = DecideType(...)                 // §4
-    if type in (NOT_CONFIGURED, NONE): return Result.NoDocument(type)
-    chain = ResolveChain(req)                                          // §12.2–12.8: predecessor, inactive_ddtd, operation, report_month
-    pos   = req.ebarimtPosId ?? default POS
+    if req.decision.outcome in (NOT_CONFIGURED, NONE): return Result.NoDocument(req.decision.outcome)
+    (type, customerTin, consumerNo) = req.decision
+    chain = ResolveChain(req)                                          // нэхэмжлэх: SAVE, гинжгүй; кредит нот: §12.8
+    if chain.result in (NO_DOCUMENT, MANUAL_VOID_REQUIRED):            // §12.8: баримтгүй / порталд гараар цуцлах
+        return Result.NoDocument(chain.result)
+    pos   = req.ebarimtPosId ?? default POS                            // кредит нот: chain.latest-ийн POS (SCR-15 хүртэл анхдагч)
     items = chain.items ?? BuildItems(req.lines)                       // засварт NetState (§12.3), бусад үед §6.2; DELETE-д мөргүй
     errors = Validate(phase = POSTING, ...)                            // §8
     if errors: raise ValidationFailed(errors)                          // posting бүхэлдээ rollback
     if chain.operation == SAVE:
         seq = SELECT ebarimt.fn_next_bill_seq(pos.id)
         billDate = today('Asia/Ulaanbaatar')
-    json = RenderCanonical(...)                                        // §6.3
+    json = RenderCanonical(...)                                        // §6.3 (AMT-21a)
     doc = INSERT ebarimt_document(status='PENDING', operation, ebarimt_type=type,
               source_type, source_id, source_document_no, ebarimt_pos_id=pos.id,
               bill_date, bill_seq=seq, bill_id_suffix=seq % 1000000,
@@ -619,7 +650,7 @@ function Enqueue(req, tx):
               total_amount, total_vat, total_city_tax, request_sha256=sha256(json),
               attempt_count=0, max_attempts=1, replaces_document_id=chain.predecessor?.id)
     INSERT ebarimt_sub_receipt (taxType бүрд), ebarimt_document_line (item бүрд, line_sha256)
-    syncFirst = (type == 'B2C_RECEIPT' and req.interactive)            // §10.5
+    syncFirst = (type == 'B2C_RECEIPT' and chain.operation == SAVE and req.interactive)   // §10.5; DELETE-д QR байхгүй
     ob = INSERT integration.outbox(topic='ebarimt.receipt.send', aggregate_type='ebarimt_document',
               aggregate_id=doc.id, payload={"ebarimtDocumentId": doc.id},
               idempotency_key='ebarimt:' || doc.id || ':1', max_attempts=1,
@@ -630,7 +661,7 @@ function Enqueue(req, tx):
 
 - **DSP-01.** Outbox `payload` нь **зөвхөн** `ebarimtDocumentId` агуулна (PII, хүсэлтийн body байхгүй). Хориотой түлхүүрийг (`qrData`, `lottery`) DB CHECK `integration.fn_has_forbidden_ebarimt_keys` ямар ч гүнд хориглоно.
 - **DSP-02.** eBarimt-ийн алдаа (илгээлтийн) posting-ийг rollback хийхгүй (ADR-0012 §6). Харин VAL (а) шалгалтын алдаа нь posting-ийг зогсооно — алдаатай баримтыг legal дугаартай болгохгүйн тулд.
-- **DSP-03.** `sales_setup.ebarimt_on_posting = false` эсвэл NOT_CONFIGURED үед `ebarimt_document` үүсэхгүй; posted header-т шийдсэн төрөл snapshot болно (TYP-07).
+- **DSP-03.** `sales_setup.ebarimt_on_posting = false` эсвэл NOT_CONFIGURED үед `ebarimt_document` үүсэхгүй. Posted header-т: NOT_CONFIGURED бол шийдсэн төрөл (backfill §12.9-д ашиглагдана), `ebarimt_on_posting = false` бол `'NONE'` (гадны системээр гаргасан; §4.1-ийн мод, TYP-07).
 
 ### 10.2 Dispatcher handler
 
@@ -643,6 +674,8 @@ function Handle(outboxRow):
         doc = SELECT ... FROM ebarimt_document WHERE id = payload.ebarimtDocumentId FOR UPDATE
         if doc.status <> 'PENDING':                                   // давхар хүргэлт
             outbox := DONE if doc.status = 'SUCCESS' else DEAD; commit; return
+        if doc.outbox_id <> outboxRow.id:                              // R-2 шинэ outbox үүсгэсэн; хуучин мөр хоцорсон (DSP-15)
+            outbox := DEAD(last_error='SUPERSEDED_OUTBOX'); commit; return
         inst = instance of company (ebarimt_setup.posapi_instance_id)
         if inst.status = 'DISABLED' or InstanceHealth(inst) = DOWN:   // §14.2
             outbox := DEAD(last_error='INSTANCE_UNAVAILABLE')          // doc PENDING, attempt_count = 0 хэвээр
@@ -657,12 +690,14 @@ function Handle(outboxRow):
         result = PosApiReceiptClient.Send(inst.base_url, doc.operation, json)   // §10.3
         // --- Tx B: үр дүн ---
         doc = SELECT ... FOR UPDATE
-        if doc.status <> 'SENT': log + return                           // reaper аль хэдийн UNKNOWN болгосон
+        if doc.status <> 'SENT':                                       // reaper (R-1) аль хэдийн UNKNOWN болгосон
+            HandleLateResponse(doc, result); COMMIT; return null        // DSP-14; QR хэвлэхгүй
         switch Classify(result):                                       // §10.4
             SUCCESS:
                 doc := SUCCESS(ddtd = result.id, ebarimt_date = ParseUb(result.date))
-                for each r in result.receipts: set ebarimt_sub_receipt.sub_receipt_id (taxType-аар тулгана)
-                if doc.replaces_document_id: predecessor := CANCELLED('INACTIVATED_BY:' || doc.id)
+                MapSubReceiptIds(doc, result.receipts)                  // DSP-16
+                if doc.replaces_document_id and predecessor.status = 'SUCCESS':   // STM-07
+                    predecessor := CANCELLED('INACTIVATED_BY:' || doc.id)
                 if result totals ≠ doc totals: alert P2 'ebarimt.response_amount_mismatch' (SUCCESS хэвээр)
                 outbox := DONE
                 print = PrintPayload.From(doc, result)                  // PrintOnly<T>, зөвхөн санах ойд
@@ -672,11 +707,31 @@ function Handle(outboxRow):
                 doc := UNKNOWN(error_code); outbox := DEAD
         COMMIT
         return print   // SYNC_FIRST дуудагчид л буцна; worker-т хаягдана
+
+function HandleLateResponse(doc, result):                             // DSP-14
+    log(ebarimt_document_id, status = doc.status, ddtd = result.id?)    // ДДТД логт зөвшөөрөгдсөн (OBS-01)
+    if Classify(result) <> SUCCESS: return                              // UNKNOWN хэвээр, гараар (§11)
+    if doc.status = 'UNKNOWN':                                          // R-1 lease_expired-ийн дараа хариу ирсэн
+        doc := SUCCESS(ddtd = result.id, ebarimt_date = ParseUb(result.date),
+                       resolved_at = now(), resolved_by = NULL (систем), resolution_note = 'LATE_RESPONSE')
+        MapSubReceiptIds(doc, result.receipts); T11 (STM-07); outbox := DONE   // T8-ийн автомат хувилбар
+    else if doc.status = 'CANCELLED':                                   // хүн аль хэдийн "Бүртгэгдээгүй" гэж шийдэж клон үүсгэсэн
+        if doc.ddtd is null: doc.ddtd := result.id                      // guard зөвшөөрнө (OLD.ddtd NULL); аудитын ул мөр
+        alert P1 'ebarimt.duplicate_detected' (doc.id, result.id)       // §11.2 алхам 6-ийн журам
+
+function MapSubReceiptIds(doc, respReceipts):                         // DSP-16
+    subs = ebarimt_sub_receipt of doc ORDER BY MAP-01 дараалал
+    if every r in respReceipts has taxType: тулгах түлхүүр = (taxType, merchantTin ?? doc.merchant_tin)
+    else if count(respReceipts) = count(subs): массивын дарааллаар (илгээсэн дараалал = MAP-01)
+    else: sub_receipt_id-г хоосон үлдээж P3 лог 'ebarimt.sub_receipt_id_unmapped' (баримт SUCCESS хэвээр)
 ```
 
 - **DSP-10.** Tx A ба Tx B нь тусдаа transaction. PosAPI-ийн дуудлага ямар ч DB transaction эсвэл түгжээ барихгүйгээр явна.
 - **DSP-11.** `SENT` commit болсны дараа **ямар ч нөхцөлд** тухайн `ebarimt_document`-ийг дахин сүлжээнд гаргахгүй (STM-02).
-- **DSP-12.** DELETE (`operation = 'DELETE'`): JSON = `{"id": <inactive_ddtd>, "date": <өмнөх баримтын ebarimt_date, "yyyy-MM-dd HH:mm:ss", Asia/Ulaanbaatar>}`, `DELETE /rest/receipt`. SUCCESS үед DELETE баримт `SUCCESS` (`ddtd` NULL — schema CHECK зөвшөөрнө), өмнөх SAVE баримт T11-ээр CANCELLED.
+- **DSP-12.** DELETE (`operation = 'DELETE'`): JSON = `{"id": <inactive_ddtd>, "date": <устгах баримтын ebarimt_date, "yyyy-MM-dd HH:mm:ss", Asia/Ulaanbaatar>}`, `DELETE /rest/receipt`. `date`-ийн формат UNVERIFIED (skill нь `{id, date}` гэж л заасан; хариуны `date`-ийн форматыг дагасан) — TS-10, TS-33-аар баталгаажуулна. `date`-ийг Enqueue үед `replaces_document_id` баримтын `ebarimt_date`-аас (§11.2 алхам 6-д хэрэглэгчийн оруулснаас) авч canonical JSON-д оруулна; hash-д орно. SUCCESS үед DELETE баримт `SUCCESS` (`ddtd` NULL — schema CHECK зөвшөөрнө), өмнөх SAVE баримт T11-ээр CANCELLED (зөвхөн SUCCESS бол, STM-07).
+- **DSP-14 (хоцорсон хариу).** R-1 reaper `UNKNOWN` болгосны дараа Tx B-д SUCCESS хариу ирвэл ДДТД-г **хаяхгүй**: баримт `UNKNOWN` бол автоматаар `SUCCESS` (`resolution_note = 'LATE_RESPONSE'`, T8-ийн автомат хувилбар; schema guard UNKNOWN → SUCCESS-ийг зөвшөөрнө). Хүн аль хэдийн `CANCELLED` (клон) болгосон бол ДДТД-г тэр мөрөнд бичиж (`OLD.ddtd IS NULL` тул guard зөвшөөрнө), P1 `ebarimt.duplicate_detected` гаргана → §11.2 алхам 6. Хоцорсон хариуны QR/сугалааг хэзээ ч буцаахгүй/хадгалахгүй.
+- **DSP-15.** Tx A нь `doc.outbox_id = outboxRow.id` эсэхийг шалгана; зөрвөл (R-2 шинэ outbox үүсгэсэн) хуучин outbox мөр `DEAD` (`SUPERSEDED_OUTBOX`), сүлжээгүй. Ингэснээр нэг баримтад зөвхөн хамгийн сүүлийн outbox мөр илгээнэ.
+- **DSP-16 (дэд баримтын ID).** Хариуны `receipts[]`-д `taxType` байвал түүгээр, байхгүй бол (stub `posapi-mock`-ийн хариу зөвхөн `id`-тай) илгээсэн дарааллаар (MAP-01) `ebarimt_sub_receipt.sub_receipt_id`-г тулгана. Тоо зөрвөл хоосон үлдээж P3 лог; баримт SUCCESS хэвээр (TS-02, TS-05-аар хариуны бүтцийг баталгаажуулна).
 - **DSP-13.** `error_message`-ийг PosAPI-ийн `message`-ээс авч, 500 тэмдэгтээр тасалж, 8-аас олон оронтой тоон дарааллыг `********`-ээр маскална (PII-ийн хамгаалалт).
 
 ### 10.3 HTTP client-ийн бодлого
@@ -731,6 +786,7 @@ sequenceDiagram
 - **DSP-31.** Claim нь `integration.outbox`-ийн RLS дор энгийн `UPDATE integration.outbox SET status = 'PROCESSING', lease_owner = 'api:<host>', lease_until = now() + interval '2 minutes', attempts = attempts + 1 WHERE id = $1 AND status = 'PENDING' AND attempts < max_attempts RETURNING id`-ээр хийгдэнэ (`app_user`-д outbox-д UPDATE эрх бий; SECURITY DEFINER функц хэрэггүй). 0 мөр буцвал (worker авсан) хариунд `ebarimt.status = PENDING`, `print = null`.
 - **DSP-32.** Outbox мөр `available_at = now() + 30 s`-тэй тул worker 30 s-ээс өмнө авахгүй. API унасан бол worker 30 s-ийн дараа илгээнэ; QR хэвлэх боломж алдагдана (§13.3).
 - **DSP-33.** HTTP хариуны `print` хэсгийг `integration.idempotency_key.response_body`-д хадгалахгүй (DB CHECK ч хориглоно). Ижил `Idempotency-Key`-ээр дахин дуудвал хариу `print = null`, `printAvailable = false` байна.
+- **DSP-34 (клиент тасрах).** SYNC_FIRST-ийн Tx A, сүлжээний дуудлага ба Tx B нь HTTP хүсэлтийн `HttpContext.RequestAborted`-оор **цуцлагдахгүй** (`CancellationToken.None` + 25 s-ийн дотоод хязгаар): кассын браузер хаагдсан ч T2-ийн дараах дуудлага дуусч Tx B бичигдэнэ (эс бөгөөс баримт шаардлагагүй UNKNOWN болно). Хариуг клиент авч чадаагүй бол QR алдагдана (PRN-12). Interface: 02-architecture §4.2.6-ийн `IEbarimtPrintDispatcher.DispatchNowAsync(receiptId)` нь DSP-31-ийн claim + `Handle`-ийг гүйцэтгэнэ.
 
 ### 10.6 Reaper ба хэзээ ч илгээгдээгүй баримтыг дахин dispatch хийх
 
@@ -758,7 +814,7 @@ sequenceDiagram
 
 ### 11.1 Дэлгэц ба эрх
 
-- **UNK-01.** "eBarimt хяналт" дэлгэц: `UNKNOWN`, `ERROR`, 24 цагаас дээш `PENDING` баримтууд; шүүлтүүр нь төлөв, огноо, POS, төрөл. Харах эрх `ebarimt.ebarimt_document` R; шийдвэр гаргах эрх `ebarimt.document.resolve` X (`EBARIMT_OPS` permission set; анхдагч: Owner, Accountant, External accountant). Платформын ops нь тенантын олгосон support хандалтаар (02-architecture §10.7) л оролцоно.
+- **UNK-01.** "eBarimt хяналт" дэлгэц: `UNKNOWN`, `ERROR`, 24 цагаас дээш `PENDING` баримтууд; шүүлтүүр нь төлөв, огноо, POS, төрөл. Харах эрх `ebarimt.ebarimt_document` R; шийдвэр гаргах эрх `ebarimt.unknown.resolve` X (`ERP_EBARIMT_OPS` permission set; анхдагч: Owner, Accountant, External accountant). Платформын ops нь тенантын олгосон support хандалтаар (02-architecture §10.7) л оролцоно.
 - **UNK-02.** `UNKNOWN` > 0 бол ажлын цагаар P2 alert (`erp_ebarimt_unknown_open`), тенантын Owner-т имэйл. SLA: 24 цагт шийдэх; 48 цагт ops-ийн escalation.
 
 ### 11.2 UNKNOWN-ийг шийдэх алхам
@@ -769,13 +825,17 @@ sequenceDiagram
    - B2B бол худалдан авагчийн e-invoice-д (хүсвэл);
    - ITC баталгаажуулбал: `billIdSuffix`-ээр хайх API эсвэл PosAPI-ийн локал DB-ээс оператор түвшинд хайх (OQ-08; одоогоор байхгүй).
 3. **"Бүртгэгдсэн" (T8).** ДДТД (33 орон) ба баримтын огноо/цагийг оруулна. Шалгалт:
-   - `^[0-9]{33}$`, компанид давхардаагүй (`ux_ebarimt_document__ddtd`);
+   - `^[0-9]{33}$`, давхардаагүй (`ux_ebarimt_document__ddtd` нь **глобал** UNIQUE (`operation = 'SAVE'`), компанийн биш; өөр тенантын ДДТД-тэй давхцвал 23505 → `ebarimt.ddtd_duplicate`, өөр тенантын мэдээллийг мессежид гаргахгүй);
    - хэрэглэгч порталд харсан нийт дүнгээ оруулна; `total_amount`-тай тэнцүү байх (`ebarimt.resolution_amount_mismatch`);
    - `resolution_note` заавал (≥ 10 тэмдэгт).
    Үр дүн: SUCCESS, outbox `DONE`, өмнөх баримт T11. QR/сугалаа **сэргэхгүй** (хадгалдаггүй); B2C бол "ХУУЛБАР" хэвлэж болно (§13.3).
 4. **"Бүртгэгдээгүй" (T9).** Нэмэлт нөхцөл: `posapi_instance.last_send_data_at > doc.last_attempt_at` (сүүлийн `sendData` илгээлтийн дараа) **ба** `now() − last_attempt_at ≥ 30 мин`. Эс бөгөөс `ebarimt.resolution_too_early` (409). Үр дүн: CANCELLED + клон (§11.3), клон нь ASYNC (B2C бол хэрэглэгч "Илгээж хэвлэх"-ийг сонгож болно).
 5. **Аудит.** `ebarimt_document_event` (trigger) + `audit.row_change`: хэн, хэзээ, ямар шийдвэр, тэмдэглэл.
-6. **Давхардал илэрвэл.** "Бүртгэгдээгүй" гэж шийдсэний дараа анхны баримт бүртгэгдсэн нь илэрвэл (порталд хоёр баримт): илүү баримтыг B2C бол `DELETE`-ээр (ops "Гадны ДДТД-г буцаах" үйлдэл: `operation = 'DELETE'` баримт, `inactive_ddtd` = илүү ДДТД, `replaces_document_id` = клон), B2B бол порталд гараар цуцална. R2-т `getSalesTotalData`-ийн тулгалт ийм давхардлыг илрүүлнэ.
+6. **Давхардал илэрвэл.** "Бүртгэгдээгүй" гэж шийдсэний дараа анхны баримт бүртгэгдсэн нь илэрвэл (порталд хоёр баримт; DSP-14-ийн P1 alert, порталын хайлт, эсвэл R2-т `getSalesTotalData`-ийн тулгалт):
+   1. Анхны (одоо `CANCELLED`, `ddtd` NULL) баримтад порталаас олсон ДДТД ба огноо/цагийг бичнэ (`ddtd`, `ebarimt_date`; guard нь `OLD.ddtd IS NULL` үед зөвшөөрнө), `resolution_note`-д `DUPLICATE_OF:<клоны id>` нэмнэ.
+   2. B2C бол ops "Илүү баримтыг буцаах" үйлдэл: `operation = 'DELETE'`, `source_type/source_id` = анхны баримтынх, `inactive_ddtd` = илүү ДДТД, **`replaces_document_id` = анхны (CANCELLED) баримт** — клоныг биш (клон хүчинтэй баримт тул T11 түүнийг цуцлах ёсгүй; STM-07-оор T11 алгасагдана). DELETE-ийн `date` = 1-р алхамд бичсэн `ebarimt_date`.
+   3. B2B бол порталд гараар цуцалж, анхны баримтын `resolution_note`-д `MANUAL_VOID:<note>` нэмнэ.
+   4. Хоёр баримт аль аль нь хүчинтэй хугацаанд НӨАТ-ын тайлангийн зөрүү үүсэх тул "Илгээгдээгүй / давхардсан баримт" тайланд гарна.
 
 DELETE баримтын UNKNOWN: адил журам. "Бүртгэгдсэн" = порталд анхны баримт идэвхгүй болсон; "Бүртгэгдээгүй" = клон DELETE баримт.
 
@@ -783,7 +843,7 @@ DELETE баримтын UNKNOWN: адил журам. "Бүртгэгдсэн" =
 
 ```text
 function CloneForResend(old, overrides, user, note):          // old.status ∈ {UNKNOWN (T9), ERROR (T10)}
-    require permission ebarimt.document.resolve (X)
+    require permission ebarimt.unknown.resolve (X)
     tx:
         lock old FOR UPDATE; assert old.status in (UNKNOWN, ERROR)
         old := CANCELLED(resolved_at = now(), resolved_by = user, resolution_note = note || ' RESENT_AS:' || newId)
@@ -791,7 +851,8 @@ function CloneForResend(old, overrides, user, note):          // old.status ∈ 
         // taxProductCode, barCode, barCodeType, measureUnit, name) ба POS-ийг overrides-оор сольж болно.
         lines = old.lines with overrides applied (source_line_no-оор)
         Validate(phase = POSTING, ...)                          // VAL-xx; алдаатай бол rollback
-        seq = fn_next_bill_seq(pos)                             // шинэ billIdSuffix (BIL-06)
+        if old.operation = 'SAVE':
+            seq = fn_next_bill_seq(pos)                         // шинэ billIdSuffix (BIL-06); DELETE клонд bill_* NULL (BIL-05)
         new = INSERT ebarimt_document(... same source, type, amounts, inactive_ddtd, replaces_document_id = old.replaces_document_id,
                                       report_month = RecomputeReportMonth(...) /* §12.6 */, status = PENDING)
         INSERT sub_receipts, lines; INSERT outbox ('ebarimt:<new.id>:1')
@@ -808,7 +869,7 @@ function CloneForResend(old, overrides, user, note):          // old.status ∈ 
 |---|---|---|
 | "Засаад дахин илгээх" | `posapi.rejected` (жишээ нь буруу БҮНА), `request_drift`, `connect_failed`, `INSTANCE` асуудал | Overrides-тэй клон (§11.3) |
 | "Бөөнөөр дахин илгээх" (ops) | Instance сэргэсний дараа `error_code = 'ebarimt.connect_failed'` бүх баримт | Баримт бүрд override-гүй клон; `audit.security_event` (support хандалт) |
-| "Цуцлах" | Борлуулалтад баримт шаардлагагүй болсон (жишээ нь нэхэмжлэх бүтэн кредит нотоор цуцлагдсан, §12.8) | CANCELLED, `resolution_note` заавал; "eBarimt-гүй борлуулалт" тайланд гарна |
+| "Цуцлах" | Борлуулалтад баримт шаардлагагүй болсон (жишээ нь нэхэмжлэх бүтэн кредит нотоор цуцлагдсан, §12.8) | CANCELLED, `resolution_note = 'MANUAL_CANCEL:<note>'` (тэмдэглэл заавал, RET-62); "eBarimt-гүй борлуулалт" тайланд гарна |
 
 ---
 
@@ -847,7 +908,9 @@ flowchart TD
 
 ```text
 function NetState(invoice, memos[]):            // memos = нэхэмжлэхтэй холбогдсон БҮХ posted кредит нот (одоогийнхыг оруулаад), posting дарааллаар
-    base = for each included invoice line L (MAP-02/03): {src = L.line_no, Q = L.qty, G, V, C, taxType, attrs}
+    // base-д сөрөг (хөнгөлөлтийн G/L) мөр ОРНО (MAP-04); тэдгээрийг энд шингээхгүй, BuildItems-ийн алхам 2 шингээнэ.
+    base = for each included invoice line L (MAP-02/03): {src = L.line_no, Q = L.quantity, G, V, C, taxType, attrs,
+                                                         s = sign(G) /* анхны тэмдэг: +1 эсвэл −1 */}
     for each memo m in memos:
         for each included memo line ml:
             t = Match(ml, base)                 // доорх
@@ -856,11 +919,15 @@ function NetState(invoice, memos[]):            // memos = нэхэмжлэхт�
             else if t is AMOUNT_ONLY(taxType):  // үнийн бууралт, G/L мөр
                 P = base.where(taxType = taxType and G > 0)
                 if P empty or ml.G > Σ P.G: raise ebarimt.correction_exceeds_receipt
-                AllocateProRata(P, G, −ml.G); AllocateProRata(P, V, −ml.V); AllocateProRata(P, C, −ml.C)
-    for each b in base:
-        if b.Q < 0 or b.G < 0 or b.V < 0:        raise ebarimt.correction_exceeds_receipt
+                W = snapshot of P.G                                         // AllocateProRata-ийн жин (§6.2)
+                AllocateProRata(P, W, G, −ml.G); AllocateProRata(P, W, V, −ml.V); AllocateProRata(P, W, C, −ml.C)
+    for each b in base:                          // тэмдэгт мэдрэмтгий шалгалт: эерэг мөр сөрөг болохгүй, сөрөг мөр эерэг болохгүй
+        if b.Q < 0 or b.s × b.G < 0 or b.s × b.V < 0 or b.s × b.C < 0: raise ebarimt.correction_exceeds_receipt
         if b.Q == 0 and b.G <> 0:               raise ebarimt.correction_qty_amount_mismatch
-    return base.where(Q > 0 and G > 0)          // G = 0 боловч Q > 0 мөр орохгүй (MAP-04)
+    net = base.where(Q > 0 and G <> 0)          // G = 0 мөр орохгүй (MAP-04); сөрөг мөр BuildItems-д шингэнэ
+    if net.any(G < 0) and not net.any(G > 0 and taxType = that line's taxType):
+        raise ebarimt.negative_line_unabsorbable  // жишээ нь бараа бүгд буцсан ч хөнгөлөлтийн мөр буцаагүй
+    return net                                   // "хоосон" = net.count == 0
 
 function Match(ml, base):
     if ml.applies_to_invoice_line_no is not null:                      // SCR-02
@@ -882,6 +949,7 @@ function Match(ml, base):
 - **RET-11 (тулгалт, VAL-29).** `Σ шинэ.total = Σ eBarimt-д орох нэхэмжлэхийн мөр − Σ бүх кредит нотын eBarimt-д орох мөр` (ERP-ийн posted дүн), НӨАТ, НХАТ мөн адил. `latest` нь өмнөх бүх кредит нотыг тусгасан бол энэ нь `latest.total − memo.total`-тэй тэнцүү. Зөрвөл `ebarimt.correction_inconsistent` (алгоритмын алдаа).
 - **RET-12.** НӨАТ-ыг дахин тооцохгүй, хасна: шинэ баримтын НӨАТ = ERP-ийн нэхэмжлэх − кредит нотуудын НӨАТ (FR-TAX-016 тулгалттай нийцнэ).
 - **RET-13.** SCR-02 (`applies_to_invoice_line_no`) батлагдах хүртэл `Match` нь heuristic-ээр ажиллана; олон утгатай бол posting-ийг зогсоож (`ebarimt.cr_memo_line_ambiguous`) хэрэглэгчээр кредит нотын мөрийг засуулна.
+- **RET-14 (сөрөг мөртэй нэхэмжлэх).** Нэхэмжлэхийн сөрөг (хөнгөлөлтийн) мөр `NetState`-д анхны тэмдгээрээ үлдэж, `BuildItems`-ийн алхам 2-оор (MAP-04) үлдсэн эерэг мөрүүдэд шингэнэ. Жишээ: нэхэмжлэх = бараа 2 × 5 500 (НӨАТ 1 000) + "Хөнгөлөлт" G/L −1 100 (НӨАТ −100) = 9 900 (НӨАТ 900); кредит нот 1 × 5 500 (НӨАТ 500) → `NetState` = бараа 1 × 5 500 (500) + хөнгөлөлт −1 100 (−100) → item 1 × 4 400 (НӨАТ 400) = ERP 9 900 − 5 500 = 4 400, 900 − 500 = 400 ✔ (AT-EB-45). Анхны хувилбарт `b.G < 0` шалгалт хөнгөлөлтийн мөртэй **бүх** засварыг `correction_exceeds_receipt`-ээр зогсоож, `G > 0` шүүлтүүр хөнгөлөлтийг хаяж байсан.
 
 ### 12.4 Бүтэн B2C буцаалт (`DELETE`)
 
@@ -928,7 +996,7 @@ function ReportMonthDecision(type, srcMonth, now):
 ### 12.7 B2B-ийн бүтэн цуцлалт
 
 - **RET-50.** `DELETE` нь зөвхөн `B2C_RECEIPT`-д (PosAPI skill; schema CHECK `operation <> 'DELETE' OR ebarimt_type = 'B2C_RECEIPT'`). B2B-ийн бүтэн цуцлалтын API арга UNVERIFIED (OQ-01, TS-16).
-- **RET-51 (R1 урсгал).** Кредит нот posting хийгдэнэ (нягтлан бодох бүртгэл зогсохгүй). eBarimt-д шинэ хүсэлт үүсэхгүй. Нэхэмжлэхийн UI төлөв "Порталд гараар цуцлах шаардлагатай" (view §9.4: `latest` SUCCESS + бүтэн кредит нот). Хэрэглэгч e-invoice порталд цуцлаад "Порталд цуцалсан" (`ebarimt.document.resolve` X) дарна → `latest` T11 (`MANUAL_VOID:<note>`), `resolution_note` заавал.
+- **RET-51 (R1 урсгал).** Кредит нот posting хийгдэнэ (нягтлан бодох бүртгэл зогсохгүй). eBarimt-д шинэ хүсэлт үүсэхгүй. Нэхэмжлэхийн UI төлөв "Порталд гараар цуцлах шаардлагатай" (view §9.4: `latest` SUCCESS + бүтэн кредит нот). Хэрэглэгч e-invoice порталд цуцлаад "Порталд цуцалсан" (`ebarimt.unknown.resolve` X) дарна → `latest` T11 (`MANUAL_VOID:<note>`), `resolution_note` заавал.
 - **RET-52.** SCR-03 батлагдвал: `operation = 'MANUAL_VOID'` баримт (сүлжээгүй, PENDING → SUCCESS хэрэглэгчийн баталгаагаар), эсвэл ITC DELETE-ийг B2B-д зөвшөөрвөл CHECK-ийг сулруулж RET-20-оор явна.
 - **RET-53.** 5 хоногоос дээш гараар цуцлагдаагүй бол Owner-т сануулга.
 
@@ -940,6 +1008,10 @@ function ResolveChainForMemo(invoice, memo, now):
     docs = chain(invoice) FOR UPDATE                                  // RET-01
     if invoice-д eBarimt баримт хэзээ ч үүсээгүй (NONE эсвэл NOT_CONFIGURED):
         return NO_DOCUMENT                                            // кредит нот NONE; NOT_CONFIGURED бол backfill-д тусна (§12.9)
+    if docs.all(status = 'CANCELLED' and ddtd is null)
+       and docs.orderBy(created_at).last().resolution_note starts with 'MANUAL_CANCEL:':
+        return NO_DOCUMENT                                            // RET-62: хэрэглэгч eBarimt-ийг санаатай цуцалсан
+    type = chain type (TYP-06)                                        // гинжийн эхний баримтын ebarimt_type
     live = docs.where(status in ('PENDING','SENT','UNKNOWN','ERROR'))
     if live.any(status = 'SENT'):    raise ebarimt.predecessor_in_flight     // 409, retryable
     if live.any(status = 'UNKNOWN'): raise ebarimt.predecessor_unknown       // 409, §11
@@ -971,6 +1043,7 @@ function ResolveChainForMemo(invoice, memo, now):
 
 - **RET-60.** `PENDING`/`ERROR` эх баримт + бүтэн кредит нот → **хоёулаа баримтгүй** (борлуулалт цэвэр 0, хэзээ ч бүртгэгдээгүй). Хууль зүйн хувьд зөв эсэхийг татварын зөвлөх баталгаажуулна (⚠ OQ-20).
 - **RET-61.** Кредит нотын eBarimt-ийн шалгалтын (VAL, `NetState`) алдаа нь кредит нотын posting-ийг зогсооно (DSP-02).
+- **RET-62 (санаатай цуцалсан гинж).** Нэхэмжлэхийн гинжийн бүх баримт `CANCELLED`, `ddtd` NULL (хэзээ ч бүртгэгдээгүй) бөгөөд хамгийн сүүлийнх нь "Цуцлах" үйлдлээр (T4/T10, `resolution_note` `MANUAL_CANCEL:` угтвартай, §11.4) цуцлагдсан бол кредит нотод баримт үүсэхгүй (`NO_DOCUMENT`, posted кредит нотын `ebarimt_receipt_type = 'NONE'`). Үгүй бол (`SUPERSEDED_BY:` / `RESENT_AS:`) `NetState`-ээр шинэ SAVE үүснэ. Энэ дүрэм байхгүй бол хэрэглэгч "баримт шаардлагагүй" гэж цуцалсан нэхэмжлэхийн хэсэгчилсэн кредит нот үлдэгдэлд шинэ баримт гаргах байсан.
 
 ### 12.9 Хоцорсон анхны баримт ба backfill
 
@@ -1020,6 +1093,7 @@ function ResolveChainForMemo(invoice, memo, now):
 |---|---|---|---|---|
 | `ebarimt.send_data` | PER_POSAPI_INSTANCE | Одоогийн seed: `0 0 18 * * ?` (02:00 УБ, өдөрт 1). ADR-0013: 4 цаг тутам → SCR-06 | `GET /rest/sendData` | 3 (10 s, 1 мин, 5 мин) |
 | `ebarimt.info_poll` | PER_POSAPI_INSTANCE | 5 мин | `GET /rest/info` → `left_lotteries`, `last_send_data_at`, мерчантын жагсаалт (REG-04, REG-06), эрүүл мэнд | 3 |
+| `ebarimt.health_probe` | PER_POSAPI_INSTANCE | 30 s (`0/30 * * * * ?`) | `GET /rest/info` (timeout 5 s) → MON-02 `UP`/`DOWN`, `erp_posapi_up` (диск ба DB ping-ийг PosAPI VM-ийн node exporter-оос, TOP-09) | — (дараагийн probe) |
 | `ebarimt.lease_reaper` | SYSTEM | 1 мин | §10.6 | — |
 | `ebarimt.overdue_check` | PER_COMPANY | 1 цаг | §14.3 | 3 |
 | `ebarimt.reference_sync` | SYSTEM | Өдөр бүр 03:00 УБ (`0 0 19 * * ?`) | §15 | 3 |
@@ -1030,7 +1104,7 @@ function ResolveChainForMemo(invoice, memo, now):
 ### 14.2 `/rest/info` ба `sendData`
 
 - **MON-01.** `/rest/info`-ийн хариунаас (бүтэц UNVERIFIED; mock: `operatorName`, `operatorTIN`, `posId`, `posNo`, `version`, `lastSentDate`, `leftLotteries`, `merchants[]{tin,name}`) зөвхөн `leftLotteries`, `lastSentDate`, `merchants[].tin`, `version`-ийг ашиглана. `posapi_instance.left_lotteries`, `last_send_data_at` (`lastSentDate`-ийг Asia/Ulaanbaatar гэж задлана) шинэчлэгдэнэ (`app_worker`-ийн багана түвшний эрх).
-- **MON-02 (instance-ийн эрүүл мэнд).** Сүүлийн 2 дараалсан `info_poll` (≥ 2 мин) бүтэлгүйтвэл instance `DOWN`. Төлөвийг `posapi_instance.health_status`-д (SCR-07) хадгална; SCR-07 хүртэл зөвхөн worker процессын санах ойд байх тул SYNC_FIRST (erp-api) үүнийг харахгүй, connect алдаа нь ERROR болно (DSP-21). `DOWN` үед worker тухайн instance-ийн баримтыг илгээхгүй (§10.2), R-2 сэргэсний дараа дахин dispatch хийнэ. Сэргэмэгц `sendData`-г шууд дуудна.
+- **MON-02 (instance-ийн эрүүл мэнд).** `info_poll` 5 мин тутам тул "> 2 мин хариу өгөхгүй" alert-ийг (§14.3, 02-architecture §9.3) хангаж чадахгүй. Иймээс тусдаа `ebarimt.health_probe` (§14.1, 30 s тутам, `GET /rest/info`, timeout 5 s, retry-гүй) ажиллана: **4 дараалсан** бүтэлгүйтэл (≈ 2 мин) → `DOWN`, 2 дараалсан амжилт → `UP`. Төлөвийг `posapi_instance.health_status`-д (SCR-07) хадгална; SCR-07 хүртэл зөвхөн worker процессын санах ойд байх тул SYNC_FIRST (erp-api) үүнийг харахгүй, connect алдаа нь ERROR болно (DSP-21). `DOWN` үед worker тухайн instance-ийн баримтыг илгээхгүй (§10.2), R-2 сэргэсний дараа дахин dispatch хийнэ. Сэргэмэгц `sendData`-г шууд дуудна.
 - **MON-03.** `sendData` амжилтгүй бол alert; `/rest/info`-ийн `lastSentDate` нь `sendData` амжилттай болсны баталгаа.
 
 ### 14.3 Alert ба тайлан
@@ -1048,6 +1122,8 @@ function ResolveChainForMemo(invoice, memo, now):
 | NOT_CONFIGURED нэхэмжлэх > 24 цаг | Тенантын самбар | Owner | Wizard / backfill |
 | Host-ийн цагийн зөрүү > 1 s / > 2 s | анхааруулга / P2 | on-call | NTP (FR-EBR-014) |
 | `ebarimt.response_amount_mismatch` | P2 | on-call | ITC-тэй тулгах |
+| `ebarimt.duplicate_detected` (DSP-14) | P1 | on-call + Owner | §11.2 алхам 6 |
+| PosAPI VM-ийн диск ≥ 80% эсвэл DB ping ≥ 100 ms (TOP-09) | P2 | on-call | Дэд бүтэц |
 | Нэг баримтад > 3 клон | P2 | on-call | UNK-12 |
 
 "Илгээгдээгүй баримт" тайлан (тенант): posted огноо, дугаар, харилцагч, дүн, eBarimt төлөв, нас (цаг), `error_code`, үйлдлийн холбоос.
@@ -1081,7 +1157,7 @@ stateDiagram-v2
     [*] --> IMPORTED : getSaleListERP / файл импорт (R2)
     [*] --> MATCHED : худалдан авалтын нэхэмжлэхэд ДДТД гараар оруулж post хийсэн (R1)
     IMPORTED --> MATCHED : автомат/гар тулгалт
-    MATCHED --> CONFIRMED : нягтлан баталгаажуулсан → vat_entry.deductible_confirmed = true
+    MATCHED --> CONFIRMED : нягтлан баталгаажуулсан эсвэл IMPORT_API + auto_confirm_imported (PUR-12) → vat_entry.deductible_confirmed = true
     IMPORTED --> REJECTED : манай худалдан авалт биш
     MATCHED --> REJECTED : буруу тулгалт (буцаах)
     CONFIRMED --> RETURNED : нийлүүлэгчийн буцаалт/засварын баримт
@@ -1090,9 +1166,9 @@ stateDiagram-v2
 ### 16.2 R1: гараар бүртгэх
 
 - **PUR-01.** Худалдан авалтын нэхэмжлэхийн ноорогт `supplier_ebarimt_id` (33 орон). `purchase_setup.require_supplier_ebarimt = true` ба нийлүүлэгч НӨАТ төлөгч, мөрөнд хасагдах орцын НӨАТ байвал **заавал** (байхгүй бол хасагдахгүй НӨАТ-аар posting хийхийг санал болгоно, mn-tax R5).
-- **PUR-02.** Шалгалт: `^[0-9]{33}$`; компанид давхардаагүй (`ebarimt.purchase_receipt UNIQUE (company_id, ddtd)` → `ebarimt.purchase_receipt_duplicate`); нийлүүлэгчийн ТТД = `vendor.tin` (хувь хүн нийлүүлэгчийн хувьд шифрлэгдсэн ТТД-ийн HMAC-аар харьцуулна, 13-security SEC-PII-07; зөрвөл анхааруулга); огноо ≤ posting date.
-- **PUR-03.** Posting үед `ebarimt.purchase_receipt` мөр: `source = 'MANUAL'`, `status = 'MATCHED'`, `purch_inv_header_id`, `vendor_id`, дүн нь нэхэмжлэхийн НӨАТ-тэй нийт, НӨАТ, НХАТ (хэрэглэгч засаж болно), `vat_entry_no` (эхний VAT entry). `purchase_header.purchase_receipt_id`.
-- **PUR-04.** "Баталгаажуулах" (`tax.vat.confirm_input` X): хэрэглэгч e-invoice-д баримтыг баталгаажуулсанаа тэмдэглэнэ → `CONFIRMED`, `confirmed_at/by`; холбогдсон posted худалдан авалтын нэхэмжлэхийн (`purch_inv_header.transaction_no`) `entry_type = 'PURCHASE'` VAT entry бүрд `platform.fn_ledger_update`-ээр `supplier_ebarimt_id` (хоосон бол), `deductible_confirmed = true`, `deductible_confirmed_at/by` (whitelisted багана; DB CHECK нь баталгаажсан PURCHASE entry-д ДДТД-ийг заавал болгоно). НӨАТ-ын тайланд зөвхөн баталгаажсан орно (`vat_statement_line.only_deductible_confirmed`).
+- **PUR-02.** Шалгалт: `^[0-9]{33}$`; компанид давхардаагүй (`ebarimt.purchase_receipt UNIQUE (company_id, ddtd)` → `ebarimt.purchase_receipt_duplicate`); нийлүүлэгчийн ТТД = `coalesce(vendor.ebarimt_merchant_tin, vendor.tin)` (`party.vendor.ebarimt_merchant_tin` = "нийлүүлэгчийн eBarimt баримт дээрх борлуулагчийн ТТД"; хувь хүн нийлүүлэгчийн хувьд 13 CR-06 хэрэгжсэний дараа `personal_tin_hmac`-аар харьцуулна — энэ багана **schema-д одоогоор байхгүй**, SEC-PII-07; зөрвөл анхааруулга); огноо ≤ posting date.
+- **PUR-03.** Posting үед `ebarimt.purchase_receipt` мөр: `source = 'MANUAL'`, `status = 'MATCHED'`, `ddtd` = `supplier_ebarimt_id`, `supplier_tin` = PUR-02-ийн ТТД, `supplier_name` = `vendor_name`, `purch_inv_header_id`, `vendor_id`, `total_amount = amount_including_vat_lcy + city_tax_amount` (eBarimt-ийн нийт дүн НХАТ шингэсэн), `total_vat = vat_amount`, `total_city_tax = city_tax_amount` (хэрэглэгч засаж болно), `vat_entry_no` (эхний VAT entry), `receipt_date` = хэрэглэгчийн оруулсан нийлүүлэгчийн баримтын огноо — ноорогт ийм багана байхгүй (SCR-19) тул SCR-19 хүртэл `document_date` 00:00 Asia/Ulaanbaatar. `purchase_header.purchase_receipt_id`.
+- **PUR-04.** "Баталгаажуулах" (`tax.vat_entry.confirm_deductible` X): хэрэглэгч e-invoice-д баримтыг баталгаажуулсанаа тэмдэглэнэ → `CONFIRMED`, `confirmed_at/by`; холбогдсон posted худалдан авалтын нэхэмжлэхийн (`purch_inv_header.transaction_no`) `entry_type = 'PURCHASE'` VAT entry бүрд `platform.fn_ledger_update`-ээр `supplier_ebarimt_id` (хоосон бол), `deductible_confirmed = true`, `deductible_confirmed_at/by` (whitelisted багана; DB CHECK нь баталгаажсан PURCHASE entry-д ДДТД-ийг заавал болгоно). НӨАТ-ын тайланд зөвхөн баталгаажсан орно (`vat_statement_line.only_deductible_confirmed`).
 - **PUR-05.** НӨАТ-ын үе `SUBMITTED` болсны дараа тэр үеийн баримтыг баталгаажуулбал НӨАТ-ын entry-ийн `vat_return_period_id` өөрчлөгдөхгүй; дараагийн нээлттэй үеийн тайланд "хоцорч баталгаажсан" мөрөөр орно (НӨАТ-ын spec-тэй уялдуулна).
 - **PUR-06.** Нийлүүлэгчийн QR-ыг уншиж ДДТД гаргах (R2): QR-ийн кодчилол UNVERIFIED; QR-ийн агуулгыг хадгалахгүй, зөвхөн задалсан ДДТД-ийг.
 
@@ -1114,18 +1190,21 @@ stateDiagram-v2
 
 ```text
 for r in purchase_receipt where status = 'IMPORTED':
-    vendor = party.vendor where tin = r.supplier_tin (хувь хүн бол personal_tin_hmac = HMAC(r.supplier_tin))
+    vendor = party.vendor where ebarimt_merchant_tin = r.supplier_tin or tin = r.supplier_tin
+             or (len(r.supplier_tin) = 7 and registration_no = r.supplier_tin)          // regNo (OQ-13)
+             (хувь хүн: 13 CR-06-ийн personal_tin_hmac = HMAC(r.supplier_tin); багана одоогоор байхгүй)
     inv = posted purch_inv_header where supplier_ebarimt_id = r.ddtd
     if inv: link(r, inv) → MATCHED; continue
-    c = posted purch_inv_header of vendor
+    c = posted purch_inv_header of vendor                                // FR-PUR-009: (ТТД, огноо ±3 хоног, НӨАТ)
           where document_date between r.receipt_date::date − 3 and + 3
-            and amount_including_vat = r.total_amount and vat_amount = r.total_vat
+            and vat_amount = r.total_vat
             and not exists purchase_receipt linked
-    if c.count == 1: link(r, c[0]) → MATCHED (auto)
+    if c.count > 1: c = c.where(amount_including_vat_lcy + city_tax_amount = r.total_amount)   // tie-break (НХАТ шингэсэн нийт)
+    if c.count == 1: link(r, c[0]) → MATCHED (auto); if setup.auto_confirm_imported: Confirm(r)  // PUR-12
     else: leave IMPORTED (candidates c-г UI-д санал болгоно)
 ```
 
-- **PUR-12.** Импортоор олдсон баримт нь ITC-д бүртгэгдсэнийг нотолно. Автоматаар CONFIRMED болгох эсэх нь худалдан авагчийн e-invoice-ийн баталгаажуулалтын журмаас хамаарна (UNVERIFIED, OQ-14); R2-ийн анхдагч: MATCHED, хэрэглэгч баталгаажуулна; тохиргоо `auto_confirm_imported` (SCR-10) нэмж болно.
+- **PUR-12.** Импортоор олдсон баримт нь ITC-д манай ТТД-д бүртгэгдсэнийг нотолно. FR-PUR-009 нь тулгагдмагц `deductible_confirmed = true` болохыг шаарддаг тул R2-ийн анхдагч: `source = 'IMPORT_API'` баримт автоматаар тулгагдвал PUR-04-ийн дүрмээр **CONFIRMED** (тохиргоо `auto_confirm_imported`, анхдагч `true`, SCR-10). Худалдан авагч e-invoice-д тусад нь "баталгаажуулах" алхам шаардлагатай нь тогтоогдвол (OQ-14, D-E4 ⚠ татварын зөвлөх) анхдагчийг `false` болгож MATCHED-д үлдээнэ. Гар тулгалт (`:match`) ба `IMPORT_FILE` нь үргэлж MATCHED → хэрэглэгч баталгаажуулна.
 - **PUR-13.** Тулгагдаагүй IMPORTED баримтуудын "Бүртгээгүй худалдан авалт" тайлан (ТТ-03а-аас өмнө, mn-integrations I-08).
 - **PUR-14.** X-API-KEY байхгүй (ITC олгоогүй) бол файл импорт (`source = 'IMPORT_FILE'`, e-invoice-ийн экспорт) ижил тулгалттай.
 
@@ -1134,7 +1213,7 @@ for r in purchase_receipt where status = 'IMPORTED':
 ## 17. R2: нэхэмжлэх → төлбөр (`*_INVOICE` + `invoiceId`)
 
 - **IFL-01.** Зээлийн нэхэмжлэх (§4.2 `IsCreditSale`) → `B2B_INVOICE` / `B2C_INVOICE` баримт (`source_type = 'SALES_INVOICE'`). Сугалаа/QR-ийн хэвлэлт нэхэмжлэхийн үед байх эсэх UNVERIFIED.
-- **IFL-02.** Төлбөр тулгагдах үед (Parties-ийн `CustomerPaymentApplied` event) → `source_type = 'PAYMENT'`, `ebarimt_type = 'B2B_RECEIPT'`/`'B2C_RECEIPT'`, `parent_ddtd` = нэхэмжлэхийн ДДТД (`invoiceId`), дүн = тулгасан дүн. Нэхэмжлэхийн баримт SUCCESS болоогүй бол outbox `depends_on_id`-аар хүлээнэ.
+- **IFL-02.** Төлбөр тулгагдах үед (Parties-ийн `EntriesApplied` event, 02-architecture §4.2.7; харилцагчийн төлбөр ↔ `*_INVOICE`-тэй нэхэмжлэх тулгалтаар шүүнэ) → `source_type = 'PAYMENT'`, `ebarimt_type = 'B2B_RECEIPT'`/`'B2C_RECEIPT'`, `parent_ddtd` = нэхэмжлэхийн ДДТД (`invoiceId`), дүн = тулгасан дүн. Нэхэмжлэхийн баримт SUCCESS болоогүй бол outbox `depends_on_id`-аар хүлээнэ.
 - **IFL-03.** Хэсэгчилсэн төлбөрийн баримтын `items[]` (нэхэмжлэхийн мөрүүдийг пропорциональ хуваах уу, эсвэл items-гүй юу) UNVERIFIED (OQ-21). R2-ийн дизайныг TS-24-ийн дараа хаана.
 - **IFL-04.** Нэхэмжлэхийг төлбөрөөс өмнө засах/цуцлах нь §12-ийн дүрмээр (`reportMonth` нь `B2B_INVOICE`/`B2C_INVOICE`-д).
 
@@ -1155,25 +1234,25 @@ for r in purchase_receipt where status = 'IMPORTED':
 | `POST /setup:verify-tin` | `getInfo` (+ хуулийн этгээдийн регистрээр `getTinInfo`) | `T_SETUP` R | SET-01, SET-11 |
 | `GET /reference/districts` | `getBranchInfo` жагсаалт | `T_SETUP` R | SET-03 |
 | `POST /setup:register-merchant` | outbox `ebarimt.merchant.register` | `ebarimt.merchant.register` X | REG-01 |
-| `POST /setup:send-data` | `sendData`-г гараар (instance-ийн ops-д) | `ebarimt.send_data.trigger` X | §14 |
+| `POST /setup:send-data` | `sendData`-г гараар (instance-ийн ops-д) | `ebarimt.send_data.trigger` X | §14. Instance нь олон тенантад хамаатай тул instance бүрд 10 мин-д 1 удаа (rate limit, давтвал 429 `api.rate_limited`) |
 | `GET`, `POST`, `PUT /pos` | POS бүртгэл | `T_SETUP` R / I / M | SET-05 |
 | `GET /readiness` | Бэлэн байдлын тайлан | `T_SETUP` R | SET-07 |
 | `GET /documents?status=&from=&to=&posId=&type=` | Баримтын жагсаалт (keyset) | `ebarimt.ebarimt_document` R | `consumer_no` маскласан |
 | `GET /documents/{id}` | Дэлгэрэнгүй + event-ийн түүх + гинж | `ebarimt.ebarimt_document` R | |
-| `POST /documents/{id}:send-and-print` | `SYNC_FIRST`-ийг гараар (PENDING B2C) | `sales.document.print` X | `print` санах ойд, `no-store` |
-| `POST /documents/{id}:resolve` | `{decision, ddtd?, ebarimtDate?, totalAmountSeen?, note}`; `decision` ∈ `REGISTERED`, `NOT_REGISTERED` | `ebarimt.document.resolve` X | §11.2 |
-| `POST /documents/{id}:resend` | `{overrides: [{sourceLineNo, classificationCode?, taxProductCode?, barCode?, barCodeType?, measureUnit?, name?}], posId?, note}` | `ebarimt.document.resolve` X | §11.3–11.4 |
-| `POST /documents/{id}:cancel` | `{note}` | `ebarimt.document.resolve` X | T4/T10 |
-| `POST /documents/{id}:confirm-manual-void` | `{voidedAt, note}` | `ebarimt.document.resolve` X | RET-51 |
+| `POST /documents/{id}:send-and-print` | `SYNC_FIRST`-ийг гараар (PENDING B2C, `operation = 'SAVE'`) | `sales.document.print` X (seed-д байхгүй — §18.2) | `print` санах ойд, `no-store`; DSP-31 claim амжилтгүй (worker авсан) бол 200 `print = null` |
+| `POST /documents/{id}:resolve` | `{decision, ddtd?, ebarimtDate?, totalAmountSeen?, note}`; `decision` ∈ `REGISTERED`, `NOT_REGISTERED`; `ebarimtDate` нь ISO 8601 offset-той (порталын цагийг `+08:00`-оор), хадгалахдаа `timestamptz` (14-api API-JSON-11); `totalAmountSeen` нь string дүн (D-C1) | `ebarimt.unknown.resolve` X | §11.2 |
+| `POST /documents/{id}:resend` | `{overrides: [{sourceLineNo, classificationCode?, taxProductCode?, barCode?, barCodeType?, measureUnit?, name?}], posId?, note}` | `ebarimt.unknown.resolve` X | §11.3–11.4 |
+| `POST /documents/{id}:cancel` | `{note}` | `ebarimt.unknown.resolve` X | T4/T10 |
+| `POST /documents/{id}:confirm-manual-void` | `{voidedAt, note}` | `ebarimt.unknown.resolve` X | RET-51 |
 | `GET /documents/{id}/copy.pdf` | "ХУУЛБАР" (QR-гүй) | `ebarimt.ebarimt_document` R + `sales.document.print` X | PRN-10 |
-| `POST /backfill:preview`, `POST /backfill` | NOT_CONFIGURED нэхэмжлэх нөхөж илгээх | `ebarimt.document.resolve` X | RET-70 |
+| `POST /backfill:preview`, `POST /backfill` | NOT_CONFIGURED нэхэмжлэх нөхөж илгээх | `ebarimt.unknown.resolve` X | RET-70 |
 | `GET /reports/unsent` | "Илгээгдээгүй баримт" | `ebarimt.ebarimt_document` R | §14.3 |
 | `GET /reports/without-receipt` | "eBarimt-гүй борлуулалт" (NONE, override) | `ebarimt.ebarimt_document` R | TYP-03 |
 | `GET /reference/classification?q=` | БҮНА хайлт (навч) | нэвтэрсэн хэрэглэгч | REF-05 |
 | `GET /reference/tax-product-codes?taxType=&date=` | Татварын барааны код | нэвтэрсэн хэрэглэгч | |
-| `GET`, `POST /purchase-receipts` | Худалдан авалтын баримт харах, гараар оруулах | `ebarimt.purchase_receipt` R; `ebarimt.purchase_receipt.import` X | §16 |
+| `GET`, `POST /purchase-receipts` | Худалдан авалтын баримт харах, гараар оруулах | `ebarimt.purchase_receipt` R (`ERP_PURCH_EDIT`); `ebarimt.purchase_receipt.import` X | §16 |
 | `POST /purchase-receipts/{id}:match`, `:reject` | Тулгах, татгалзах | `ebarimt.purchase_receipt.import` X | PUR-11 |
-| `POST /purchase-receipts/{id}:confirm` | Орцын НӨАТ-ыг баталгаажуулах | `tax.vat.confirm_input` X | PUR-04 |
+| `POST /purchase-receipts/{id}:confirm` | Орцын НӨАТ-ыг баталгаажуулах | `tax.vat_entry.confirm_deductible` X | PUR-04 |
 | `POST /purchase-receipts:import` (R2) | `getSaleListERP` / файл | `ebarimt.purchase_receipt.import` X | PUR-10, PUR-14 |
 | Платформ: `GET /api/v1/ops/ebarimt/instances`, `POST /api/v1/ops/ebarimt/documents:bulk-resend` | Instance-ийн төлөв; `connect_failed` баримтыг бөөнөөр клон | Платформын ops (тенантын RBAC биш; бөөнөөр клон нь тенант бүрийн support хандалтаар, 13-security) | §11.4 |
 
@@ -1198,15 +1277,17 @@ for r in purchase_receipt where status = 'IMPORTED':
 
 | Үйлдэл | Объект (RIMDX) | Permission set (13 §6.4) | Анхдагч role |
 |---|---|---|---|
-| eBarimt тохиргоо, POS харах / засах | `T_SETUP` (`ebarimt.ebarimt_setup`, `ebarimt.ebarimt_pos`) R / RIMD | `SETUP_VIEW` / `SETUP` | Owner, Accountant (засах); Viewer (харах) |
-| Мерчант бүртгэх, `sendData` гараар | `ebarimt.merchant.register`, `ebarimt.send_data.trigger` X | `EBARIMT_OPS` | Owner, Accountant |
-| Баримт ба түүх харах | `ebarimt.ebarimt_document(_line, _event)` R | `SALES_VIEW` | Бүх role |
-| QR-тай хэвлэх (send-and-print), ХУУЛБАР | `sales.document.print` X | Борлуулалтын set | Owner, Accountant, Sales clerk |
-| UNKNOWN/ERROR шийдэх, дахин илгээх, цуцлах, порталын цуцлалтыг баталгаажуулах, backfill | `ebarimt.document.resolve` X | `EBARIMT_OPS` | Owner, Accountant, External accountant |
-| eBarimt-гүй гаргах (`NONE`), `reportMonth`-ийн цонх хаагдсаны дараа eBarimt-гүй засвар | `ebarimt.document.override` X — **13-ын каталогид нэмэх санал** (§28) | Шинэ set `EBARIMT_OVERRIDE` (Owner-т л) | Owner |
-| Нийлүүлэгчийн ДДТД оруулах, импорт, тулгах | `ebarimt.purchase_receipt.import` X | `PURCH_DOC_POST` | Owner, Accountant |
-| Орцын НӨАТ баталгаажуулах | `tax.vat.confirm_input` X | `VAT` | Owner, Accountant |
-| `consumerNo`-г задалж харах | PII unmask (13 §10.4) | — | Owner |
+| eBarimt тохиргоо, POS харах / засах | `T_SETUP` (`ebarimt.ebarimt_setup` RIM, `ebarimt.ebarimt_pos` RIMD) | `ERP_READ_ALL` (харах) / `ERP_SETUP` | Owner, Accountant, External accountant (засах); Viewer (харах) |
+| Мерчант бүртгэх, `sendData` гараар | `ebarimt.merchant.register` X (seed), `ebarimt.send_data.trigger` X (13 CR-23) | `ERP_EBARIMT_OPS` | Owner, Accountant, External accountant |
+| Баримт ба түүх харах | `ebarimt.ebarimt_document` R (`_line`, `_sub_receipt` нь эх баримтын эрхийг дагана), `ebarimt.ebarimt_document_event` R | `ERP_SALES_POST` (`ebarimt_document` `Rim`), `ERP_EBARIMT_OPS`, `ERP_READ_ALL` | Бүх role |
+| QR-тай хэвлэх (send-and-print), ХУУЛБАР | `sales.document.print` X — **seed ба 13 §6.3-т байхгүй**; 13 CR-23-д `ERP_SALES_POST`-д нэмэх хүсэлт (§28). Нэмэгдэх хүртэл `sales.invoice.post` / `sales.pos.post` X-ээр шалгана | `ERP_SALES_POST` | Owner, Accountant, Sales clerk |
+| UNKNOWN/ERROR шийдэх, дахин илгээх, цуцлах, порталын цуцлалтыг баталгаажуулах, backfill | `ebarimt.unknown.resolve` X (seed; тайлбарыг өргөтгөх санал §28) | `ERP_EBARIMT_OPS` | Owner, Accountant, External accountant |
+| eBarimt-гүй гаргах (`NONE`), `reportMonth`-ийн цонх хаагдсаны дараа eBarimt-гүй засвар | `ebarimt.document.override` X — **13-ын каталогид нэмэх санал** (§28) | Шинэ set `ERP_EBARIMT_OVERRIDE` (зөвхөн Owner-ийн `ERP_SUPER`-аар) | Owner |
+| Нийлүүлэгчийн ДДТД оруулах, импорт, тулгах | `ebarimt.purchase_receipt.import` X (seed) | `ERP_PURCH_POST` | Owner, Accountant, External accountant |
+| Орцын НӨАТ баталгаажуулах | `tax.vat_entry.confirm_deductible` X (seed) | `ERP_VAT` | Owner, Accountant, External accountant |
+| `consumerNo`-г задалж харах | `platform.pii.unmask` X (13 §10.4) | `ERP_PII_UNMASK` | Owner |
+
+Эрхийн объект ба permission set-ийн нэр нь [db/seed/mn_00_catalogs.sql](./db/seed/mn_00_catalogs.sql) ба 13 §6.3–6.4-ийнх (D-K1). Код нь нэрийг хатуу бичихгүй, `permissions.catalog.json`-ийн тогтмолоор шалгана (15-ui-ux Z-UI-10).
 
 ---
 
@@ -1241,6 +1322,8 @@ for r in purchase_receipt where status = 'IMPORTED':
 | `erp_posapi_left_lotteries_min` | gauge | `posapi_instance` |
 | `erp_posapi_last_send_age_seconds` | gauge | `posapi_instance` |
 | `erp_ebarimt_reference_last_sync_timestamp` | gauge | `cache` |
+| `erp_posapi_disk_free_bytes`, `erp_posapi_db_ping_seconds` | gauge | `posapi_instance` (TOP-09) |
+| `erp_ebarimt_late_response_total` | counter | `outcome` (`auto_resolved`, `duplicate`) (DSP-14) |
 
 Label-д тенант/компанийн id оруулахгүй (02-architecture §11.3).
 
@@ -1280,6 +1363,7 @@ RFC 9457 `application/problem+json`, `code` талбар тогтвортой (0
 | `ebarimt.sum_chain_broken` | 422 | P/D | Нийлбэрийн гинж зөрсөн |
 | `ebarimt.payments_mismatch` | 422 | P/D | Төлбөрийн нийлбэр ≠ нийт дүн |
 | `ebarimt.customer_tin_invalid` / `_not_found` | 422 | P | Худалдан авагчийн ТТД буруу / eBarimt-д олдсонгүй |
+| `ebarimt.customer_tin_required` | 422 | P | ААН харилцагчид хүчинтэй ТТД шаардлагатай (`default_b2c_when_no_tin = false`, TYP-08) |
 | `ebarimt.consumer_no_invalid` | 422 | P/D | Хэрэглэгчийн дугаар 8 орон, зөвхөн B2C |
 | `ebarimt.sub_receipt_split_invalid` | 422 | P/D | Дэд баримтын хуваалт буруу |
 | `ebarimt.ledger_mismatch` | 500 | P | eBarimt-ийн дүн ledger-тэй зөрсөн (системийн алдаа) |
@@ -1308,6 +1392,9 @@ RFC 9457 `application/problem+json`, `code` талбар тогтвортой (0
 | `ebarimt.connect_failed` | — | D | PosAPI-тай холбогдож чадсангүй (илгээгээгүй) |
 | `ebarimt.response_invalid` / `_unparseable` | — | D | Хариу буруу хэлбэртэй (тодорхойгүй) |
 | `ebarimt.lease_expired` | — | D | Илгээлтийн процесс тасарсан (тодорхойгүй) |
+| `ebarimt.response_amount_mismatch` | — (alert P2) | D | PosAPI SUCCESS, гэхдээ хариуны дүн илгээснээс өөр (баримт SUCCESS хэвээр) |
+| `ebarimt.duplicate_detected` | — (alert P1) | D/R | Гараар "Бүртгэгдээгүй" гэж шийдсэн баримт хожим бүртгэгдсэн нь тогтоогдсон (DSP-14, §11.2 алхам 6) |
+| `ebarimt.sub_receipt_id_unmapped` | — (лог P3) | D | Хариуны дэд баримтын ID-г тулгаж чадсангүй (DSP-16) |
 | `ebarimt.resolution_too_early` | 409 | R | "Бүртгэгдээгүй" шийдвэрт эрт байна (sendData + 30 мин) |
 | `ebarimt.resolution_amount_mismatch` | 422 | R | Порталын дүн баримттай зөрсөн |
 | `ebarimt.ddtd_invalid` / `ebarimt.ddtd_duplicate` | 422 / 409 | R | ДДТД 33 орон / аль хэдийн бүртгэлтэй |
@@ -1671,7 +1758,7 @@ Connection: close
 
 ### 22.7 Жишээ G — өмнөх сарын B2B засвар (`inactiveId` + `reportMonth`)
 
-2026-10-05-нд (Asia/Ulaanbaatar, сарын 5 ≤ 7) жишээ B-д 10% үнийн бууралт: кредит нот SCM-2026-00010, G/L мөр 30 000 + НӨАТ 3 000 = 33 000, `vat_date = posting_date = 2026-09-30` (9-р сарын НӨАТ-ын үе OPEN; §12.6). `AMOUNT_ONLY` → шинэ дүн 297 000 (НӨАТ 27 000).
+2026-10-05-нд (Asia/Ulaanbaatar, сарын 5 ≤ 7) жишээ B-д 10% үнийн бууралт: кредит нот SCM-2026-00010, G/L мөр 30 000 + НӨАТ 3 000 = 33 000, `vat_date = posting_date = 2026-09-30` (9-р сарын НӨАТ-ын үе OPEN; §12.6). `AMOUNT_ONLY` → шинэ дүн 297 000 (НӨАТ 27 000). `bill_seq = 119`: тоолуур reset-гүй, монотон тул 2026-10-05-ны дугаар нь 09-28-ны 98-аас их, 10-06-ны жишээ A-ийн 123-аас бага байна.
 
 ```json
 {
@@ -1688,7 +1775,7 @@ Connection: close
   "inactiveId": "037900846788202609281000009800007",
   "invoiceId": null,
   "reportMonth": "2026-09",
-  "billIdSuffix": "001000140",
+  "billIdSuffix": "001000119",
   "receipts": [
     {
       "totalAmount": 297000.00,
@@ -1878,6 +1965,15 @@ Stub PosAPI (`posapi-mock`) дээр integration тест; дүнгийн шал
 - **AT-EB-40 (FR-EBR-012 AC1).** *Given* migration `verify`, *Then* `qr_data`/`lottery` нэртэй багана 0; `integration.outbox`-д `{"x":{"qrData":"…"}}` INSERT → 23514.
 - **AT-EB-41.** *Given* DI container, *Then* `PosApiReceiptClient`-ийн handler chain-д resilience/retry handler байхгүй; `PooledConnectionLifetime = 0` (architecture test).
 - **AT-EB-42.** *Given* PosAPI SUCCESS боловч хариуны `totalAmount` илгээснээс өөр, *Then* баримт SUCCESS, P2 alert `ebarimt.response_amount_mismatch`.
+- **AT-EB-43 (DSP-14).** *Given* stub 150 s-ийн дараа SUCCESS хариулна, client timeout-ийг тестэд 200 s болгосон, reaper 120 s-д `UNKNOWN` (`lease_expired`) болгосон, *When* хариу ирэх, *Then* баримт `SUCCESS`, `ddtd` хадгалагдсан, `resolution_note = 'LATE_RESPONSE'`, event `UNKNOWN → SUCCESS`, stub-ийн дуудлага = 1, QR/сугалаа DB-д 0. *Given* мөн нөхцөлд хэрэглэгч хариу ирэхээс өмнө "Бүртгэгдээгүй" гэж шийдсэн, *Then* хуучин баримт CANCELLED хэвээр, `ddtd` бичигдсэн, P1 `ebarimt.duplicate_detected`.
+- **AT-EB-44 (AMT-21a).** *Given* §22.1-ийн баримт, *When* Enqueue-ийн санах ойн утгаас ба DB-ээс (`numeric(19,4)`, `numeric(19,6)`, `numeric(19,5)`) дахин угсарсан canonical JSON, *Then* хоёр hash тэнцүү, JSON-д `"totalAmount":8800.00`, `"qty":2` (`8800.0000`, `2.00000` биш); dispatch `request_drift` өгөхгүй.
+- **AT-EB-45 (RET-14).** *Given* нэхэмжлэх: бараа 2 × 5 500 (НӨАТ 1 000) + "Хөнгөлөлт" G/L −1 100 (НӨАТ −100), SUCCESS баримт A (9 900 / 900), *When* 1 барааны кредит нот (5 500 / 500), *Then* шинэ SAVE баримт `inactiveId = A`, нэг item 1 × 4 400.00, НӨАТ 400.00, VAL-29 давна (`correction_exceeds_receipt` гарахгүй).
+- **AT-EB-46 (DSP-16).** *Given* stub хариуны `receipts[]` нь `taxType`-гүй 2 элементтэй (`VAT_ABLE`, `VAT_FREE` дэд баримттай хүсэлтэд), *Then* `ebarimt_sub_receipt.sub_receipt_id` нь илгээсэн дарааллаар (`VAT_ABLE` → [0], `VAT_FREE` → [1]) бөглөгдөнө.
+- **AT-EB-47 (TYP-07, DSP-03).** *Given* `ebarimt_setup` байхгүй, ТТД-тэй ААН харилцагч (`AUTO`), *When* нэхэмжлэх батлах, *Then* posted `ebarimt_receipt_type = 'B2B_RECEIPT'`, `ebarimt_customer_tin` бөглөгдсөн, `ebarimt_document` 0. *Given* `sales_setup.ebarimt_on_posting = false`, *Then* posted `ebarimt_receipt_type = 'NONE'`, `chainStatus = NOT_REQUIRED`.
+- **AT-EB-48 (TYP-08).** *Given* `default_b2c_when_no_tin = false`, Монголын `kind = LEGAL`, ТТД-гүй харилцагч, *When* батлах, *Then* 422 `ebarimt.customer_tin_required`, posting rollback. *Given* `true`, *Then* `B2C_RECEIPT`.
+- **AT-EB-49 (RET-62).** *Given* нэхэмжлэхийн баримт ERROR → "Цуцлах" (`MANUAL_CANCEL:`), *When* хэсэгчилсэн кредит нот, *Then* кредит нотод `ebarimt_document` 0, posted `ebarimt_receipt_type = 'NONE'`. *Given* оронд нь PENDING баримтыг өмнөх кредит нот `SUPERSEDED_BY`-оор цуцалсан, *Then* шинэ SAVE баримт (`inactiveId`-гүй) үүснэ.
+- **AT-EB-50 (§11.2 алхам 6, STM-07).** *Given* клон C SUCCESS, анхны баримт O (CANCELLED) порталд мөн бүртгэгдсэн нь илэрсэн (B2C), *When* ops O-д ДДТД/огноо бичээд "Илүү баримтыг буцаах", *Then* DELETE баримт (`replaces_document_id = O`) SUCCESS, **C SUCCESS хэвээр**, O CANCELLED хэвээр.
+- **AT-EB-51 (MON-02).** *Given* stub `/rest/info` 2 мин 10 s хариу өгөхгүй, *Then* `ebarimt.health_probe` 4 дахь бүтэлгүйтлээр instance `DOWN`, P1 alert "Instance хариу өгөхгүй > 2 мин", worker тухайн instance руу илгээхгүй.
 
 ---
 
@@ -1921,8 +2017,10 @@ Stub PosAPI (`posapi-mock`) дээр integration тест; дүнгийн шал
 | TS-32 | Нэг хүсэлтийг (ижил `billIdSuffix`) хоёр удаа илгээх | Давхардлын алдаа + одоо байгаа ДДТД буцаах эсэх (UNKNOWN-ийг автоматаар шийдэх боломж) | OQ-08 |
 | TS-33 | Хариуны `date` ба серверийн цаг | Asia/Ulaanbaatar, `yyyy-MM-dd HH:mm:ss` | — |
 | TS-34 | Staging-ийн бодит урсгалын дараа DB/лог/trace-ээс бодит `qrData`/`lottery`-г хайх | 0 олдоц (OBS-05-ийн бодит хувилбар) | — |
+| TS-35 | Ижил барааг (а) `unitPrice` = НӨАТ шингэсэн (`5 500 / 2 = 2 750`), (б) `unitPrice` = НӨАТ-гүй (`2 500`) хоёр хувилбараар илгээх | Аль нь хүлээн авагдах, порталд харагдах нэгжийн үнэ (AMT-01) | OQ-24 |
+| TS-36 | Хариуны `receipts[]`-д `taxType` ирэх эсэх, дараалал илгээсэнтэй ижил эсэх (2 дэд баримттай хүсэлт) | DSP-16-ийн тулгалтын түлхүүр | — |
 
-**Гарах шалгуур (pilot-оос өмнө):** TS-01..06, 10, 12, 13, 15, 16, 20, 23, 25, 27, 28, 33, 34 давсан; OQ-01..06 хариутай эсвэл анхдагч шийдвэрийг бизнес эзэн баталсан (ADR-0023 G2).
+**Гарах шалгуур (pilot-оос өмнө):** TS-01..06, 10, 12, 13, 15, 16, 20, 23, 25, 27, 28, 33, 34, 35, 36 давсан; OQ-01..06 хариутай эсвэл анхдагч шийдвэрийг бизнес эзэн баталсан (ADR-0023 G2).
 
 ---
 
@@ -1935,18 +2033,22 @@ Stub PosAPI (`posapi-mock`) дээр integration тест; дүнгийн шал
 | SCR-03 | Өндөр | `ebarimt_document.operation`-д `'MANUAL_VOID'` нэмэх (billIdSuffix-гүй, `replaces_document_id` + `inactive_ddtd` заавал, сүлжээгүй); ITC зөвшөөрвөл CHECK `operation <> 'DELETE' OR ebarimt_type = 'B2C_RECEIPT'`-ийг `B2B_RECEIPT`-д сулруулах | B2B-ийн бүтэн цуцлалтыг (RET-51) SUCCESS → CANCELLED-ээс илүү тодорхой бүртгэх |
 | SCR-04 | Дунд | `ebarimt.ebarimt_setup`: `registration_status text CHECK (DRAFT/REQUESTED/AWAITING_CONFIRMATION/ACTIVE/SUSPENDED)`, `activated_at timestamptz`, `suspended_reason text`, `default_classification_code char(7)`, `expected_daily_receipts integer`, `invoice_flow_enabled boolean` (R2), `non_vat_payer_tax_type platform.ebarimt_tax_type CHECK (IN ('NOT_VAT','VAT_FREE'))` | §2.3 төлөвийг гаргаж авахын оронд хадгалах; MAP-31; TOP-08; SET-09 |
 | SCR-05 | Дунд | Глобал `ebarimt.taxpayer_info (tin platform.tin PK, found boolean, name text, vat_payer boolean, city_payer boolean, free_project boolean, is_government boolean, fetched_at timestamptz)`; `app_worker` + `app_user` (INSERT/UPDATE `getInfo`-ийн үр дүн) | SET-10, VAL-18 (30 хоногийн кэш); 02-architecture `taxpayer_cache` |
-| SCR-06 | Дунд | `integration.job_definition` seed: `ebarimt.info_poll` (5 мин), `ebarimt.lease_reaper` (1 мин), `ebarimt.overdue_check` (1 цаг), `ebarimt.reference_sync` (өдөр), `ebarimt.taxpayer_refresh` (30 хоног), R2: `ebarimt.purchase_import`, `ebarimt.sales_total_reconcile`. `ebarimt.send_data`-ийн cron-ийг `0 0 */4 * * ?` (ADR-0013) болгох | §14.1 |
-| SCR-07 | Дунд | `ebarimt.posapi_instance`: `merchant_soft_limit integer DEFAULT 800`, `receipts_per_day_soft_limit integer DEFAULT 70000`, `health_status text CHECK (UP/DOWN/UNKNOWN)`, `last_info_at timestamptz`, `last_info_error text`, `version text`; `app_worker`-т эдгээр баганын UPDATE эрх. SECURITY DEFINER `ebarimt.fn_instance_merchant_counts()` (зөвхөн `app_worker`/ops) | TOP-03, TOP-07, MON-02 |
+| SCR-06 | Дунд | `integration.job_definition` seed: `ebarimt.health_probe` (PER_POSAPI_INSTANCE, `0/30 * * * * ?`, max_attempts 1, timeout 5 s), `ebarimt.info_poll` (5 мин), `ebarimt.lease_reaper` (1 мин), `ebarimt.overdue_check` (1 цаг), `ebarimt.reference_sync` (өдөр), `ebarimt.taxpayer_refresh` (30 хоног), R2: `ebarimt.purchase_import`, `ebarimt.sales_total_reconcile`. `ebarimt.send_data`-ийн cron-ийг `0 0 */4 * * ?` (ADR-0013) болгох | §14.1 |
+| SCR-07 | Дунд | `ebarimt.posapi_instance`: `merchant_soft_limit integer DEFAULT 800`, `receipts_per_day_soft_limit integer DEFAULT 70000`, `health_status text CHECK (UP/DOWN/UNKNOWN)`, `last_info_at timestamptz`, `last_info_error text`, `version text`; `app_worker`-т эдгээр баганын UPDATE эрх. SECURITY DEFINER `ebarimt.fn_instance_merchant_counts() RETURNS TABLE (posapi_instance_id uuid, merchants integer, weighted_load numeric, expected_receipts bigint)` (owner `app_rls_bypass`, тенантын id буцаахгүй; EXECUTE `app_user` **ба** `app_worker` — wizard `erp-api`-д ажилладаг) | TOP-03, TOP-07, TOP-08, MON-02 |
 | SCR-08 | Бага | `ebarimt_document.resent_from_document_id uuid` (→ өөрийн хүснэгт) | Клон ↔ хуучин баримтын холбоосыг `resolution_note`-ийн текстийн оронд (UNK-10) |
 | SCR-09 | Бага | `sales.sales_line`, `sales_invoice_line`, `sales_cr_memo_line`: `system_line_kind text CHECK (NONE/INVOICE_ROUNDING)` | MAP-03-ийн бөөрөнхийллийн мөрийг данснаас бус тэмдгээр тодорхойлох |
-| SCR-10 | Дунд (R2) | `platform.tenant_secret` (02-architecture §10.4-т байгаа ч schema-д алга); `ebarimt_setup.tpi_secret_id uuid`, `auto_confirm_imported boolean DEFAULT false` | SEC-04, PUR-12 |
+| SCR-10 | Дунд (R2) | `platform.tenant_secret` (02-architecture §10.4-т байгаа ч schema-д алга); `ebarimt_setup.tpi_secret_id uuid`, `auto_confirm_imported boolean NOT NULL DEFAULT true` (FR-PUR-009; OQ-14-ийн хариугаар `false` болгож болно) | SEC-04, PUR-12 |
 | SCR-11 | Бага | Глобал кэш `ebarimt.district (district_code char(4) PK, branch_code, branch_name, sub_branch_code, sub_branch_name, fetched_at)`, `ebarimt.barcode_reference (barcode PK, classification_code char(7), name, fetched_at)`; `classification_code.active boolean DEFAULT true`; `ebarimt_pos.district_code char(4)` (олон салбар) | SET-03, SET-04, REF-02, §15 |
 | SCR-12 | Дунд | View `ebarimt.v_source_document_status (company_id, source_type, source_id, ui_status, latest_document_id, ddtd, age_hours, error_code)` (`security_invoker = true`) | §9.4 ба "Илгээгдээгүй баримт" тайлан (FR-EBR-013 AC2) |
 | SCR-13 | Нөхцөлт (Өндөр, OQ-02-оос) | `billIdSuffix`-ийн хүрээ instance-ийнх бол: `ebarimt.posapi_instance_counter (posapi_instance_id, last_seq)` + SECURITY DEFINER функц, `ebarimt_document`-ийн UNIQUE-ийг instance + өдрөөр | BIL-07 |
-| SCR-14 | Бага | `tax.tax_parameter` seed: `ebarimt.report_month_window_last_day = 7`, `ebarimt.left_lotteries_warning = 100`, `ebarimt.posapi_merchant_limit = 1000`, `ebarimt.posapi_daily_receipt_limit = 100000` | D-E7: хууль журмын тоог кодонд бичихгүй |
+| SCR-14 | Бага | `tax.tax_parameter` seed: `ebarimt.report_month_window_last_day = 7`, `ebarimt.left_lotteries_warning = 100`, `ebarimt.posapi_merchant_limit = 1000`, `ebarimt.posapi_daily_receipt_limit = 100000`; `status = 'verified'`, `legal_basis = 'PosAPI 3.0 v3.2.48'`, `source_url = 'https://developer.itc.gov.mn/'` (хүснэгтийн дүрэм: `unverified` мөр posting-ийг удирдахгүй — `report_month_window_last_day` нь posting-ийг блоклодог тул заавал `verified`) | D-E7: хууль журмын тоог кодонд бичихгүй |
 | SCR-15 | Бага | `sales.sales_header.ebarimt_pos_id uuid` (→ `ebarimt.ebarimt_pos`) | Олон POS-той компанид хэрэглэгч POS сонгох (одоо анхдагч POS) |
 | SCR-16 | Бага | `ebarimt_document.posapi_message text` | Амжилттай боловч мэдээллийн мессеж (жишээ нь DELETE "иргэний зөвшөөрөл хүлээгдэж буй") хадгалах; `error_message`-ийг бохирдуулахгүй |
 | SCR-17 | Бага (R2) | `ebarimt_document.easy boolean NOT NULL DEFAULT false` | Хялбар бүртгэл (`payments[].data.easy`), 02-architecture §9.2-ийн лог багана |
+| SCR-18 | Өндөр | `ebarimt.fn_ebarimt_document_guard`-д төлвийн шилжилтийн whitelist нэмэх: `PENDING → {SENT, ERROR, CANCELLED}`, `SENT → {SUCCESS, ERROR, UNKNOWN}`, `UNKNOWN → {SUCCESS, CANCELLED}`, `ERROR → {CANCELLED}`, `SUCCESS → {CANCELLED}`; `→ SENT` үед `NEW.attempt_count = OLD.attempt_count + 1` заавал; `attempt_count` буурахгүй; `PENDING` зөвхөн INSERT-ээр | STM-02/STM-03-ийн "хоёр дахь илгээлтгүй" баталгааг app-аас DB руу шилжүүлэх (одоогийн guard `ERROR → PENDING`-ийг хориглодоггүй) |
+| SCR-19 | Дунд | `purchase.purchase_header.supplier_ebarimt_date timestamptz` ба `purchase.purch_inv_header.supplier_ebarimt_date timestamptz` (snapshot) | PUR-03: `ebarimt.purchase_receipt.receipt_date NOT NULL`-ийн эх үүсвэр; PUR-02-ийн "огноо ≤ posting date" шалгалт |
+| SCR-20 | Бага | `inv.item_unit_of_measure.barcode_type text NOT NULL DEFAULT 'UNDEFINED' CHECK (barcode_type IN ('GS1','ISBN','UNDEFINED'))` | §5.4: хэмжих нэгжийн баркодын төрлийг таамаглахгүй |
+| SCR-21 | Бага | `sales.sales_invoice_header.ebarimt_none_reason text CHECK (ebarimt_none_reason IN ('USER_OVERRIDE','CUSTOMER_DEFAULT','EXTERNAL_ISSUER','WINDOW_CLOSED_OVERRIDE','CHAIN_CANCELLED'))`, `sales.sales_cr_memo_header`-д ижил; `CHECK ((ebarimt_receipt_type = 'NONE') = (ebarimt_none_reason IS NOT NULL))` | TYP-07, RET-62: "eBarimt-гүй борлуулалт" тайланд (TYP-03, CMP-037) шалтгааныг найдвартай гаргах |
 
 ---
 
@@ -1979,6 +2081,8 @@ Stub PosAPI (`posapi-mock`) дээр integration тест; дүнгийн шал
 | OQ-21 | R2: хэсэгчилсэн төлбөрийн `invoiceId` баримтын `items[]` | IFL-03 | R2-т шийднэ | ITC, TS-24 |
 | OQ-22 | Сарын 7-ноос хойш өмнөх сарын B2B баримтыг (хоцорсон анхны баримт) хэрхэн гаргах | §12.6 "хоцорсон" багана | Одоогийн сараар + "Хугацааны зөрүү" | ITC, татварын зөвлөх |
 | OQ-23 | ТТД-тэй хувь хүн бизнес эрхлэгчид (12–14 оронтой `civil_id`) B2B баримт гаргах ёстой юу (орцын НӨАТ-ын эрх) | TYP-04, 13-security SEC-PII-06 (Q5) | B2C (`customerTin`-гүй) | ITC, татварын зөвлөх |
+| OQ-24 | `items[].unitPrice` НӨАТ/НХАТ шингэсэн үү, шингээгүй юу? Албан ёсны жишээнүүд зөрүүтэй (skill §10) | AMT-01, AMT-03; буруу бол бүх баримт татгалзагдана эсвэл порталд буруу нэгжийн үнэ харагдана | Шингэсэн (`totalAmount = qty × unitPrice`) | ITC (posapi@itc.gov.mn), TS-35 |
+| OQ-25 | `reportMonth`-ийн цонх хаагдсаны дараа (сарын 8-аас) өмнөх сарын B2B баримтын **хэсэгчилсэн** засварт нягтлан бодох бүртгэлийн кредит нотыг блоклох уу (одоогийн FR-EBR-011 AC2), эсвэл RET-51 шиг posting-ийг зөвшөөрч eBarimt-ийг "порталд гараар шийдэх" төлөвт оруулах уу? Одоогийн дүрэм нь бүтэн цуцлалт (RET-51: posting зогсохгүй) ба хэсэгчилсэн засвар (§12.6: posting зогсоно) хооронд зөрүүтэй | §12.6 WINDOW_CLOSED, RET-51 | FR-EBR-011 AC2 (блоклох; `ebarimt.document.override`-оор NONE) | Бизнес эзэн, татварын зөвлөх |
 
 ---
 
@@ -1996,8 +2100,13 @@ Stub PosAPI (`posapi-mock`) дээр integration тест; дүнгийн шал
 10. **18-dev-setup:** `ebarimt.receipt`, `ebarimt.receipt_event`, глобал хүснэгтийн `ref_` угтвар (`ebarimt.ref_classification`) → schema-ийн `ebarimt.ebarimt_document`, `ebarimt.classification_code` (D-K1).
 11. **00-overview §баримтын жагсаалт:** `16-ebarimt.md` гэж төлөвлөсөн → энэ баримт `12-ebarimt-integration.md`.
 12. **02-architecture §10.4:** `platform.tenant_secret` schema-д байхгүй → SCR-10 (13-security-audit-tenancy CR-18-тай ижил хүсэлт; нэгийг нь хэрэгжүүлнэ).
-13. **13-security-audit-tenancy §6.3–6.4:** `X` объект `ebarimt.document.override` ба Owner-т л олгогдох permission set `EBARIMT_OVERRIDE` нэмэх (TYP-03, §12.6); `ebarimt.document.resolve`-ийн тайлбарт "дахин илгээх, цуцлах, порталын цуцлалт, backfill"-ийг нэмэх (§18.2).
+13. **13-security-audit-tenancy §6.3–6.4 (CR-23-т нэмэх):** `X` объект `ebarimt.document.override` ба Owner-т л олгогдох permission set `ERP_EBARIMT_OVERRIDE` (TYP-03, §12.6); `sales.document.print` X-ийг `ERP_SALES_POST`-д (seed-д байхгүй; 14-api §15.5, OpenAPI `x-permission` ашигласан); `ebarimt.unknown.resolve`-ийн тайлбарт "дахин илгээх, цуцлах, порталын цуцлалт, backfill"-ийг нэмэх (§18.2).
 14. **13-security-audit-tenancy §10 PII каталог:** хувь хүн мерчантын ТТД (`ebarimt_setup.merchant_tin`, `ebarimt_document.merchant_tin`, `ebarimt_sub_receipt.merchant_tin`) нь PosAPI-д заавал тул энгийн текстээр хадгалах үл хамаарлыг тэмдэглэх (SEC-06); Q5-ийн хариу нь TYP-04 (R1-д хувь хүнд B2C).
+15. **14-api §15.5 ба `api/openapi.yaml`:** `ACTION ebarimt.document.resolve` (`:resolve`, `:resend`, `:cancel`) → seed-ийн `ebarimt.unknown.resolve` (D-K1; 15-ui-ux Z-UI-5, OQ-UI-23). `EbarimtChainStatus` enum-д `MANUAL_VOID_REQUIRED` нэмэх (§9.4). Энэ баримтын эхний хувилбар ч `ebarimt.document.resolve`, `tax.vat.confirm_input`-ийг хэрэглэж байсныг Review log-оор засав.
+16. **ADR-0012 §5 "Дараалал":** засварын баримтыг `depends_on_id`-аар эх баримт SENT болохыг хүлээлгэх ↔ энэ баримт: кредит нот батлах үед эх баримт `SENT`/`UNKNOWN` бол 409 (`predecessor_in_flight`/`_unknown`), `PENDING`/`ERROR` бол `SUPERSEDED_BY`-оор цуцална (§12.8) — тиймээс засварын баримтад `depends_on_id` хэрэггүй (`inactiveId` нь үргэлж SUCCESS ДДТД). `depends_on_id` зөвхөн R2-ийн `invoiceId` урсгалд (IFL-02). Мөн ADR-0012/02 §9.2-ийн `integration.fn_claim_outbox_by_id` schema-д байхгүй → DSP-31-ийн RLS дор энгийн `UPDATE`. ADR-ийг шинэчлэх.
+17. **02-architecture §4.2.6:** нийтийн интерфейсэд `IEbarimtReceiptQueue.ResolveTypeAsync` нэмэх (posted header immutable тул төрлийн snapshot-ыг posted header бичихээс өмнө авна, §10.1); §9.3 "AWAITING_CONFIRMATION үед 15 мин тутам" → `ebarimt.info_poll` 5 мин (REG-04); §9.3 "instance хариу өгөхгүй > 2 мин"-ийг хангахын тулд `ebarimt.health_probe` 30 s (MON-02).
+18. **01-requirements FR-PUR-009:** "FR-EBR-019-өөр татсан баримт" → FR-EBR-018 (`getSaleListERP`); тулгалтын түлхүүр (ТТД, огноо ±3, НӨАТ)-ыг PUR-11 дагасан, нийт дүнг tie-break болгосон.
+19. **ADR-0013 §3:** "≤ 800 мерчант (80%) ба ≤ 70 000 баримт/өдөр" — 70 000 нь 70% (TOP-03-т тодотгосон).
 
 ---
 
@@ -2014,3 +2123,73 @@ Stub PosAPI (`posapi-mock`) дээр integration тест; дүнгийн шал
 - [research/mn-integrations-market.md](./research/mn-integrations-market.md) §2–3, §11 (I-01..I-08, I-11), §12; [research/mn-tax.md](./research/mn-tax.md) R3, R5, R9, R14, R15
 - [99-glossary.md](./99-glossary.md) — eBarimt, PosAPI, ДДТД, БҮНА, Оператор, billIdSuffix
 - eBarimt PosAPI 3.0, developer.itc.gov.mn, v3.2.48 (2026-09-15); асуулт: posapi@itc.gov.mn
+
+---
+
+## Хяналтын тэмдэглэл (Review log)
+
+**Огноо:** 2026-10-07. **Төрөл:** adversarial review (DECISIONS, `db/schema/*.sql` + `db/seed/mn_00_catalogs.sql`, 01/02/03/13/14/15/18, ADR-0012/0013, research `mn-integrations-market` §2–3 ба `mn-tax` R3–R15, skill `ebarimt-integration` (PosAPI v3.2.48), `starter/deploy/posapi-mock`-тэй тулгасан). Тоо: **44 асуудал**, **41 нь энэ баримтад засагдсан**, 3 нь өөр эзэмшигчид шилжсэн (доор "Нээлттэй").
+
+Хүснэгт/баганын нэрийг grep-ээр шалгасан: `ebarimt.*` (бүх 11 хүснэгт), `sales.sales_header/_line/_invoice_header/_invoice_line/_cr_memo_header`, `party.customer/vendor/payment_method/customer_posting_group`, `inv.item/unit_of_measure/item_unit_of_measure`, `tax.vat_posting_setup/vat_entry/tax_parameter`, `purchase.purchase_setup/purchase_header/purch_inv_header`, `platform.company_setup`, `integration.outbox/job_definition/idempotency_key`, `fn_next_bill_seq`, `fn_claim_outbox`, `fn_ledger_update`, `trg_ebarimt_document_guard`. Schema-д **байхгүй** нэрс: `personal_tin_hmac` (13 CR-06), `integration.fn_claim_outbox_by_id` (ADR-0012), `ebarimt.document.resolve`, `sales.document.print`, `tax.vat.confirm_input` (seed), `CustomerPaymentApplied` (02 §4.2.7) — бүгдийг засаж эсвэл "байхгүй/CR" гэж тэмдэглэв. Жишээнүүдийн арифметикийг (НӨАТ 10/110, хуваалт, гинж, 33 оронтой ДДТД) скриптээр дахин бодож шалгасан — дүн бүгд зөв, зөвхөн `bill_seq`-ийн дараалал буруу байв (#24).
+
+### Засагдсан (ач холбогдлоор)
+
+| # | Хэсэг | Асуудал | Засвар |
+|---|---|---|---|
+| 1 | §12.3 `NetState` | **Алгоритмын алдаа:** сөрөг (хөнгөлөлтийн) мөртэй нэхэмжлэхийн **аливаа** засвар `b.G < 0` шалгалтаар `correction_exceeds_receipt` болж posting зогсох, `G > 0` шүүлтүүр хөнгөлөлтийг хаях байсан | Тэмдэгт мэдрэмтгий шалгалт, сөрөг мөрийг BuildItems-д шингээх; RET-14, AT-EB-45 |
+| 2 | §6.3 AMT-21a | **Бүх баримт `request_drift` болох эрсдэл:** .NET `decimal` scale хадгалдаг тул санах ойн (`8800.00`) ба DB-ийн (`numeric(19,4)` → `8800.0000`) JSON зөрж hash таарахгүй | Заавал `JsonConverter<decimal>` (дүн 2 орон, qty илүү тэггүй), нэг `JsonSerializerOptions`; AT-EB-44. PosAPI JSON-д тоо (D-C1-ийн үл хамаарал); `JavaScriptEncoder.Create` HTML тэмдэгт escape хийдгийг тодотгов |
+| 3 | §10.1, §4.2, MAP-00 | Posted header immutable (`T_LEDGER`) боловч `Enqueue` төрлийг posted header бичсний **дараа** шийддэг байсан → TYP-07-ийн snapshot хэрэгжих боломжгүй; `DecideType` NOT_CONFIGURED-д төрөл шийдэлгүй буцдаг байсан (TYP-07-той зөрчил); кредит нот DecideType-аар явж байсан (TYP-06-тэй зөрчил) | `ResolveTypeAsync` (posted header-ээс өмнө) + `EnqueueAsync`; DecideType setup-ийг төрөл шийдсэний дараа шалгана; кредит нот гинжээс; `NO_DOCUMENT`/`MANUAL_VOID_REQUIRED`-ийг Enqueue боловсруулна |
+| 4 | §11.2 алхам 6, T5/T11 | **Алдаа:** давхардсан баримтыг DELETE хийхэд `replaces_document_id = клон` байсан тул T11 **хүчинтэй клоныг CANCELLED** болгох байсан; DELETE-ийн `date`-ийн эх үүсвэргүй | `replaces_document_id` = анхны (CANCELLED) баримт, STM-07 (T11 зөвхөн SUCCESS-ийг цуцална), ДДТД/огноог анхны мөрөнд бичих; AT-EB-50 |
+| 5 | §10.2 Tx B | Reaper UNKNOWN болгосны дараа ирсэн SUCCESS хариуны ДДТД-г "log + return"-оор хаяж байсан (илүү гар ажил, давхардлын эрсдэл) | DSP-14 `HandleLateResponse` (UNKNOWN → SUCCESS `LATE_RESPONSE`; CANCELLED бол P1 `duplicate_detected`); AT-EB-43 |
+| 6 | §10.2 T5 | Хариуны `receipts[]`-ийг `taxType`-аар тулгадаг, гэтэл `posapi-mock` (ба UNVERIFIED бүтэц) `taxType`-гүй | DSP-16 дарааллаар fallback; AT-EB-46, TS-36 |
+| 7 | §11.3 | DELETE баримтын клон `fn_next_bill_seq` дууддаг → schema CHECK (`operation = 'SAVE'` ⇔ `bill_*`) зөрчинө | Зөвхөн SAVE-д bill_seq |
+| 8 | §9.3 STM-02 | "Хоёр дахь илгээлтийг DB түвшинд боломжгүй" гэсэн нь хэт өндөр: guard `ERROR → PENDING`, нэмэгдүүлэлгүй `→ SENT`-ийг хориглодоггүй | Тодотгол + SCR-18 (шилжилтийн whitelist) |
+| 9 | §18.2, §11, §16, AT | Эрхийн нэр seed/13-тай зөрсөн: `ebarimt.document.resolve` (14 газар) → `ebarimt.unknown.resolve`; `tax.vat.confirm_input` → `tax.vat_entry.confirm_deductible`; set `EBARIMT_OPS/SETUP_VIEW/SALES_VIEW/PURCH_DOC_POST/VAT` → `ERP_*` | D-K1-ээр seed-ийн нэр; `sales.document.print` seed-д байхгүйг тэмдэглэж fallback ба CR (§28 #13) |
+| 10 | §16 PUR-11/12 | FR-PUR-009-тэй зөрчил: тулгалтын түлхүүр (ТТД, ±3, **НӨАТ**) биш нийт дүнгээр (НХАТ-ыг тооцоогүй) тулгадаг; FR-ийн автомат баталгаажуулалтыг үгүйсгэж байсан | Түлхүүр НӨАТ, нийт (`amount_including_vat_lcy + city_tax_amount`) нь tie-break; `auto_confirm_imported` анхдагч `true` (SCR-10), OQ-14 ⚠ |
+| 11 | §16 PUR-02/03/11 | `party.vendor.ebarimt_merchant_tin`-ийг огт ашиглаагүй; `personal_tin_hmac` schema-д байхгүй; `purchase_receipt.receipt_date NOT NULL`-ийн эх үүсвэр тодорхойгүй; `regNo` (7 орон) fallback | `coalesce(ebarimt_merchant_tin, tin)`, `registration_no`; CR-06 тэмдэглэл; SCR-19 + түр `document_date` |
+| 12 | §14.2 MON-02 | 5 мин тутмын `info_poll`-оор "> 2 мин хариу өгөхгүй" (02 §9.3, §14.3) alert-ийг хангах боломжгүй | `ebarimt.health_probe` 30 s (4 бүтэлгүйтэл ≈ 2 мин); SCR-06; AT-EB-51 |
+| 13 | §2.2 PickInstance | TOP-08-ийн жин ба 70 000 баримтын хязгаарыг тооцдоггүй; тоолох функц зөвхөн worker-т гэсэн боловч wizard `erp-api`-д ажилладаг | Жинтэй `weighted_load`, баримтын хязгаар; SCR-07-ийн функц `app_user`-т мөн (зөвхөн нийлбэр буцаана); SCR-07 хүртэлх fallback |
+| 14 | §12.8 | "Цуцлах"-аар санаатай цуцалсан нэхэмжлэхийн кредит нот үлдэгдэлд **шинэ баримт** гаргах байсан | RET-62 + `MANUAL_CANCEL:` угтвар (T4/T10, §11.4); AT-EB-49 |
+| 15 | §6.2 | `AllocateProRata`-ийн `G_original` тодорхойгүй (G-г өөрчилсний дараа V-г шинэ G-ээр жинлэх эрсдэл); `p = Truncate2(G/Q) = 0` үед 0 дүнтэй item | `W` snapshot параметр; `p ≥ 0.01` нөхцөл, fallback |
+| 16 | §9.4 | Read model API-ийн `EbarimtChainStatus` enum-тай уялдаагүй, шалгах дараалалгүй, B2B гар цуцлалт ба гадны системийн төлөв алга | Код багана, дараалал, `MANUAL_VOID_REQUIRED` (шинэ, §28 #15) |
+| 17 | AMT-01, OQ, TS | Skill §10: `unitPrice` татвар шингэсэн эсэх албан ёсны жишээнд зөрүүтэй — баримт үүнийг баттай баримт гэж бичсэн | ⚠ тэмдэглэл, OQ-24, TS-35 |
+| 18 | TOP-09 | Skill §9 / research §2.5-ын PosAPI дэд бүтцийн шаардлага (DB ping < 100 ms, диск ≥ 1 GB, ≥ 80 Mbps) орхигдсон | TOP-09, метрик, alert |
+| 19 | §4.3 TYP-08 | `ebarimt_setup.default_b2c_when_no_tin` баганын утга тодорхойгүй (хөгжүүлэгч таамаглах) | TYP-08 + `ebarimt.customer_tin_required`; AT-EB-48 |
+| 20 | DSP-03 ↔ §4.1 | `ebarimt_on_posting = false` үед мод нь `NONE`, DSP-03 нь "шийдсэн төрөл" гэж зөрсөн | `NONE` (EXTERNAL_ISSUER); NONE-ийн шалтгааны SCR-21; AT-EB-47 |
+| 21 | TOP-03 | "80%-иар: ≤ 70 000 баримт" — 70 000 нь 100 000-ийн 70% | Мерчант 80%, баримт 70% |
+| 22 | REG-04 | `info_poll` 15 мин (REG-04) ↔ 5 мин (§14.1) | 5 мин, §28 #17 |
+| 23 | IFL-02 | `CustomerPaymentApplied` event байхгүй (Parties нь `EntriesApplied` нийтэлдэг) | `EntriesApplied` |
+| 24 | §22.7 | `billIdSuffix 001000140` (2026-10-05) > жишээ A-ийн 123 (2026-10-06) — reset-гүй монотон тоолуурт боломжгүй | `001000119` + тайлбар |
+| 25 | AMT-01 | "Компанийн үнэ НӨАТ-гүй" — `prices_including_vat` нь баримт/харилцагчийн багана | Засав |
+| 26 | SET-11 | `getTinInfo` 2026-06-15-аас хаагдсан огноог баттай гэж бичсэн; research fact-check: UNVERIFIED | UNVERIFIED + TS-28 |
+| 27 | §11.2 | `ux_ebarimt_document__ddtd`-ийг "компанид" гэсэн; бодитоор глобал | Глобал; тенант хоорондын мэдээлэл задруулахгүй мессеж |
+| 28 | DSP-34 | SYNC_FIRST-д клиент тасрахад (`RequestAborted`) T2-ийн дараах дуудлага цуцлагдаж шаардлагагүй UNKNOWN үүсэх эрсдэл | `CancellationToken.None` + дотоод хязгаар; `IEbarimtPrintDispatcher` холбоос |
+| 29 | DSP-15 | R-2 шинэ outbox үүсгэсний дараа хуучин (lease дууссан) мөр мөн илгээж болох (давхар илгээлтгүй ч outbox ↔ баримтын харгалзаа эвдэрнэ) | `doc.outbox_id = outboxRow.id` шалгалт |
+| 30 | VAL-11 | НӨАТ төлөгч бус мерчантад `VAT_ZERO`-г зөвшөөрч байсан | Хориглов (D-E5 ⚠) |
+| 31 | §5.4 | `item_unit_of_measure.barcode`-ийн `barCodeType`-ийн эх үүсвэргүй | Дүрэм + SCR-20 |
+| 32 | DSP-12 | DELETE `date`-ийн формат UNVERIFIED гэж тэмдэглээгүй; `date` hash-д орох эсэх | UNVERIFIED (TS-10/33), hash-д орно |
+| 33 | §21 | `response_amount_mismatch`, шинэ `duplicate_detected`, `customer_tin_required`, `sub_receipt_id_unmapped` каталогт алга | Нэмэв |
+| 34 | AMT-05/VAL-21 | Засварын баримтад (кредит нотын header) хэрэглэгдэх мэт ойлгогдох | Зөвхөн нэхэмжлэхийн анхны SAVE; засварт VAL-29 |
+| 35 | SCR-14 | `tax_parameter`-ийн "unverified мөр posting-ийг удирдахгүй" дүрмийг тооцоогүй (`report_month_window_last_day` posting-ийг блоклодог) | `status = 'verified'`, эх сурвалж |
+| 36 | §18.1 `:resolve` | `ebarimtDate`, `totalAmountSeen`-ийн формат тодорхойгүй | ISO 8601 offset-той (API-JSON-11), string дүн |
+| 37 | §18.1 `:send-data` | Олон тенантын instance-д хязгааргүй гар `sendData` | Instance бүрд 10 мин/1 |
+| 38 | T8/T9 | 02 §4.2.6-ийн `EbarimtReceiptResolved` event-ийг нийтлэхгүй байсан | Нэмэв |
+| 39 | §3.1 | `company_setup.district_code` байхад wizard ашиглаагүй | Анхдагч утга |
+| 40 | §28 | ADR-0012-ийн `depends_on_id` дараалал, `fn_claim_outbox_by_id`, 14-api/OpenAPI-ийн эрхийн нэр, FR-PUR-009-ийн буруу FR лавлагаа, ADR-0013-ийн 70% | §28 #15–19 |
+| 41 | OBS-02 | TOP-09 ба DSP-14-ийн метрик алга | Нэмэв |
+
+### Нээлттэй (эзэмшигчид шилжүүлсэн)
+
+| # | Асуудал | Эзэмшигч / арга |
+|---|---|---|
+| 42 | `sales.document.print` X seed ба 13 §6.3-т байхгүй (14-api, OpenAPI, 15-ui-ux ашигладаг) | 13 CR-23-т нэмэх (§28 #13); хүртэл `sales.invoice.post`/`sales.pos.post`-оор шалгана |
+| 43 | `api/openapi.yaml` ба 14-api §15.5 `x-permission: ACTION ebarimt.document.resolve` | 14-api эзэмшигч (§28 #15). Энэ review OpenAPI-г засаагүй тул linter дахин ажиллуулаагүй |
+| 44 | Сарын 8-аас хойш өмнөх сарын B2B **хэсэгчилсэн** засвар posting-ийг блоклодог (§12.6, FR-EBR-011 AC2) ↔ бүтэн цуцлалт блоклохгүй (RET-51) — бизнесийн зөрүү | OQ-25 (бизнес эзэн, татварын зөвлөх) |
+
+### Энэ review-ээр нэмэгдсэн schema өөрчлөлтийн хүсэлт
+
+SCR-18 (төлвийн шилжилтийн whitelist trigger), SCR-19 (`supplier_ebarimt_date`), SCR-20 (`item_unit_of_measure.barcode_type`), SCR-21 (`ebarimt_none_reason`); өөрчлөгдсөн: SCR-06 (+`ebarimt.health_probe`), SCR-07 (функцийн гарын үсэг, `app_user`-т EXECUTE), SCR-10 (`auto_confirm_imported` анхдагч `true`), SCR-14 (`status = 'verified'`).
+
+### Skill-ийн дүрэмтэй тулгалт (PosAPI v3.2.48)
+
+Нийлбэрийн гинж, дэд баримт `taxType`-аар, `taxProductCode` (VAT_FREE/ZERO/NOT_VAT), `classificationCode` 7 орон, `consumerNo` зөвхөн B2C_RECEIPT, `customerTin` зөвхөн B2B, `billIdSuffix` өдөрт давтагдашгүй, `easy` ≤ 1, `stockQR` = qty, `reportMonth` (B2B_RECEIPT/B2C_INVOICE/B2B_INVOICE, 1–7, өмнөх сар; B2C_INVOICE-ийн зөрүү OQ-06), серверийн цаг/NTP, `approveQr` давхардуулахгүй, `qrData`/`lottery` хадгалахгүй, POST retry-гүй + UNKNOWN, токен кэш 30 s, `client_id` vatps/e-inventory, `getSalesTotalData` 01:00–07:00, DELETE зөвхөн B2C_RECEIPT, `posSetTransaction` баримтын дараа, `leftLotteries < 100` ба 72 цаг, staging-д ачааллын тестгүй — **бүгд нийцсэн**. Орхигдсон байсан: §9-ийн дэд бүтцийн хязгаар (#18), §10-ийн `unitPrice`-ийн зөрүү (#17) — нэмэгдсэн.
