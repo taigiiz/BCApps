@@ -9,9 +9,11 @@
 #   <database-url>  libpq URL or conninfo, e.g.
 #                   postgresql://erp@localhost:5432/erp
 #                   "host=/var/lib/postgresql port=55432 user=erp dbname=erp_schema_check"
-#   --seed          also load db/seed/legal_parameters.sql into tax.tax_parameter
-#   --test          run db/tests/catalog_checks.sql and db/tests/smoke.sql afterwards
-#                   (smoke.sql inserts test tenants: use a scratch database only)
+#   --seed          also load the seed data: db/seed/legal_parameters.sql into tax.tax_parameter (first),
+#                   then the MN localization package db/seed/mn_*.sql (global catalogs + the provisioning
+#                   function platform.fn_provision_company_mn; see db/seed/README.md)
+#   --test          run db/tests/catalog_checks.sql and db/tests/smoke.sql afterwards, and with --seed also
+#                   db/tests/seed_checks.sql (the tests insert test tenants: use a scratch database only)
 #
 # The connecting role must be able to create roles and extensions for 000_extensions_roles.sql
 # (bootstrap superuser locally / in CI). All other files switch to `SET ROLE app_owner`.
@@ -66,6 +68,11 @@ if (( seed )); then
     echo "==> seed/legal_parameters.sql (into tax.tax_parameter)"
     # The seed uses the unqualified name tax_parameter; resolve it to the canonical table.
     PGOPTIONS="-c search_path=tax" psql_run -c 'SET ROLE app_owner' -f "$here/seed/legal_parameters.sql"
+    # MN localization package (global catalogs, then the per-company provisioning functions), in lexical order
+    for f in "$here"/seed/mn_*.sql; do
+        echo "==> seed/$(basename "$f")"
+        psql_run -f "$f"
+    done
 fi
 
 if (( run_tests )); then
@@ -73,6 +80,12 @@ if (( run_tests )); then
     psql_run -f "$here/tests/catalog_checks.sql"
     echo "==> tests/smoke.sql"
     psql_run -f "$here/tests/smoke.sql"
+    if (( seed )); then
+        echo "==> tests/seed_checks.sql"
+        psql_run -f "$here/tests/seed_checks.sql"
+    else
+        echo "(tests/seed_checks.sql skipped: needs --seed)"
+    fi
 fi
 
 echo "schema applied: ${#files[@]} files"

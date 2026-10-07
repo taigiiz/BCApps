@@ -378,7 +378,7 @@ M5–M10 нь техникийн SLO-той холбоотой ([02-architecture
 | `19-testing-rollout.md` | Тестийн стратеги, golden scenario, backlog, нэвтрүүлэлт | QA, PO | Төлөвлөсөн |
 | [99-glossary.md](./99-glossary.md) | Монгол ↔ англи ↔ BC нэр томьёо | Бүгд | Бэлэн |
 | [adr/](./adr/README.md) | Архитектурын шийдвэрүүд ADR-0001 … ADR-0023 | Хөгжүүлэгч, архитектор | Бэлэн |
-| [db/](./db/README.md) | `db/schema/*.sql` — каноник PostgreSQL схем, DB нэрийн эх сурвалж (D-K1); `db/seed/` — хуулийн параметр ([legal_parameters.sql](./db/seed/legal_parameters.sql)); `db/tests/` — каталог ба smoke тест; `db/apply.sh` — суулгах скрипт | Хөгжүүлэгч, DBA | Бэлэн |
+| [db/](./db/README.md) | `db/schema/*.sql` — каноник PostgreSQL схем, DB нэрийн эх сурвалж (D-K1); `db/seed/` — хуулийн параметр ([legal_parameters.sql](./db/seed/legal_parameters.sql)) ба MN нутагшуулалтын багц (`platform.fn_provision_company_mn`, [seed/README.md](./db/seed/README.md)); `db/tests/` — каталог ба smoke тест; `db/apply.sh` — суулгах скрипт | Хөгжүүлэгч, DBA | Бэлэн |
 | [research/](./research/) | BC-ийн эх кодоос шалгасан судалгаа (`bc-*.md`), Монголын хууль, татвар, интеграц, технологийн судалгаа (`mn-*.md`, `legal-parameters.md`, `tech-architecture.md`) | BA, архитектор | Бэлэн |
 | [starter/](./starter/README.md) | Шинэ репозиторийн загвар файлууд | Хөгжүүлэгч | Бэлэн |
 | `compliance/` | Order 47-ийн матриц, PII каталог (ADR-0023) | Нийцлийн хариуцагч | Төлөвлөсөн |

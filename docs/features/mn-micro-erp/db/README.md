@@ -30,10 +30,15 @@ db/
 │   ├── 900_rls.sql                эрх олголт ба row-level security (RLS)
 │   ├── 910_ledger_guards.sql      ledger-ийн хамгаалалт: append-only, тэнцлийн шалгалт, үеийн хяналт, voucher-тэй уялдаа
 │   └── 920_views.sql              үлдэгдэл, гүйлгээ баланс, нээлттэй гүйлгээ, насжилт, тогтвортой байдлын шалгалт
-├── seed/legal_parameters.sql   хууль журмын параметрүүд (`tax.tax_parameter`)
+├── seed/
+│   ├── legal_parameters.sql    хууль журмын параметрүүд (`tax.tax_parameter`)
+│   ├── mn_*.sql                MN нутагшуулалтын багц: Маягт А-гийн мөр, МГТ-ийн ангилал, системийн эрх (глобал) ба
+│   │                           `platform.fn_provision_company_mn` — шинэ компанийн анхдагч тохиргоо нэг дуудлагаар
+│   └── README.md               багцын тайлбар, дансны төлөвлөгөөний хүснэгт, өөрчлөх заавар
 └── tests/
     ├── catalog_checks.sql      бүтцийн дүрмийн шалгалт (FK индекс, COMMENT, float байхгүй, …)
-    └── smoke.sql               утааны тест (smoke test): тэнцэл, өөрчлөгдөхгүй байдал, RLS, дугаарлалт
+    ├── smoke.sql               утааны тест (smoke test): тэнцэл, өөрчлөгдөхгүй байдал, RLS, дугаарлалт
+    └── seed_checks.sql         MN багцын шалгалт: provisioning idempotent, харгалзаа, тохиргооны данс, цуврал, туршилтын posting
 ```
 
 Модуль хоорондын FK-г зөвхөн "дараа үүсэх" файлд `ALTER TABLE … ADD FOREIGN KEY`-ээр нэмнэ. Жишээ нь `gl.gl_account.vat_bus_posting_group_id`-ийн FK нь `040_tax.sql`-д байна. Иймээс файлуудыг **заавал дарааллаар** нь ажиллуулна.
@@ -45,8 +50,12 @@ db/
 createdb erp_dev
 db/apply.sh "postgresql://erp@localhost:5432/erp_dev"
 
-# хууль журмын параметр ачаалах, тест ажиллуулах (тест нь туршилтын tenant оруулдаг тул зөвхөн scratch DB-д)
+# хууль журмын параметр ба MN нутагшуулалтын багц ачаалах, тест ажиллуулах
+# (тест нь туршилтын tenant оруулдаг тул зөвхөн scratch DB-д; --seed --test нь seed_checks.sql-ийг ч ажиллуулна)
 db/apply.sh "postgresql://erp@localhost:5432/erp_scratch" --seed --test
+
+# шинэ компанид Монголын анхдагч тохиргоо (дансны төлөвлөгөө, posting setup, НӨАТ, цуврал, жил, тайлан, role)
+psql -d erp_scratch -c "SELECT platform.fn_provision_company_mn('<tenant-uuid>', '<company-uuid>')"
 
 # гараар (CI-ийн шалгалттай ижил)
 for f in db/schema/*.sql; do psql -v ON_ERROR_STOP=1 -d erp_scratch -f "$f" || break; done
@@ -127,6 +136,7 @@ psql -v ON_ERROR_STOP=1 -d erp_scratch -f db/tests/smoke.sql
 
 - 18 файл алдаагүй суусан. Нийт **158 хүснэгт**, 12 view (хяналтын дараа, доорх тэмдэглэлийг үзнэ үү).
 - `catalog_checks.sql`: FK индексгүй 0, COMMENT-гүй 0, float багана 0, дүрэм зөрчсөн хүснэгт 0.
+- `seed_checks.sql` (MN багц, [seed/README.md](seed/README.md) §11 ба хяналтын тэмдэглэл): **80/80 PASS** — provisioning хоёр, гурав дахь удаад 0 мөр нэмнэ, өөр тенантын компанийг provision хийхийг татгалзана (`ERT01`), posting данс бүр Маягт А-гийн мөр ба МГТ-ийн ангилалтай, тохиргооны 282 дансны ишлэл бүгд posting данс, баримтын төрөл бүрд цуврал, тэнцсэн ваучер DB guard-уудаар батлагдана, ТТ-03а-г BC-ийн дүрмээр тооцоход төлөх НӨАТ зөв гарна.
 - `smoke.sql`: **58/58 PASS** (анхны 33 + хяналтын 25 regression шалгалт). Үүнд тэнцсэн гүйлгээ commit болох, тэнцээгүй нь COMMIT үед `ERB01`-ээр унах, `gl_entry.amount`-ийг `app_user` (42501) болон эзэмшигч (ERL01) хоёулаа өөрчилж чадахгүй байх, rollback-ийн дараа дугаар завсаргүй үргэлжлэх, буцаалт эсрэг баганад орох, хаалттай үед posting хийх боломжгүй байх, авлагын үлдэгдэл detailed entry-тэй тэнцэх, тенант/компанийн RLS тусгаарлалт, контекстгүй query алдаа өгөх зэрэг шалгалт орсон.
 
 ## Хяналтын тэмдэглэл (Review log)
