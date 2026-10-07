@@ -1,9 +1,9 @@
 # 15. UI/UX тодорхойлолт — мэдээллийн архитектур, role-ийн нүүр хуудас, дэлгэц, харилцан үйлчлэлийн дүрэм
 
-> **Төлөв:** Хөгжүүлэлтэд бэлэн (draft-1). **Огноо:** 2026-10-06. **Хамрах хүрээ:** `web/` SPA (React + TypeScript + AG Grid Community), BFF-ийн UI-тэй холбоотой зан төлөв, хэвлэх ба имэйлийн UI.
+> **Төлөв:** Хөгжүүлэлтэд бэлэн (draft-2: [14-api.md](./14-api.md) §2, §8, §15–16, [api/openapi.yaml](./api/openapi.yaml), [12](./12-ebarimt-integration.md) §18.1, seed-ийн данс/цуврал/эрхтэй тулгасан). **Огноо:** 2026-10-07. **Хамрах хүрээ:** `web/` SPA (React + TypeScript + AG Grid Community), BFF-ийн UI-тэй холбоотой зан төлөв, хэвлэх ба имэйлийн UI.
 > **Эх сурвалж (давамгайлах дарааллаар):** [DECISIONS.md](./DECISIONS.md) (D-A4, D-C1..C7, D-D3, D-D5, D-E4, D-E5, D-F5..F7, D-G1, D-G2, D-I1..I3, D-J1..J4, D-K1) → [db/schema/*.sql](./db/schema/) (**нэрийн цорын ганц эх сурвалж**, D-K1) → [13-security-audit-tenancy.md](./13-security-audit-tenancy.md) §5–§6, §10.4 (эрх, step-up, маск) → [12-ebarimt-integration.md](./12-ebarimt-integration.md) §3, §9.4, §11, §13, §14 → [01-requirements.md](./01-requirements.md) (FR, NFR-060..072, NFR-080, NFR-120..121) → [02-architecture.md](./02-architecture.md) §5.3, §6.7, §6.10, §8.5–8.6, §10.1–10.3, §13 → [ADR-0006](./adr/ADR-0006-money-and-rounding.md), [ADR-0015](./adr/ADR-0015-frontend-react-ag-grid.md), [ADR-0016](./adr/ADR-0016-auth-openiddict-bff.md), [ADR-0017](./adr/ADR-0017-i18n-mongolian-first.md) → [18-dev-setup.md](./18-dev-setup.md) §2.1, §3.4–3.5 → [03-domain-model.md](./03-domain-model.md) §6 → [99-glossary.md](./99-glossary.md) → судалгаа [bc-platform-security-api.md](./research/bc-platform-security-api.md) (§1, §7: Profile/Role Center = "SKIP (role dashboards)" — UI-д өөрсдийн хялбар хувилбараар).
 > **BC-ийн UI эх сурвалж (BCApps repo, MIT):** Role Center: page 9022 "Business Manager Role Center", page 9027 "Accountant Role Center", page 9020 "Small Business Owner RC"; cue: table 1313 "Activities Cue", table 9054 "Finance Cue", page 1310 "O365 Activities", codeunit 1311 "Activities Mgt." (хугацаа хэтэрсэн авлага = `Open AND Due Date < Today`); cue-ийн өнгө: System Application table 9701 "Cue Setup" (Threshold 1/2, Low/Middle/High Range Style), enum 9701 "Cues And KPIs Style" (None, Favorable, Unfavorable, Ambiguous, Subordinate); headline: page 1442 "Headline RC Accountant". BC-ийн гарын товчлол: Microsoft Learn "Keyboard shortcuts" (2026-10-06-нд уншсан).
-> **Модуль тус бүрийн spec 05–10** энэ баримтыг бичих үед repo-д байгаагүй. Дэлгэцийн талбар ба дүрмийг schema, FR ба 12/13-аас гаргасан. Модулийн spec гарахад §19-ийн асуултаар тулгана.
+> **Модуль тус бүрийн spec 05–10** (00-overview §11.1-ийн `05-gl-posting.md` … `10-sales.md`) 2026-10-07-ны байдлаар repo-д байхгүй. Дэлгэцийн талбар ба дүрмийг schema, FR, 12/13/14-өөс гаргасан. Модулийн spec гарахад OQ-UI-20-оор тулгана.
 
 ---
 
@@ -98,7 +98,12 @@
 | Z-UI-8 | 00-overview §11.1 файлын жагсаалтад `17-api-ui.md`; энэ ажлын файл `15-ui-ux.md` | UI/UX энд. REST гэрээ API-ийн spec-д | Ажлын хуваарь |
 | Z-UI-9 | API-ийн enum утга: 18 §3.4 camelCase (`"posted"`); 010_platform.sql тайлбар ба 14 §0.2 #2: UPPER_SNAKE | UPPER_SNAKE (14-api). i18n түлхүүрт API-ийн утгыг **өөрчлөлтгүй** хэрэглэнэ (§14.3) | 14-api |
 | Z-UI-10 | Эрхийн нэр: 14-api §15 (`sales.credit_memo.post`, `tax.vat_period.close/submit`, `ebarimt.document.resolve`, `sales.document.print`, `rpt.ar_aging`) ба seed/13 (`sales.creditmemo.post`, `tax.vat.settle`, `tax.vat_return.submit`, `ebarimt.unknown.resolve`, `rpt.customer_aging`) зөрүүтэй | UI эрхийн нэрийг хатуу бичихгүй: цэс/товчийн нөхцөлийг `me/permissions`-ийн хариугаар, каталогийн тогтмолоос (`permissions.catalog.json`, 13 §6.3) үүсгэнэ. Энэ баримтад seed-ийн нэр (D-K1). Нэгтгэх: OQ-UI-23 | D-K1 |
-| Z-UI-11 | Кассын баримтын ноорог: энэ баримтын эхний хувилбар журналын мөрөөр ноорог хадгалахаар бичсэн; 14-api §15.4 `POST /payments` (`cashVoucher` объекттой) — **ноорог үүсэхгүй** | 14-api-г дагана: МХ-1/МХ-2 нь санах ой дахь форм → `:preview` → нэг командаар батлах (§16.3). Ноорогоор хадгалах хэрэгцээ OQ-UI-22 | 14-api |
+| Z-UI-11 | Кассын баримтын ноорог: энэ баримтын эхний хувилбар журналын мөрөөр ноорог хадгалахаар бичсэн; 14-api §15.4 `POST /payments` (`cashVoucher` объекттой) — **ноорог үүсэхгүй** | 14-api-г дагана: МХ-1/МХ-2 нь санах ой дахь форм → `:preview` → нэг командаар батлах (§16.3). Ноорогоор хадгалах хэрэгцээ OQ-UI-22; SCR-UI-10 нь зөвхөн тэр асуултын хариу "тийм" бол | 14-api |
+| Z-UI-12 | Төлбөрийн төлөв: энэ баримтын эхний хувилбарт API `OVERDUE`, `CORRECTIVE` буцаана гэж бичсэн; 14 API-ACT-19 `paymentStatus` ∈ {`PAID`, `UNPAID`, `PARTIALLY_PAID`}, `status` ∈ {`DRAFT`, `RELEASED`, `POSTED`, `CANCELLED`}, кредит нотод `isCancellation` | API-ийн утгыг дагана. "Хугацаа хэтэрсэн" нь **харуулалтын** дүрэм: `paymentStatus ≠ PAID ∧ dueDate < D` (UB-ийн өнөөдөр); мөнгөн дүн тооцохгүй тул UXP-04-ийг зөрчихгүй (§5.1) | 14 §8.4 |
+| Z-UI-13 | Журналын resource: эхний хувилбарт `journal-batches`; 14 §2.2 ба §15.2-т `journals` (= `gl.journal_batch`) | `POST …/journals/{id}:post` (`expectedLineCount`-тэй, API-ACT-07) | 14-api |
+| Z-UI-14 | eBarimt-ийн UI төлөв: 12 §9.4 монгол шошгоор, 14 API-ACT-20 `ebarimt.chainStatus` enum-аар | UI нь `chainStatus`-ийн утгыг (`NOT_REQUIRED` … `VOIDED`) i18n `enums.ebarimtChainStatus.*`-ээр харуулна (§5.8) | 14 §8.4, 12 §9.4 |
+| Z-UI-15 | PII задлах эрх: seed `mn_60_security.sql` нь `ACCOUNTANT`, `EXTERNAL_ACCOUNTANT`-д `ERP_PII_UNMASK` олгодог; 13 §6.5–6.6 (CR-23-ын дараах норматив матриц) зөвхөн `OWNER`-т | UI эрхийг хатуу бичихгүй (`me/permissions`); хүлээн авах тест (AT-UI-44) аль ч хувилбарт `platform.pii.unmask`-гүй `VIEWER`-ийг хэрэглэнэ. Нэгтгэх нь OQ-UI-23 | D-K1, 13 CR-23 |
+| Z-UI-16 | Экспорт: эхний хувилбарт "≤ 10 000 мөр синхрон Excel"; 14 API-JOB-01 — экспорт үргэлж async (`POST /reports/{code}:export` → 202), синхрон тайлан > 5 000 мөр бол `422 api.result_too_large` | 14-ийг дагана (UX-PAGE-18) | 14 §10 |
 
 ---
 
@@ -117,7 +122,8 @@
 | Хадгалсан харагдац (saved view), дуртай данс (My Accounts) | | ✔ | |
 | Компани тохируулах wizard, eBarimt wizard, Excel импорт, хуулга импорт | ✔ | | |
 | Desktop ≥ 1280 px бүрэн; tablet ≥ 768 px Sales clerk-ийн урсгал | ✔ | | |
-| Утас (< 768 px): унших ба Sales clerk-ийн хялбар урсгал | ✔ (Should) | | |
+| Утас (< 768 px): унших урсгал (NFR-080) | ✔ | | |
+| Утас (< 768 px): Sales clerk-ийн оруулах урсгал (бэлэн борлуулалт, МХ-1) | ✔ (Should, OQ-UI-14) | | |
 | Мобайл апп | | | ✔ |
 | Харанхуй горим (dark mode) | | ✔ | |
 | Тенант хоорондын нэгдсэн самбар (гэрээт нягтлан, BC Company Hub) | | | ✔ |
@@ -347,16 +353,16 @@ function ResolveHomeVariant(user, companyId):
 | Cue-ийн бүлэг | Activities part | §3.3-ын cue | ✔ | ✔ | ✔ | ✔ |
 | Мөнгөний хөдөлгөөн (30 хоног) | Cash Flow chart | Касс + банкны өдрийн үлдэгдлийн шугаман график, хүснэгт хувилбартай (UX-A11Y-14) | ✔ (Should) | | | ✔ (Should) |
 | Хугацаа хэтэрсэн топ 5 харилцагч | Overdue Customers part | Харилцагч, дүн, хамгийн их хоног | ✔ | ✔ | | ✔ |
-| Сарын хаалтын явц | — | S-GL-10-ийн алхам (4/9) | | ✔ | | |
+| Сарын хаалтын явц | — | S-GL-10-ийн алхам (4/9): `GET /accounting-periods/{id}/close-checklist` (`CloseChecklist.items[]`, `status` ∈ `OK`/`WARNING`/`BLOCKING`, `link`) | | ✔ | | |
 | Миний ажлууд | My Job Queue | Өөрийн background job (экспорт, импорт) | ✔ | ✔ | | |
 
 ### 3.3 Cue-ийн каталог
 
-Тэмдэглэгээ: `D` = бизнесийн өнөөдөр (`Asia/Ulaanbaatar`, 13 §1.2). Дүн бүгд MNT (LCY). "Төлөв" нь §3.4-ийн `EvaluateState`-ийн анхдагч дүрэм. Төлөвийн утга BC enum 9701-ийнх: `NONE`, `FAVORABLE`, `AMBIGUOUS`, `UNFAVORABLE`, `SUBORDINATE`.
+Тэмдэглэгээ: `D` = бизнесийн өнөөдөр (`Asia/Ulaanbaatar`, 13 §1.2). BC-ийн CU1311 UI-д ажлын огноог (`GetDefaultWorkDate`), web service-д `Today()`-г хэрэглэдэг; манайд ажлын огноо зөвхөн клиентийн session-д байдаг (UX-FMT-07) тул cue үргэлж `D`-ээр тооцогдоно. Дүн бүгд MNT (LCY). "Төлөв" нь §3.4-ийн `EvaluateState`-ийн анхдагч дүрэм. Төлөвийн утга BC enum 9701-ийнх: `NONE`, `FAVORABLE`, `AMBIGUOUS`, `UNFAVORABLE`, `SUBORDINATE`.
 
 | ID | Нэр (mn / en) | Тодорхойлолт (өгөгдлийн эх) | Харуулах (`visibleIf`) | Анхдагч төлөв | Дарахад | Хувилбар |
 |---|---|---|---|---|---|---|
-| CUE-01 | Төлөгдөөгүй нэхэмжлэх / Unpaid invoices | `party.cust_ledger_entry`: `open AND document_type = 'INVOICE'` → тоо, Σ `remaining_amount_lcy` | `R party.cust_ledger_entry` | `NONE` | S-SAL-05 `?payment=UNPAID,OVERDUE,PARTIALLY_PAID` | O, A |
+| CUE-01 | Төлөгдөөгүй нэхэмжлэх / Unpaid invoices | `party.cust_ledger_entry`: `open AND document_type = 'INVOICE'` → тоо, Σ `remaining_amount_lcy` | `R party.cust_ledger_entry` | `NONE` | S-SAL-05 `?payment=UNPAID,PARTIALLY_PAID` (OVERDUE орно) | O, A |
 | CUE-02 | Хугацаа хэтэрсэн авлага / Overdue receivables | CUE-01 + `due_date < D` → Σ дүн, харилцагчийн тоо (BC CU1311 `OverdueSalesInvoiceAmount`) | `R party.cust_ledger_entry` | 0 → `FAVORABLE`; > 0 → `UNFAVORABLE` | S-RPT-05 `?asOf=D&overdueOnly=true` | O, A, V |
 | CUE-03 | Мөнгөн хөрөнгө / Cash and bank | `bank.v_bank_account_balance` ⋈ `bank.bank_account` (`NOT blocked`): Σ `balance_lcy`, `kind`-аар задлал (Касс / Банк / Хэтэвч) | `R bank.bank_account` ба `R bank.bank_ledger_entry` | `NONE` | S-BNK-01 | O, A, V |
 | CUE-04 | Төлөх НӨАТ (урьдчилсан) / VAT payable (estimate) | Үе `P` = `tax.vat_return_period`-оос `status <> 'SUBMITTED' AND starting_date <= D`-ийн хамгийн эрт мөр. Утга = −(Σ `amount` [`entry_type = 'SALE'`] + Σ `amount` [`entry_type = 'PURCHASE' AND deductible_confirmed`]), `vat_date ∈ P`. Хоёрдогч: хугацаа хүртэлх хоног = `P.due_date − D` (`due_date` NULL бол `tax_parameter 'vat.return_due_day'`-аас) | `company_setup.vat_registered` ба `R tax.vat_entry` | хоног ≤ 3 → `UNFAVORABLE`; ≤ 7 → `AMBIGUOUS`; бусад `NONE` | S-TAX-03 (`P`) | O, A |
@@ -610,7 +616,7 @@ Flush():                                       -- debounce дуусах, Ctrl+S,
 | UX-PAGE-15 | Анхдагч шүүлтүүр: ноорог жагсаалт — бүгд; батлагдсан баримт — сүүлийн 3 сар (`postingDateFrom = D − 3 сар`), шүүлтүүрийн chip-ээр харагдана, хасаж болно. |
 | UX-PAGE-16 | Нийлбэр (жишээ нь Σ дүн) серверийн `totals` объектоос; клиент нийлүүлэхгүй (ADR-0015 #2). Ачаалсан мөрөөр биш, бүх шүүлттэй мөрөөр. |
 | UX-PAGE-17 | Олон мөр сонгох (checkbox, Shift/Ctrl + товшилт, Ctrl+A) нь бөөн үйлдэлд (жишээ нь "Сонгосныг батлах" — журнал; "Excel рүү") л. Бөөн батлах нь мөр тус бүр дээр хүсэлт илгээж, үр дүнг жагсаана (амжилттай / алдаатай). |
-| UX-PAGE-18 | Excel экспорт = серверийн ClosedXML (ADR-0019). ≤ 10 000 мөр синхрон, их бол async job + мэдэгдэл (02 §13). Экспорт PII-ийг маскална (SEC-PII-10). |
+| UX-PAGE-18 | Excel/PDF экспорт = серверийн ClosedXML/QuestPDF (ADR-0019), **үргэлж async** (14 API-JOB-01): `POST /reports/{code}:export` (эсвэл `vat-return-periods/{id}:export`) → 202 + `Job`. UI нь toast "Экспорт бэлтгэж байна…" харуулж `GET /jobs/{id}`-ийг `Retry-After` (≥ 2 s)-ээр шалгана; 10 s дотор `SUCCEEDED` бол `result.file.downloadUrl`-ийг шууд татна, эс бөгөөс "Бэлэн болмогц мэдэгдэнэ" ба S-PLT-18 / мэдэгдлийн самбарт (15 мин хүчинтэй холбоог дахин `GET /jobs/{id}`-ээр шинэчилнэ). Синхрон тайлан `422 api.result_too_large` (> 5 000 мөр) буцаавал "Үр дүн хэт их. Excel рүү экспортлох уу?" [Экспорт]. Экспорт PII-ийг маскална (SEC-PII-10). |
 | UX-PAGE-19 | Мөр дээр Enter эсвэл давхар биш **нэг** товшилт картыг нээнэ (бичлэгийн дугаар нүд холбоос). Карт дээрээс Ctrl+↑/↓ өмнөх/дараагийн бичлэг (BC). |
 
 ### 4.7 Баталгаажуулах dialog
@@ -656,15 +662,19 @@ UI төлөв (баримт):
 ```
 
 ```text
-function PostedPaymentStatus(doc):                   -- API тооцоолж буцаана; UI зөвхөн харуулна
-    if doc.cancelledBy is not null: return CANCELLED
-    if doc.isCorrective: return CORRECTIVE
-    e := doc.custLedgerEntry
-    if not e.open: return PAID
-    if e.remainingAmount <> e.amount: return PARTIALLY_PAID
-    if e.dueDate < D: return OVERDUE                  -- "Төлөгдөөгүй" + хугацаа хэтэрсэн тэмдэг
-    return UNPAID
+function DisplayBadge(doc, D):                      -- doc = API-ийн SalesInvoice/SalesCreditMemo (14 §8.4, §16.1)
+    -- status, paymentStatus, isCancellation-ийг СЕРВЕР тооцно; UI зөвхөн огноог харьцуулна (Z-UI-12)
+    if doc.status == 'DRAFT':     return DRAFT
+    if doc.status == 'RELEASED':  return RELEASED
+    if doc.status == 'CANCELLED': return CANCELLED                     -- нэхэмжлэх, cancellationCreditMemoId-тэй
+    if doc.isCancellation:        return CORRECTIVE                    -- цуцлалтаас үүссэн кредит нот
+    if doc.paymentStatus == 'PAID': return PAID                       -- кредит нотоор хаагдсан ч PAID (API-ACT-19)
+    if doc.dueDate is not null and doc.dueDate < D:
+        return OVERDUE                                                -- UNPAID эсвэл PARTIALLY_PAID + хугацаа хэтэрсэн
+    return doc.paymentStatus                                          -- UNPAID | PARTIALLY_PAID
 ```
+
+- **UX-DOC-14.** `OVERDUE` тэмдэг нь `PARTIALLY_PAID`-ийг давамгайлна; tooltip-д хоёуланг нь: "Хугацаа хэтэрсэн · Хэсэгчлэн төлөгдсөн · үлдэгдэл 350,000.00". Жагсаалтын шүүлтүүр `?payment=OVERDUE`-ийг клиент `paymentStatus=UNPAID,PARTIALLY_PAID&dueTo=D−1` болгон серверт илгээнэ (сервер `OVERDUE` утгыг мэдэхгүй).
 
 | Төлөв | Тэмдгийн текст (mn) | Token | Дүрс |
 |---|---|---|---|
@@ -676,6 +686,8 @@ function PostedPaymentStatus(doc):                   -- API тооцоолж б�
 | `PAID` | Төлөгдсөн | `status.success` | ● |
 | `CANCELLED` | Цуцлагдсан | `status.neutral` (зураастай) | ⊘ |
 | `CORRECTIVE` | Залруулгын кредит нот | `status.neutral` | ↺ |
+
+`OVERDUE` ба `CORRECTIVE` нь UI-ийн тэмдэг (API-ийн enum биш, Z-UI-12); бусад нь API-ийн `status`/`paymentStatus`-ийн утга.
 
 - **UX-DOC-01.** Төлвийн тэмдэг хуудасны гарчгийн хажууд ба жагсаалтын баганад. Тэмдэг = текст + дүрс + өнгө (зөвхөн өнгө биш).
 - **UX-DOC-02.** Жагсаалтад батлагдсан баримт **хоёр** тэмдэгтэй: төлбөрийн төлөв ба eBarimt-ийн төлөв (§5.8, FR-SAL-014).
@@ -778,24 +790,24 @@ async function PostDocument(doc, mode):                         -- mode ∈ { PO
 
 ### 5.8 eBarimt-ийн төлөв ба хэвлэх цонх
 
-UI төлөвийг сервер гаргана (12 §9.4, `ebarimt.v_source_document_status`, 12 SCR-12). UI зөвхөн харуулна.
+UI төлөвийг сервер гаргана: API-ийн `ebarimt.chainStatus` (14 API-ACT-20; эх нь 12 §9.4-ийн read model, `ebarimt.v_source_document_status`, 12 SCR-12). UI зөвхөн харуулна. Нэхэмжлэх дээр **гинжийн** төлөв, кредит нот дээр өөрийн баримтын төлөв.
 
-| UI төлөв | Тэмдэг | Token | Тайлбар (FactBox) | Үйлдэл (эрхтэй бол) |
-|---|---|---|---|---|
-| Шаардлагагүй | — | `status.neutral` | "Энэ баримтад eBarimt гаргахгүй." | — |
-| Тохируулаагүй | ⚠ | `status.warning` | "eBarimt тохируулаагүй тул баримт гараагүй." | [eBarimt тохируулах] (`R ebarimt.ebarimt_setup` M) |
-| Хүлээгдэж буй | ⏳ | `status.info` | "Илгээх дараалалд байна." | — (5 s тутам шинэчлэнэ, 2 мин хүртэл, дараа нь 30 s) |
-| Илгээж байна | ⟳ | `status.info` | "PosAPI руу илгээж байна." | — |
-| Бүртгэгдсэн | ✓ | `status.success` | ДДТД (monospace, хуулах товч), огноо, төрөл, нийт, НӨАТ | [Хуулбар хэвлэх] (`copy.pdf`, 12 PRN-10) |
-| Татгалзсан | ✕ | `status.danger` | `error_code`-ийн i18n мессеж | [eBarimt хяналт руу] (`ebarimt.unknown.resolve`) |
-| Тодорхойгүй | ? | `status.danger` | "Илгээсэн эсэх нь тодорхойгүй. Гараар шийдвэрлэнэ." | [eBarimt хяналт руу] |
-| Засварлагдсан (өмнөх) | ↺ | `status.neutral` | Гинжийн түүхэнд | [Гинж харах] |
-| Цуцлагдсан | ⊘ | `status.neutral` | "eBarimt цуцлагдсан." | — |
+| `chainStatus` | UI төлөв | Тэмдэг | Token | Тайлбар (FactBox) | Үйлдэл (эрхтэй бол) |
+|---|---|---|---|---|---|
+| `NOT_REQUIRED` | Шаардлагагүй | — | `status.neutral` | "Энэ баримтад eBarimt гаргахгүй." | — |
+| `NOT_CONFIGURED` | Тохируулаагүй | ⚠ | `status.warning` | "eBarimt тохируулаагүй тул баримт гараагүй." | [eBarimt тохируулах] (`T_SETUP` M); тохируулсны дараа [Нөхөж илгээх] (`POST /ebarimt/backfill:preview` → `/backfill`, `ebarimt.unknown.resolve`, 12 RET-70) |
+| `PENDING` | Хүлээгдэж буй | ⏳ | `status.info` | "Илгээх дараалалд байна." | B2C бол [Илгээж хэвлэх] (`POST /ebarimt/documents/{id}:send-and-print`, `sales.document.print` X) → хариунд `print` байвал S-EBR-04. Төлвийг 5 s тутам шинэчилнэ (2 мин хүртэл, дараа нь 30 s) |
+| `SENT` | Илгээж байна | ⟳ | `status.info` | "PosAPI руу илгээж байна." | — |
+| `SUCCESS` | Бүртгэгдсэн | ✓ | `status.success` | ДДТД (monospace, хуулах товч), огноо, төрөл, нийт, НӨАТ | [Хуулбар хэвлэх] (`GET /ebarimt/documents/{id}/copy.pdf`, "ХУУЛБАР", QR-гүй, 12 PRN-10) |
+| `ERROR` | Татгалзсан | ✕ | `status.danger` | `error_code`-ийн i18n мессеж (`errors.ebarimt.*`) | [eBarimt хяналт руу] (`ebarimt.unknown.resolve`) |
+| `UNKNOWN` | Тодорхойгүй | ? | `status.danger` | "Илгээсэн эсэх нь тодорхойгүй. Гараар шийдвэрлэнэ." | [eBarimt хяналт руу] |
+| `CORRECTED` | Засварлагдсан | ↺ | `status.neutral` | Гинжийн түүх: өмнөх ДДТД → шинэ ДДТД (`inactiveId`) | [Гинж харах] (S-EBR-03) |
+| `VOIDED` | Цуцлагдсан | ⊘ | `status.neutral` | "eBarimt цуцлагдсан." (`DELETE` эсвэл порталын гар цуцлалт) | — |
 
 | ID | Дүрэм |
 |---|---|
-| UX-EBR-01 | Баримтын хуудсан дээр "Дахин илгээх" товч **байхгүй** (D-J2). Дахин илгээх нь зөвхөн S-EBR-02-оор, `ebarimt.unknown.resolve` эрхээр, 12 §11-ийн журмаар. |
-| UX-EBR-02 | **Хэвлэх цонх (S-EBR-04)** нь `SYNC_FIRST` хариунд `print` байвал автоматаар нээгдэнэ. Агуулга (12 §13.2): мерчант, ТТД, салбар/POS, ДДТД, огноо/цаг, мөрүүд, НӨАТ, нийт, төлбөрийн хэлбэр, **QR** (bundled `qrcode`, error correction M, `qrData`-г өөрчлөлтгүй), **сугалааны дугаар**. |
+| UX-EBR-01 | Баримтын хуудсан дээр "Дахин илгээх" товч **байхгүй** (D-J2). Дахин илгээх (клон) нь зөвхөн S-EBR-02-оор, `ebarimt.unknown.resolve` эрхээр, 12 §11-ийн журмаар. `PENDING` B2C-ийн [Илгээж хэвлэх] нь дахин илгээх биш: хараахан илгээгдээгүй баримтыг worker-ээс өмнө синхроноор илгээнэ (12 §18.1); сервер давхар илгээлтээс lease-ээр хамгаална. |
+| UX-EBR-02 | **Хэвлэх цонх (S-EBR-04)** нь `:post?ebarimtPrint=sync` эсвэл `:send-and-print`-ийн хариунд `ebarimt.print` байвал (`printAvailable = true`) автоматаар нээгдэнэ. Агуулга (12 §13.2): мерчант, ТТД, салбар/POS, ДДТД, огноо/цаг, мөрүүд, НӨАТ, нийт, төлбөрийн хэлбэр, **QR** (bundled `qrcode`, error correction M, `qrData`-г өөрчлөлтгүй), **сугалааны дугаар**. |
 | UX-EBR-03 | Хэвлэх цонхонд [Хэвлэх (Ctrl+P)] ба [Хаах]. Хэвлээгүй үед хаахад: "QR кодыг дахин хэвлэх боломжгүй. Хаах уу?" (12 PRN-11). Route солих, tab хаах үед ижил анхааруулга. |
 | UX-EBR-04 | Print CSS: зөвхөн баримтын хэсэг; `@page { size: 80mm auto; margin: 0 }`; 58 mm сонголт "Миний тохиргоо"-нд. Баримтын загвар **монголоор** (хэрэглэгчийн хэлнээс үл хамаарна). |
 | UX-EBR-05 | Цонх хаагдахад `PrintPayload`-ийн бүх хуулбарыг (React state, ref, canvas) цэвэрлэнэ (12 PRN-04). |
@@ -803,17 +815,19 @@ UI төлөвийг сервер гаргана (12 §9.4, `ebarimt.v_source_doc
 
 ### 5.9 Залруулах үйлдэл
 
-| Үйлдэл | Хаана | Эрх | Идэвхтэй нөхцөл (клиент) | Dialog-ийн талбар | Үр дүн |
-|---|---|---|---|---|---|
-| Нэхэмжлэх цуцлах | S-SAL-06 | `X sales.invoice.cancel` | Төлбөрийн төлөв `UNPAID`/`OVERDUE`, цуцлагдаагүй, залруулгын биш | Огноо (анхдагч ажлын огноо), Шалтгааны код (заавал), Тайлбар | Бүтэн кредит нот батлагдаж тулгагдана (D-F6, FR-SAL-008); кредит нот руу шилжинэ |
-| Засах | S-SAL-06 | `X sales.invoice.cancel` + `I sales.sales_header` | Цуцлахтай ижил | Цуцлахтай ижил | Цуцлаад, хуулсан шинэ ноорог нээнэ (FR-SAL-009) |
-| Кредит нот үүсгэх | S-SAL-06 | `X sales.creditmemo.post` | Цуцлагдаагүй | — | Эх нэхэмжлэхийг заасан, мөрийг хуулсан кредит нотын ноорог (FR-SAL-007) |
-| Хуулах | S-SAL-02/06 | `I sales.sales_header` | Үргэлж | — | Хуулийн дугааргүй шинэ ноорог (FR-SAL-010) |
-| Төлбөр бүртгэх | S-SAL-06 | `X bank.payment.post` эсвэл `X bank.cash_receipt.post` | Үлдэгдэл > 0 | Дүн (анхдагч үлдэгдэл), Мөнгөний данс, Огноо | Төлбөр батлагдаж тулгагдана (FR-BNK-006) |
-| Гүйлгээ буцаах | S-GL-07 | `X gl.transaction.reverse` | Журналаас үүссэн, буцаагдаагүй, эх үе `OPEN` (D-D5) | Шалтгааны код (заавал), Тайлбар | Эх огноогоор эсрэг гүйлгээ |
-| Залруулах журнал үүсгэх | S-GL-07 | `I gl.journal_line` | Эх үе `CLOSED`/`LOCKED` | Огноо (нээлттэй үе), Шалтгаан | Толин тусгал мөртэй **ноорог** журнал (батлахгүй) |
+| Үйлдэл | Хаана | Эрх | Идэвхтэй нөхцөл (клиент, API-ийн талбараар) | Dialog-ийн талбар | API (14) | Үр дүн |
+|---|---|---|---|---|---|---|
+| Нэхэмжлэх цуцлах | S-SAL-06 | `X sales.invoice.cancel` | `status = POSTED`, `paymentStatus = UNPAID` (`remainingAmount` = нийт), `ebarimt.chainStatus ≠ UNKNOWN` | Огноо (анхдагч ажлын огноо), Шалтгааны код (заавал, анхдагч `CANCEL`), Тайлбар (≤ 100) | `POST /sales-invoices/{id}:cancel` `{ reasonCodeId, postingDate, description }` → 201, `Location` | Бүтэн кредит нот батлагдаж тулгагдана (D-F6, FR-SAL-008); `Location`-ийн кредит нот руу шилжинэ |
+| Засах | S-SAL-06 | `X sales.invoice.cancel` + `I sales.sales_header` | Цуцлахтай ижил | Цуцлахтай ижил | Ижил + `createCorrectiveDraft: true` | Цуцлаад `correctiveDraftId` ноорог руу шилжинэ (FR-SAL-009, API-ACT-15) |
+| Кредит нот үүсгэх | S-SAL-06 | `X sales.creditmemo.post` + `I sales.sales_header` | `status = POSTED` | — | `POST /sales-credit-memos` `{ customerId, correctedInvoiceId }` (+ мөр хуулах: A-13) | Эх нэхэмжлэхийг заасан (`appliesToDocNo` автомат) кредит нотын ноорог (FR-SAL-007) |
+| Хуулах | S-SAL-02/06 | `I sales.sales_header` | Үргэлж | — | `POST /sales-invoices/{id}:copy` `{ documentDate, includeHeader }` → 201 | Хуулийн дугааргүй шинэ ноорог (FR-SAL-010) |
+| Төлбөр бүртгэх | S-SAL-06 | `X bank.payment.post` эсвэл `X bank.cash_receipt.post` | `paymentStatus ≠ PAID` | Дүн (анхдагч `remainingAmount`), Мөнгөний данс, Огноо | `POST /payments` `{ direction: RECEIPT, applyTo: [{ ledgerEntryId, amountToApply }] }` | Төлбөр батлагдаж тулгагдана (FR-BNK-006) |
+| Гүйлгээ буцаах | S-GL-07 | `X gl.transaction.reverse` | `GlTransaction.reversible = true` (сервер тооцно: журналаас үүссэн, буцаагдаагүй, эх үе `OPEN`, D-D5) | Шалтгааны код (заавал), Тайлбар | `POST /gl-transactions/{id}:reverse` → 201 | Эх огноогоор эсрэг гүйлгээ |
+| Залруулах журнал үүсгэх | S-GL-07 | `I gl.journal_line` | `reversible = false` ба эх үе `CLOSED`/`LOCKED` | Огноо (нээлттэй үе), Шалтгаан | Клиент толин тусгал мөрийг `POST /journals/{id}/lines`-аар нэмнэ | Толин тусгал мөртэй **ноорог** журнал (батлахгүй) |
 
-- **UX-DOC-13.** Идэвхгүй товчийн tooltip нь шалтгааныг хэлнэ: "Хэсэгчлэн төлөгдсөн. Эхлээд тулгалтыг цуцлана уу." (FR-SAL-008 AC2-ын текст). Сервер 422 ижил текстийг буцаана.
+- **UX-DOC-15.** Идэвхгүй товчны шалтгааныг клиент API-ийн талбараас гаргана: `paymentStatus = PARTIALLY_PAID`/`PAID` → "Төлбөрт тулгагдсан…"; `status = CANCELLED` → "Аль хэдийн цуцлагдсан"; `ebarimt.chainStatus = UNKNOWN` → "eBarimt тодорхойгүй. Эхлээд eBarimt хяналтаар шийдвэрлэнэ үү." Клиент мэдэхгүй нөхцлийг (үе хаалттай) сервер буцаана: `409 sales.invoice_has_applications`, `409 sales.invoice_already_cancelled`, `409 ebarimt.predecessor_unknown`, `422 gl.period_closed`, `409 gl.reversal_use_credit_memo`, `409 gl.reversal_entries_applied`, `409 bank.entry_reconciled` (14 API-ACT-14, 17) → §8.3-ын жагсаалт dialog дотор.
+
+- **UX-DOC-13.** Идэвхгүй товчийн tooltip нь шалтгааныг хэлнэ: "Хэсэгчлэн төлөгдсөн. Эхлээд тулгалтыг цуцлана уу." (FR-SAL-008 AC2-ын текст). Сервер `409 sales.invoice_has_applications`-ийн `detail`-д ижил текстийг буцаана.
 - **UX-DOC-09.** Цуцлах dialog нь eBarimt-д юу болохыг серверийн `ebarimtEffect`-ээр харуулна: "B2C баримт устгагдана (DELETE)", "Баримт засварлагдана (inactiveId)", "Өмнөх сарын B2B: 7-ны дотор засна (reportMonth)" (12 §12.1). Сервер энэ талбарыг өгөхгүй бол мөрийг харуулахгүй (OQ-UI-08).
 
 ### 5.10 Хавсралт ба гарын үсэг (Should)
@@ -1117,7 +1131,7 @@ function formatCompactMnt(s):
 
 | Төрөл | Харуулах | Жишээ | Маск (засах эрхгүйд, 13 §10.4) |
 |---|---|---|---|
-| ТТД (`platform.tin`) | Цифр, бүлэглэхгүй | `5123456` / `12345678901` | ААН-ийнх маскгүй; хувь хүний `civil_id` `*********123` |
+| ТТД (`platform.tin`) | Цифр, бүлэглэхгүй | `5123456` / `12345678901` | ААН-ийнх маскгүй; хувь хүний ТТД (12–14 орон, 13 §10 "civil_id") нь `personal_tin_hint` (13 CR-06) `*********123` |
 | Регистр (иргэн) | 2 үсэг + 8 орон | `УБ99112233` | `УБ******33` |
 | ДДТД (33 орон) | Monospace, бүтэн; grid-д `…` + сүүлийн 6 | `…482193` | Маскгүй |
 | Иргэний eBarimt дугаар | 8 орон | `12345678` | `****5678` |
@@ -1198,7 +1212,7 @@ function ResolveTarget(e):
 
 ```text
 ┌ Батлах боломжгүй — 3 алдаа ─────────────────────────────────────────── [Support-д хуулах] [×] ┐
-│ 1  ⚠ Мөр 2: "6100 Түрээсийн орлого" данс шууд бичилтгүй (Direct Posting = Үгүй).   [Засах ›]  │
+│ 1  ⚠ Мөр 2: "1200 Дансны авлага" данс шууд бичилтгүй (Direct Posting = Үгүй).     [Засах ›]  │
 │ 2  ⚠ Ерөнхий тохиргоонд DOMESTIC × SERVICE мөр алга.                               [Тохиргоо ›]│
 │ 3  ⚠ Бүртгэлийн огноо 2026.08.31: 8-р сар хаагдсан.                                   [Үе ›]     │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -1213,7 +1227,7 @@ function ResolveTarget(e):
 
 | ID | Нөхцөл | Хаана | Текст (mn) | Эх |
 |---|---|---|---|---|
-| W-01 | Дансны `normal_side` ≠ бичилтийн тал | Журналын мөр | "4100 Өмч нь ихэвчлэн кредит үлдэгдэлтэй. Дебит бичих үү?" | D-D1, FR-GL-005 |
+| W-01 | Дансны `normal_side` ≠ бичилтийн тал | Журналын мөр | "3100 Өмч (дүрмийн сан) нь ихэвчлэн кредит үлдэгдэлтэй. Дебит бичих үү?" | D-D1, FR-GL-005, 14 API-ACT-10 `warnings[]` |
 | W-02 | Бүртгэлийн огноо өнөөдрөөс > 30 хоногийн өмнө эсвэл ирээдүйд | Батлах dialog | "Бүртгэлийн огноо 2026.08.15 (өнөөдрөөс 52 хоногийн өмнө)." | BC Posting Date check |
 | W-03 | Харилцагчийн зээлийн хязгаар хэтэрнэ (`credit_limit_lcy > 0`) | Батлах dialog, FactBox | "Зээлийн хязгаар 5,000,000 ₮; батлахад үлдэгдэл 5,640,000 ₮ болно." | BC Credit Limit |
 | W-04 | Борлуулалтын гадаад баримтын дугаар давхардсан | Талбар | "Энэ дугаартай нэхэмжлэх аль хэдийн бий: SI-2026-00031." | — |
@@ -1246,6 +1260,13 @@ function ResolveTarget(e):
 | 409 | `api.document_released` | "Баримт Бэлэн төлөвт байна. Засахын тулд [Дахин нээх]" |
 | 409 | `api.resource_in_use`, `api.duplicate` | Талбар/dialog-ийн алдаа; `existingResourceId` байвал "Байгаа бичлэгийг нээх" холбоос |
 | 409 | `gl.journal_changed` | "Журнал өөр хэрэглэгчээр өөрчлөгдсөн." → дахин ачаалж, батлахыг дахин санал болгоно (UX-JNL-08) |
+| 409 | `api.document_not_editable` | Баримтыг дахин ачаалж зөвхөн унших горимоор (UX-SAVE-07) + мэдээлэл "Баримт батлагдсан тул засах боломжгүй" |
+| 409 | `api.idempotency_in_progress` | Ижил хүсэлт боловсруулагдаж байна: `Retry-After`-ийн дараа **ижил** key-ээр дахин илгээнэ (UX-POST-01); хэрэглэгчид spinner хэвээр |
+| 400 | `api.invalid_cursor`, `api.cursor_mismatch` | Grid-ийн cursor-ийг хаяж (`cursors := {}`), эхнээс нь дахин ачаална (§6.8); хэрэглэгчид мессеж харуулахгүй |
+| 403 | `platform.not_document_owner` | "Энэ ноорог өөр хэрэглэгчийнх. Засах эрх алга." Баримт зөвхөн унших горимоор (13 SEC-REC-03) |
+| 422 | `gl.voucher_unbalanced` (ваучер бүрээр, 14 API-ACT-07) | Журналын алдааны жагсаалт: "Ваучер J-000045 тэнцээгүй: зөрүү 100.00"; тухайн ваучерын мөрүүд тодорно (UX-JNL-08) |
+| 422 | `api.result_too_large` | "Үр дүн хэт их. Excel рүү экспортлох уу?" (UX-PAGE-18) |
+| 429 | `platform.pii_unmask_rate_limited` | `MaskedValue`-ийн дэргэд "Цагт 20-оос олон удаа задлах боломжгүй" (13 §10.5) |
 | 409 | `ebarimt.resolution_too_early`, `ebarimt.vat_status_mismatch`, `ebarimt.predecessor_unknown` (12, 14 API-ACT-14) | Dialog-ийн дотор алдаа ба шийдэл (хүлээх хугацаа, компанийн профайл, eBarimt хяналт руу холбоос) |
 | 412 | `api.etag_mismatch` (`currentEtag`-тэй) | Зөрчлийн dialog (UX-SAVE-04) |
 | 422 | `api.validation_failed` + `errors[]`, эсвэл ганц домэйн код (`gl.period_closed`, `bank.cash_negative_balance`, `sales.invoice_has_applications` …) | Алдааны жагсаалт (§8.3); `gl.period_closed` → [Үе ›] S-GL-09 |
@@ -1367,7 +1388,7 @@ FR-PLT-003-ийн дараалал. Хадгалах газар нь schema-ий
 | UX-ONB-03 | "Хадгалаад гарах": дараа нь үргэлжлүүлнэ. Компани `PROVISIONING` төлөвтэй үед нүүр хуудас wizard-ийг "Үргэлжлүүлэх" товчтой харуулна. |
 | UX-ONB-04 | Алхам 9-ийн хүсэлт `POST /api/v1/companies/{cid}:provision` (`Idempotency-Key`), 202 + job id; progress нь job-ын төлвөөр (2 s тутам). Амжилтгүй бол **юу ч үүсээгүй** (FR-PLT-003 AC2), алдааны мессеж ба [Дахин оролдох] (ижил сонголтоор, шинэ key). |
 | UX-ONB-05 | Амжилттай бол нүүр рүү шилжиж, "Эхлэх алхмууд" нээлттэй, toast "Компани бэлэн боллоо. Туршилтын нэхэмжлэх үүсгэж үзээрэй." |
-| UX-ONB-06 | Wizard-ийн өгөгдөлд PII-S (иргэний регистр) байхгүй; хувь хүн бизнес эрхлэгчийн `civil_id`-ийг `tin` талбарт оруулахад маскаар харуулна (13 §10.4). |
+| UX-ONB-06 | Wizard-ийн өгөгдөлд PII-S (иргэний регистр) байхгүй. Хувь хүн бизнес эрхлэгчийн ТТД (12–14 орон) нь компанийн өөрийн `company_setup.tin` тул хадгалагдана, гэхдээ дэлгэцэнд оруулсны дараа маскаар (`*********123`), [Харах] нь `platform.pii.unmask`-аар (13 §10.4). |
 | UX-ONB-07 | Туршилтын компани (`is_demo`): "Туршилтын өгөгдөлтэй компани үүсгэх" сонголт (Micro багцын хязгаарт тооцогдохгүй, FR-PLT-001 AC2); demo seed (18 §13.2). |
 
 ### 10.4 "Эхлэх алхмууд" шалгах хуудас
@@ -1825,7 +1846,7 @@ Wireframe нь бүтэц, талбарын дараалал, үйлдлийг �
 │ [Батлах F9] [Урьдчилан харах] [Батлаад хэвлэх ⇧F9] [Урьдчилан хэвлэх] [⋯ Бэлэн болгох · Хуулах · Dimension · Устгах]│
 ├─────────────────────────────────────────────────────────────────────────────────────────┬──────────────────────┤
 │ ▾ Ерөнхий                                                                                 │ Харилцагч            │
-│   Харилцагч*        [C0012 · Номин ХХК                ▾]  ТТД 5123456 ✓ НӨАТ төлөгч       │ Үлдэгдэл 1,200,000.00 │
+│   Харилцагч*        [C00012 · Номин ХХК               ▾]  ТТД 5123456 ✓ НӨАТ төлөгч       │ Үлдэгдэл 1,200,000.00 │
 │   Баримтын огноо    [2026.10.06]   Бүртгэлийн огноо* [2026.10.06]   Төлөх огноо [2026.11.05]│ Хэтэрсэн   850,000.00⚠│
 │   Төлбөрийн нөхцөл  [30 хоног ▾]   Төлбөрийн хэлбэр [Шилжүүлэг ▾]   ☐ Үнэ НӨАТ-тэй        │ Хязгаар  5,000,000.00 │
 │   [Дэлгэрэнгүй харуулах ▸] (НӨАТ-ын огноо, гадаад дугаар, posting group, шалтгаан)        │ Сүүлд төлсөн 09.28    │
@@ -1888,7 +1909,7 @@ Wireframe нь бүтэц, талбарын дараалал, үйлдлийг �
 │ Касс*              [CASH01 · Үндсэн касс                 ▾]                        │ Кассын үлдэгдэл    │
 │ Бүртгэлийн огноо*  [2026.10.06]                                                    │ Одоо  2,140,500.00 │
 │ Харьцагчийн төрөл* (•) Нийлүүлэгч  ( ) Харилцагч  ( ) Данс                         │ Дараа 1,840,500.00 │
-│ Харьцагч*          [V0007 · Говь Түгээлт ХХК             ▾]                        ├────────────────────┤
+│ Харьцагч*          [V00007 · Говь Түгээлт ХХК            ▾]                        ├────────────────────┤
 │ Тулгах баримт      [PI-2026-00031 · үлдэгдэл 300,000.00  ▾]                        │ Нээлттэй баримт    │
 │ Хүлээн авагч*      [Батбаяр Д.                           ]                         │ PI-2026-00031      │
 │ Бичиг баримт*      [УБ99112233          ]  (батласны дараа маскаар)                │      300,000.00    │
@@ -1972,7 +1993,7 @@ Wireframe нь бүтэц, талбарын дараалал, үйлдлийг �
 │2026.10.06 │        │J-000045  │Данс      │2200    │Цалингийн өглөг        │             │3,960,000.00 │        │
 │2026.10.06 │        │J-000045  │Данс      │2340    │ХХОАТ суутгал          │             │  315,000.00 │        │
 │2026.10.06 │        │J-000045  │Данс      │2350    │НДШ суутгал            │             │  225,000.00 │        │
-│2026.10.06 │Төлбөр  │J-000046  │Нийлүүлэгч│V0007   │Урьдчилгаа төлбөр      │  200,000.00 │             │Банк 1110│
+│2026.10.06 │Төлбөр  │J-000046  │Нийлүүлэгч│V00007  │Урьдчилгаа төлбөр      │  200,000.00 │             │Банк 1110│
 │           │        │          │          │        │                       │             │             │        │
 ├───────────┴────────┴──────────┴──────────┴────────┴───────────────────────┴─────────────┴─────────────┴────────┤
 │ Данс: 7201 Цалингийн зардал · үлдэгдэл 40,500,000.00    Харьцсан: —                                            │
@@ -1991,7 +2012,7 @@ Wireframe нь бүтэц, талбарын дараалал, үйлдлийг �
 | UX-JNL-05 | Нуусан багана ("Харагдах багана" цэс): НӨАТ-ын бүлэг (`gen_posting_type`, `vat_*`), Хэмжигдэхүүн 1/2, Тулгах баримт, Гадаад дугаар, Шалтгаан, Баримтын огноо, НӨАТ-ын огноо. Харилцагч/нийлүүлэгч мөрөнд "Тулгах баримт" автоматаар харагдана. |
 | UX-JNL-06 | Доод самбар: фокустай мөрийн дансны нэр ба үлдэгдэл, харьцсан дансны нэр ба үлдэгдэл; "Баримтын тэнцэл" (фокустай мөрийн баримт + огноо), "Багцын тэнцэл". Тэнцээгүй бол ✕ улаан ба зөрүү. Тооцоог сервер (хадгалалтын хариу) өгнө. |
 | UX-JNL-07 | W-01 (`normal_side`) нь нүдний ◐ дүрс ба tooltip; батлахыг зогсоохгүй. |
-| UX-JNL-08 | F9 = багцын бүх мөрийг батлах (`POST …/journal-batches/{id}:post`). Баримт тус бүр тэнцсэн байх ёстой (`force_doc_balance`, D-C5). Алдаа §8.3; алдаатай мөр тодорно. Амжилттай бол багц хоосорно; toast "2 ваучер батлагдлаа: GJ-2026-00012, GJ-2026-00013" (холбоостой). |
+| UX-JNL-08 | F9 = багцын бүх мөрийг батлах (`POST …/journals/{id}:post`, `If-Match` = журналын ETag, body `{ expectedLineCount }` = дэлгэцэд харагдаж буй мөрийн тоо; зөрвөл `409 gl.journal_changed`, API-ACT-07). Баримт тус бүр тэнцсэн байх ёстой (`force_doc_balance`, D-C5). Алдаа §8.3; алдаатай мөр тодорно. Амжилттай бол багц хоосорно; toast "2 ваучер батлагдлаа: GJ-2026-00012, GJ-2026-00013" (хариуны `vouchers[]`-ийн ноорог ↔ хуулийн дугаар, холбоостой). |
 | UX-JNL-09 | "Сонгосон мөрийг батлах" (Should): зөвхөн бүтэн тэнцсэн баримтын мөрүүдийг. |
 | UX-JNL-10 | "Стандарт журналаас" → `gl.standard_journal` сонгож мөрүүдийг хуулна (FR-GL-016); "Стандарт болгож хадгалах" нь сонгосон мөрөөс. |
 | UX-JNL-11 | Эхний үлдэгдлийн журнал (S-GL-05) ижил grid, багц `OPENING`, огноо = go-live − 1 өдөр түгжигдсэн анхдагч; харилцагч/нийлүүлэгчийн мөрөнд баримтын дугаар ба төлөх огноо заавал (D-D7: баримт тус бүрээр). |
@@ -2033,12 +2054,12 @@ Wireframe нь бүтэц, талбарын дараалал, үйлдлийг �
 ### 16.7 Харилцагчийн карт (S-PTY-02)
 
 ```text
-┌ Борлуулалт › Харилцагч › C0012 Номин ХХК ─────────────────────────────────────────────────────────────────────┐
-│ Номин ХХК (C0012)  [● Идэвхтэй]                                                            Хадгалсан 10:40     │
+┌ Борлуулалт › Харилцагч › C00012 Номин ХХК ────────────────────────────────────────────────────────────────────┐
+│ Номин ХХК (C00012) [● Идэвхтэй]                                                            Хадгалсан 10:40     │
 │ [+ Нэхэмжлэх] [+ Кредит нот] [Бичилт Ctrl+F7] [Дансны хуулга] [Статистик F7] [⋯ Блоклох · Өөрчлөлтийн түүх]   │
 ├──────────────────────────────────────────────────────────────────────────────────────┬────────────────────────┤
 │ ▾ Ерөнхий                                                                              │ Статистик              │
-│   Дугаар [C0012]   Нэр* [Номин ХХК                         ]                           │ Үлдэгдэл  1,200,000.00 │
+│   Дугаар [C00012]  Нэр* [Номин ХХК                         ]                           │ Үлдэгдэл  1,200,000.00 │
 │   Төрөл* (•) Хуулийн этгээд  ( ) Иргэн  ( ) Гадаад                                     │ Хэтэрсэн    850,000.00⚠│
 │   ТТД [5123456    ] [ТТД-ээр татах]  ✓ 2026.10.01 · НӨАТ төлөгч ✓ · НХАТ ✗             │ Энэ жил   14.2 сая ₮   │
 │   Улсын бүртгэлийн дугаар [2345678]                                                    │ Сүүлд төлсөн 2026.09.28│
@@ -2058,7 +2079,7 @@ Wireframe нь бүтэц, талбарын дараалал, үйлдлийг �
 |---|---|
 | UX-CUST-01 | Шинэ харилцагч: `party.customer_template` > 1 бол загвар сонгох dialog (BC); posting group, нөхцөл загвараас. Дугаар `CUST` цувралаас (гараар оруулж болно, `manual_nos`); үүсгэсний дараа засахгүй. |
 | UX-CUST-02 | Төрөл `LEGAL`: ТТД 7 оронтой оруулбал улсын бүртгэлийн дугаар гэж үзэж `getTinInfo?regNo=`-оор 11 оронтой ТТД-г санал болгоно (12 SET-11). Иргэний регистрээр ТТД хайхгүй. |
-| UX-CUST-03 | Төрөл `INDIVIDUAL`: ТТД ба улсын бүртгэлийн талбар нуугдаж, "Регистр (нууцлалтай)" write-only талбар (13 CR-06, SEC-PII-09) ба "Иргэний eBarimt дугаар" харагдана. Хадгалсны дараа зөвхөн hint (`УБ******33`); [Харах] нь `X platform.pii.unmask` + step-up. |
+| UX-CUST-03 | Төрөл `INDIVIDUAL`: ТТД ба улсын бүртгэлийн талбар нуугдаж (13 CR-06: `INDIVIDUAL`-д `tin`, `registration_no` NULL), "Регистр (нууцлалтай)" ба "Хувь хүний ТТД" write-only талбар (`personal_id_*`, `personal_tin_*`, SEC-PII-09) ба "Иргэний eBarimt дугаар" харагдана. Хадгалсны дараа зөвхөн hint (`personal_id_hint` = `УБ******33`); [Харах] нь `X platform.pii.unmask` + step-up. |
 | UX-CUST-04 | [ТТД-ээр татах] (`X party.customer.lookup_tin`): нэр хоосон бол бөглөнө, ялгаатай бол "Нэрийг «НОМИН ХХК» болгох уу?"; `vat_registered`, `city_tax_payer`-ийг шинэчилнэ; шалгасан огноо FactBox-д. Сервис ажиллахгүй бол W-06, хадгалалт зогсохгүй (12 SET-12). |
 | UX-CUST-05 | Posting group солиход: "Зөвхөн шинэ баримтад нөлөөлнө. Батлагдсан баримт өөрчлөгдөхгүй." |
 | UX-CUST-06 | Блоклох: `NONE` "Үгүй", `INVOICE` "Нэхэмжлэх бичихгүй", `ALL` "Бүх гүйлгээ" — сонголт бүрийн тайлбартай. |
@@ -2191,7 +2212,7 @@ Wireframe нь бүтэц, талбарын дараалал, үйлдлийг �
 
 ### 17.1 Навигаци ба нүүр
 
-- **AT-UI-01 (UX-NAV-05, FR-PLT-005 AC1).** **Өгөгдсөн нь** X компанид зөвхөн `SALES_CLERK` role-той хэрэглэгч; **Хэрэв** апп нээвэл; **Тэгэхэд** цэсэнд "Ерөнхий журнал", "Хэрэглэгч ба эрх" харагдахгүй. **Мөн** `/c/X/gl/journal` руу шууд орвол `NO_PERMISSION` хоосон төлөв. **Мөн** `POST …/journal-batches/{id}:post` 403 буцаана.
+- **AT-UI-01 (UX-NAV-05, FR-PLT-005 AC1).** **Өгөгдсөн нь** X компанид зөвхөн `SALES_CLERK` role-той хэрэглэгч; **Хэрэв** апп нээвэл; **Тэгэхэд** цэсэнд "Ерөнхий журнал", "Хэрэглэгч ба эрх" харагдахгүй. **Мөн** `/c/X/gl/journal` руу шууд орвол `NO_PERMISSION` хоосон төлөв. **Мөн** `POST …/journals/{id}:post` 403 `platform.permission_denied` буцаана.
 - **AT-UI-02 (UX-NAV-02).** **Өгөгдсөн нь** хэрэглэгч A компанийн `/c/A/sales/invoices?status=OPEN`-д; **Хэрэв** Ctrl+O-оор B компани сонговол; **Тэгэхэд** `/c/B/sales/invoices?status=OPEN` нээгдэж, A-ийн өгөгдөл кэшээс харагдахгүй.
 - **AT-UI-03 (UX-NAV-03).** **Өгөгдсөн нь** B2C хэвлэх цонх нээлттэй; **Хэрэв** тенант солих оролдлого хийвэл; **Тэгэхэд** "QR-ийг дахин хэвлэх боломжгүй" анхааруулга гарна. **Мөн** солигдсоны дараа хуудас бүрэн дахин ачаалагдаж, `PrintPayload` санах ойд үлдэхгүй.
 - **AT-UI-04 (§3.1).** **Өгөгдсөн нь** `ACCOUNTANT` ба `VIEWER` хоёр role-той хэрэглэгч; **Тэгэхэд** `ACCOUNTANT_HOME` нээгдэнэ. Custom role нь зөвхөн `X sales.invoice.post`-той бол `SALES_HOME`.
@@ -2218,12 +2239,12 @@ Wireframe нь бүтэц, талбарын дараалал, үйлдлийг �
 
 ### 17.3 Grid ба гар
 
-- **AT-UI-22 (NFR-071).** **Өгөгдсөн нь** зөвхөн гар; **Хэрэв** Alt+N → харилцагч "C0012" Enter → Tab… мөрөнд "SRV-001" Enter, "3" Enter, Enter → F9 → Enter; **Тэгэхэд** нэхэмжлэх батлагдана (хулгана огт хэрэглэхгүй).
+- **AT-UI-22 (NFR-071).** **Өгөгдсөн нь** зөвхөн гар; **Хэрэв** Alt+N → харилцагч "C00012" Enter → Tab… мөрөнд "SRV-001" Enter, "3" Enter, Enter → F9 → Enter; **Тэгэхэд** нэхэмжлэх батлагдана (хулгана огт хэрэглэхгүй).
 - **AT-UI-23 (§6.3).** **Өгөгдсөн нь** OS-ийн гарын байрлал монгол кирилл; **Хэрэв** Alt + физик `KeyN` (`event.key = 'т'`); **Тэгэхэд** шинэ бичлэг нээгдэнэ.
 - **AT-UI-24 (F8).** **Өгөгдсөн нь** журналын 2-р мөрийн "Тайлбар" нүд; **Хэрэв** F8; **Тэгэхэд** 1-р мөрийн тайлбар хуулагдана.
 - **AT-UI-25 (§6.5).** **Өгөгдсөн нь** журналын "Данс" нүд фокустай; **Хэрэв** 3 мөр TSV буулгавал (`7201\tЦалин\t4500000`, `2200\tӨглөг\t-3960000`, `2350\tНДШ\t12.345`); **Тэгэхэд** 3 мөр үүсч, 3-р мөрийн дүнгийн нүд `ui.amount_precision_exceeded` (бөөрөнхийлөхгүй). **Мөн** нэг хадгалах хүсэлт.
 - **AT-UI-26 (UX-JNL-02).** **Хэрэв** журналын Дебит нүдэнд `-500` оруулбал; **Тэгэхэд** Дебит хоосон, Кредит 500.00, илгээсэн `amount = "-500"`.
-- **AT-UI-27 (UX-JNL-06, D-C5).** **Өгөгдсөн нь** J-000045-ийн Σ = +100.00; **Тэгэхэд** "Баримтын тэнцэл (J-000045): 100.00 ✕". **Хэрэв** F9; **Тэгэхэд** сервер 422, самбарт тэнцээгүй баримтын алдаа.
+- **AT-UI-27 (UX-JNL-06, D-C5).** **Өгөгдсөн нь** J-000045-ийн Σ = +100.00; **Тэгэхэд** "Баримтын тэнцэл (J-000045): 100.00 ✕". **Хэрэв** F9; **Тэгэхэд** сервер `422 gl.voucher_unbalanced`, самбарт "Ваучер J-000045 тэнцээгүй: зөрүү 100.00", J-000045-ийн мөрүүд тодорно.
 
 ### 17.4 Формат ба parse (Vitest)
 
@@ -2246,7 +2267,7 @@ Wireframe нь бүтэц, талбарын дараалал, үйлдлийг �
 - **AT-UI-41 (UX-TB-01, D-D4).** **Өгөгдсөн нь** 2025-12-31-ний `is_closing` гүйлгээ; **Хэрэв** 2025-12-01..2025-12-31 тайланг "Хаалтын бичилт оруулах" унтраасан/асаасан байдлаар харвал; **Тэгэхэд** API `p_include_closing` false/true-ээр дуудагдаж, орлогын дансны эцсийн үлдэгдэл ялгаатай.
 - **AT-UI-42 (UX-VAT-04..07).** **Өгөгдсөн нь** 9-р сарын үе `OPEN`, баталгаажаагүй орцын НӨАТ 5; **Тэгэхэд** анхааруулга харагдаж, [Илгээсэн гэж тэмдэглэх] идэвхгүй (үе `CLOSED` биш). **Хэрэв** НӨАТ хаагаад, илгээсэн гэж тэмдэглэхдээ лавлах дугааргүй бол; **Тэгэхэд** `ui.required`. **Хэрэв** дугаар, step-up, "ИЛГЭЭСЭН" бичвэл; **Тэгэхэд** `SUBMITTED`, зөвхөн экспорт үлдэнэ.
 - **AT-UI-43 (UX-COA-06).** **Өгөгдсөн нь** 1200 данс бичилттэй; **Тэгэхэд** [Устгах] идэвхгүй, tooltip "Бичилттэй дансыг устгахгүй. Блоклоно уу."
-- **AT-UI-44 (UX-CUST-03, 13 §10.5).** **Өгөгдсөн нь** `INDIVIDUAL` харилцагч, регистр хадгалагдсан; **Тэгэхэд** ТТД талбар харагдахгүй, регистр `УБ******33`. **Хэрэв** `platform.pii.unmask`-гүй Accountant [Харах] дарвал; **Тэгэхэд** товч харагдахгүй. Owner дарвал step-up → бүтэн утга 60 s харагдаад арилна.
+- **AT-UI-44 (UX-CUST-03, 13 §10.5).** **Өгөгдсөн нь** `INDIVIDUAL` харилцагч, регистр хадгалагдсан; **Тэгэхэд** ТТД талбар харагдахгүй, регистр `УБ******33`. **Хэрэв** `platform.pii.unmask`-гүй хэрэглэгч (`VIEWER`; Z-UI-15) картыг нээвэл; **Тэгэхэд** [Харах] товч харагдахгүй. Owner дарвал step-up → бүтэн утга 60 s харагдаад арилна.
 - **AT-UI-45 (UX-CUST-02).** **Хэрэв** `LEGAL` харилцагчийн ТТД талбарт 7 оронтой "2345678" оруулбал; **Тэгэхэд** "Улсын бүртгэлийн дугаар байна. ТТД-г татах уу?" → `getTinInfo` хариугаар 11 оронтой ТТД санал болгоно.
 - **AT-UI-46 (UX-ONB-04, FR-PLT-003 AC2).** **Өгөгдсөн нь** алхам 9-ийн provisioning job дугаарын цувралын алхамд алдаа өгсөн; **Тэгэхэд** "Юу ч үүсээгүй" мессеж ба [Дахин оролдох]; компанид дансны төлөвлөгөө, НӨАТ-ын тохиргоо **байхгүй**. Дахин оролдлого амжилттай бол нүүр нээгдэнэ.
 - **AT-UI-47 (UX-ONB-03).** **Өгөгдсөн нь** алхам 5 дээр "Хадгалаад гарах"; **Хэрэв** дахин нэвтэрвэл; **Тэгэхэд** нүүрт "Компани тохируулах — үргэлжлүүлэх (5/9)" ба өмнөх сонголт хадгалагдсан.
