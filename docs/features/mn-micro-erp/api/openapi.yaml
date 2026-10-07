@@ -159,6 +159,7 @@ paths:
       x-release: R1
       x-requirements: [FR-PLT-002, FR-PLT-019]
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -196,6 +197,7 @@ paths:
       x-release: R1
       x-requirements: [FR-GL-023]
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -638,6 +640,7 @@ paths:
       x-permission: TABLE gl.gl_account M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -672,6 +675,7 @@ paths:
       x-release: R1
       x-requirements: [FR-GL-004]
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -800,6 +804,7 @@ paths:
       x-permission: TABLE gl.journal_batch M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -830,6 +835,7 @@ paths:
       x-permission: TABLE gl.journal_batch D
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -876,7 +882,7 @@ paths:
       summary: Журналын мөр нэмэх
       tags: [Journals]
       description: |-
-        `If-Match` = журналын ETag (aggregate, §5.4).
+        `If-Match` = журналын ETag (aggregate, §5.2).
 
         **Эрх:** `TABLE gl.journal_line I`. **Хувилбар:** R1. **Шаардлага:** FR-GL-006.
       x-permission: TABLE gl.journal_line I
@@ -939,6 +945,7 @@ paths:
       x-permission: TABLE gl.journal_line M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -969,6 +976,7 @@ paths:
       x-permission: TABLE gl.journal_line D
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -1392,6 +1400,7 @@ paths:
       x-release: R1
       x-requirements: [FR-PTY-001]
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -1425,6 +1434,7 @@ paths:
       x-permission: TABLE party.customer D
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -1536,6 +1546,7 @@ paths:
       x-release: R1
       x-requirements: [FR-PTY-002]
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -1569,6 +1580,7 @@ paths:
       x-permission: TABLE party.vendor D
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -1685,6 +1697,7 @@ paths:
       x-release: R1
       x-requirements: [FR-INV-001]
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -1718,6 +1731,7 @@ paths:
       x-permission: TABLE inv.item D
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -1870,6 +1884,7 @@ paths:
       x-permission: TABLE sales.sales_header M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -1904,6 +1919,7 @@ paths:
       x-release: R1
       x-requirements: [FR-SAL-015]
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -1947,7 +1963,7 @@ paths:
       summary: Мөр нэмэх
       tags: [Sales Invoices]
       description: |-
-        `If-Match` = баримтын ETag (§5.4).
+        `If-Match` = баримтын ETag (§5.2).
 
         **Эрх:** `TABLE sales.sales_header M`. **Хувилбар:** R1.
       x-permission: TABLE sales.sales_header M
@@ -2012,6 +2028,7 @@ paths:
       x-permission: TABLE sales.sales_header M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -2042,6 +2059,7 @@ paths:
       x-permission: TABLE sales.sales_header M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -2517,6 +2535,7 @@ paths:
       x-permission: TABLE sales.sales_header M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -2551,6 +2570,7 @@ paths:
       x-release: R1
       x-requirements: [FR-SAL-015]
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -2594,7 +2614,7 @@ paths:
       summary: Мөр нэмэх
       tags: [Sales Credit Memos]
       description: |-
-        `If-Match` = баримтын ETag (§5.4).
+        `If-Match` = баримтын ETag (§5.2).
 
         **Эрх:** `TABLE sales.sales_header M`. **Хувилбар:** R1.
       x-permission: TABLE sales.sales_header M
@@ -2659,6 +2679,7 @@ paths:
       x-permission: TABLE sales.sales_header M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -2689,6 +2710,7 @@ paths:
       x-permission: TABLE sales.sales_header M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -3060,6 +3082,7 @@ paths:
       x-permission: TABLE purchase.purchase_header M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -3093,6 +3116,7 @@ paths:
       x-permission: TABLE purchase.purchase_header D
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -3136,7 +3160,7 @@ paths:
       summary: Мөр нэмэх
       tags: [Purchase Invoices]
       description: |-
-        `If-Match` = баримтын ETag (§5.4).
+        `If-Match` = баримтын ETag (§5.2).
 
         **Эрх:** `TABLE purchase.purchase_header M`. **Хувилбар:** R1.
       x-permission: TABLE purchase.purchase_header M
@@ -3201,6 +3225,7 @@ paths:
       x-permission: TABLE purchase.purchase_header M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -3231,6 +3256,7 @@ paths:
       x-permission: TABLE purchase.purchase_header M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -3576,6 +3602,7 @@ paths:
       x-permission: TABLE purchase.purchase_header M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -3609,6 +3636,7 @@ paths:
       x-permission: TABLE purchase.purchase_header D
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -3652,7 +3680,7 @@ paths:
       summary: Мөр нэмэх
       tags: [Purchase Credit Memos]
       description: |-
-        `If-Match` = баримтын ETag (§5.4).
+        `If-Match` = баримтын ETag (§5.2).
 
         **Эрх:** `TABLE purchase.purchase_header M`. **Хувилбар:** R1.
       x-permission: TABLE purchase.purchase_header M
@@ -3717,6 +3745,7 @@ paths:
       x-permission: TABLE purchase.purchase_header M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -3747,6 +3776,7 @@ paths:
       x-permission: TABLE purchase.purchase_header M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -4156,6 +4186,7 @@ paths:
       x-release: R1
       x-requirements: [FR-PTY-014]
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -4344,6 +4375,7 @@ paths:
       x-release: R1
       x-requirements: [FR-PTY-014]
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -4557,6 +4589,7 @@ paths:
       x-permission: TABLE bank.bank_account M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -4590,6 +4623,7 @@ paths:
       x-permission: TABLE bank.bank_account D
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -4955,6 +4989,7 @@ paths:
       x-permission: TABLE bank.bank_reconciliation M
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -4985,6 +5020,7 @@ paths:
       x-permission: TABLE bank.bank_reconciliation D
       x-release: R1
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -5047,6 +5083,7 @@ paths:
       x-release: R1
       x-requirements: [FR-BNK-012]
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -5412,6 +5449,7 @@ paths:
       x-permission: TABLE fx.currency M
       x-release: R2
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -5442,6 +5480,7 @@ paths:
       x-permission: TABLE fx.currency D
       x-release: R2
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -5543,6 +5582,7 @@ paths:
       x-permission: TABLE fx.currency_exchange_rate M
       x-release: R2
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -5573,6 +5613,7 @@ paths:
       x-permission: TABLE fx.currency_exchange_rate D
       x-release: R2
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -6959,6 +7000,7 @@ paths:
       x-permission: ACTION platform.webhook.manage X (санал, MFA, step-up)
       x-release: R2
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       requestBody:
         required: true
@@ -6989,6 +7031,7 @@ paths:
       x-permission: ACTION platform.webhook.manage X (санал, MFA, step-up)
       x-release: R2
       parameters:
+      - {$ref: '#/components/parameters/IdempotencyKeyOptional'}
       - {$ref: '#/components/parameters/IfMatch'}
       responses:
         '204':
@@ -7709,7 +7752,7 @@ components:
       name: companyId
       in: path
       required: true
-      description: Компанийн id. Хандах эрхгүй бол 404 `platform.company_not_found` (§14.4).
+      description: Компанийн id. Хандах эрхгүй бол 404 `platform.company_not_found` (§14.2, API-AUTH-06).
       schema: {type: string, format: uuid}
     Id:
       name: id
@@ -7773,6 +7816,16 @@ components:
       required: true
       description: 'Давхар үйлдлээс хамгаалах түлхүүр (§7). 8–200 тэмдэгт; UUID санал болгоно. Ижил түлхүүр + ижил хүсэлт
         → хадгалсан хариу (`Idempotent-Replayed: true`); өөр хүсэлт → 422 `api.idempotency_key_reused`.'
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 200
+        pattern: ^[A-Za-z0-9_\-:.]{8,200}$
+    IdempotencyKeyOptional:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: PATCH/DELETE-д сонголттой (§7, API-IDEM-01). Илгээвэл POST-той ижил дүрмээр хэрэгжинэ.
       schema:
         type: string
         minLength: 8
@@ -10710,7 +10763,7 @@ components:
         createdBy: {type: [string, 'null'], format: uuid, readOnly: true}
         updatedAt: {type: [string, 'null'], format: date-time, readOnly: true}
       required: [id, code]
-      description: Журнал = BC Gen. Journal Batch. Мөрүүдтэйгээ нэг aggregate (§5.4).
+      description: Журнал = BC Gen. Journal Batch. Мөрүүдтэйгээ нэг aggregate (§5.2).
       x-db-table: gl.journal_batch
     JournalCreate:
       type: object
@@ -12069,7 +12122,7 @@ components:
           items: {$ref: '#/components/schemas/DimensionValueRef'}
           description: Dimension set (§3.5). Хоосон массив = хоосон set (0).
       required: [id, lineType]
-      description: Баримтын мөр. Мөрийн өөрчлөлт бүр баримтын ETag-ийг шинэчилнэ (§5.4).
+      description: Баримтын мөр. Мөрийн өөрчлөлт бүр баримтын ETag-ийг шинэчилнэ (§5.2).
       x-db-table: purchase.purchase_line | purchase.purch_inv_line | purchase.purch_cr_memo_line
     PurchaseLineCreate:
       type: object
@@ -12223,7 +12276,7 @@ components:
           type: object
           description: 'Тухайн тайлангийн GET query-тэй ижил нэртэй параметр (жишээ `{ "dateFrom": "2026-01-01", "dateTo":
             "2026-12-31" }`); `financial-report`-д `financialReportId` заавал.'
-      required: [format, parameters]
+      required: [format]
     ReversalResult:
       type: object
       properties:
@@ -12895,7 +12948,7 @@ components:
           items: {$ref: '#/components/schemas/DimensionValueRef'}
           description: Dimension set (§3.5). Хоосон массив = хоосон set (0).
       required: [id, lineType]
-      description: Баримтын мөр. Мөрийн өөрчлөлт бүр баримтын ETag-ийг шинэчилнэ (§5.4).
+      description: Баримтын мөр. Мөрийн өөрчлөлт бүр баримтын ETag-ийг шинэчилнэ (§5.2).
       x-db-table: sales.sales_line | sales.sales_invoice_line | sales.sales_cr_memo_line
     SalesLineCreate:
       type: object

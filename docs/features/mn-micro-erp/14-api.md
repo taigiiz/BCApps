@@ -209,7 +209,7 @@ function ResolveDocument(companyId, kind, id) -> Document | NotFound:
 
 | ID | Дүрэм |
 |---|---|
-| API-JSON-05 | Дүн, нэгжийн үнэ, тоо хэмжээ, ханш, хувь нь **JSON string** хэлбэртэй (OpenAPI `type: string, format: decimal`). JSON number ирвэл **400 `api.money_must_be_string`** (FR-INT-001 AC2). Хүлээн авах хэлбэр: `^-?(0|[1-9][0-9]*)(\.[0-9]+)?$`. Exponent, мянгатын тусгаарлагч, `+` тэмдэг, хоосон зай, таслалтай бутархай хүлээн авахгүй. |
+| API-JSON-05 | Дүн, нэгжийн үнэ, тоо хэмжээ, ханш, хувь нь **JSON string** хэлбэртэй (OpenAPI `type: string, format: decimal`). JSON number ирвэл **400 `api.money_must_be_string`** (FR-INT-001 AC2). Хүлээн авах хэлбэр: `^-?(0\|[1-9][0-9]*)(\.[0-9]+)?$`. Exponent, мянгатын тусгаарлагч, `+` тэмдэг, хоосон зай, таслалтай бутархай хүлээн авахгүй. |
 | API-JSON-06 | Нарийвчлал ба гаралтын хэлбэр: |
 
 | Төрөл (domain) | Schema | Оролтын дээд нарийвчлал | Гаралт |
@@ -335,6 +335,8 @@ function keysetPredicate(sort, last):                                     -- х�
 
 ## 5. Бичих: үүсгэх, PATCH, устгах, aggregate
 
+### 5.1 Үүсгэх, PATCH, устгах
+
 | ID | Дүрэм |
 |---|---|
 | API-WR-01 | **Үүсгэх:** `POST /<collection>` (+ `Idempotency-Key`). Хариу нь `201` бөгөөд `Location: /api/v1/companies/{c}/<collection>/{id}`, `ETag` header ба бүтэн төлөөлөлтэй. |
@@ -345,7 +347,7 @@ function keysetPredicate(sort, last):                                     -- х�
 | API-WR-06 | **Posted баримт өөрчлөгдөхгүй.** PATCH/DELETE ирвэл **409 `api.document_not_editable`** буцна. RELEASED ноорогт PATCH ирвэл **409 `api.document_released`** буцна (эхлээд `:reopen`). |
 | API-WR-07 | Хүсэлтийн body ≤ 1 MB (413 `api.payload_too_large`). Файл upload ≤ 20 MB (02 §10.3). `Content-Type` дэмжигдэхгүй бол 415 `api.unsupported_media_type`. JSON задрахгүй бол 400 `api.malformed_json`. |
 
-### 5.4 Aggregate: баримт ба мөр нэг хувилбартай
+### 5.2 Aggregate: баримт ба мөр нэг хувилбартай
 
 02 §8.6 "мөр засах бүрт header-ийн хувилбар шинэчлэгдэнэ" гэсэн дүрмийг API-д тусгав:
 
@@ -623,10 +625,10 @@ Endpoint-ийн тайлбарт иш татсан домэйн кодууд д�
 | `sales.invoice_already_cancelled`, `sales.invoice_has_applications` | 409 | 10 | Цуцлалт (FR-SAL-008) |
 | `purchase.vendor_invoice_no_required`, `purchase.vendor_invoice_no_duplicate`, `purchase.vendor_blocked` | 422 | 11 | FR-PUR-002 |
 | `party.application_exceeds_remaining`, `party.application_sign_mismatch`, `party.application_currency_mismatch`, `party.unapply_not_latest`, `party.entry_closed`, `party.customer_blocked` | 422/409 | 09 | Тулгалт (FR-PTY-009..014) |
-| `bank.cash_negative_balance` (`ERC01`), `bank.cash_voucher_required`, `bank.not_cash_account`, `bank.statement_already_imported`, `bank.statement_parse_failed`, `bank.statement_in_use`, `bank.statement_not_latest`, `bank.reconciliation_already_open`, `bank.reconciliation_balance_mismatch`, `bank.reconciliation_unmatched_lines`, `bank.match_spec_invalid`, `bank.match_amount_mismatch`, `bank.entry_reconciled` | 409/422 | 12-bank (модулийн spec) | Банк ба касс |
-| `fx.exchange_rate_not_found`, `fx.exchange_rate_exists`, `fx.exchange_rate_in_use` | 404/409 | 13-fx (R2) | Ханш |
+| `bank.cash_negative_balance` (`ERC01`), `bank.cash_voucher_required`, `bank.not_cash_account`, `bank.statement_already_imported`, `bank.statement_parse_failed`, `bank.statement_in_use`, `bank.statement_not_latest`, `bank.reconciliation_already_open`, `bank.reconciliation_balance_mismatch`, `bank.reconciliation_unmatched_lines`, `bank.match_spec_invalid`, `bank.match_amount_mismatch`, `bank.entry_reconciled` | 409/422 | Банк/кассын spec | Банк ба касс |
+| `fx.exchange_rate_not_found`, `fx.exchange_rate_exists`, `fx.exchange_rate_in_use` | 404/409 | Валютын spec (R2) | Ханш |
 | `tax.vat_period_closed`, `tax.parameter_not_effective` | 422/404 | 08 | НӨАТ |
-| `inv.inventory_not_enabled` | 422 | 14-fa-inv (R2) | INVENTORY төрөл R1-д |
+| `inv.inventory_not_enabled` | 422 | ҮХ ба барааны spec (R2) | INVENTORY төрөл R1-д |
 | `webhook.url_not_allowed`, `webhook.limit_exceeded` | 422 | энэ баримт (R2) | §11.4 |
 
 ### 9.6 DB-ийн алдааг газрын код руу хөрвүүлэх
@@ -685,7 +687,7 @@ Job-ийн шинэ төрлүүд (SCR-API-02): `rpt.report.export` (max_attemp
 
 ## 11. Webhook ба event (R2)
 
-R1-д гадаад систем өөрчлөлтийг polling-оор татна: ledger-д `?entryNoFrom=`, баримтад `?sort=-createdAt`, eBarimt-д `?status=`. R2-т webhook нэмэгдэнэ. Hэрэгжүүлэлт нь outbox-оор явна (ADR-0012), тусдаа queue хэрэглэхгүй.
+R1-д гадаад систем өөрчлөлтийг polling-оор татна: ledger-д `?entryNoFrom=`, баримтад `?sort=-createdAt`, eBarimt-д `?status=`. R2-т webhook нэмэгдэнэ. Хэрэгжүүлэлт нь outbox-оор явна (ADR-0012), тусдаа queue хэрэглэхгүй.
 
 ### 11.1 Захиалга (subscription)
 
@@ -827,7 +829,7 @@ Operation бүр `x-permission` өргөтгөлтэй. Тэмдэглэгээ �
 | Арга ба зам | Эрх | Idem | IfM | Хувилбар | FR |
 |---|---|---|---|---|---|
 | 🌐 `GET /companies` | AUTHENTICATED | | | R1 | FR-PLT-004 |
-| `GET`, `PATCH ` (компани) | `TABLE platform.company_setup R/M` | | З (PATCH) | R1 | FR-PLT-002 |
+| `GET`, `PATCH /companies/{c}` (зам нь `{c}` өөрөө) | `TABLE platform.company_setup R/M` | | З (PATCH) | R1 | FR-PLT-002 |
 | `PATCH /settings/posting-window` | `ACTION gl.posting_window.manage` (MFA) | | З | R1 | FR-GL-023 |
 | `GET /payment-terms`, `/payment-methods`, `/customer-posting-groups`, `/vendor-posting-groups`, `/gen-bus-posting-groups`, `/gen-prod-posting-groups`, `/vat-bus-posting-groups`, `/vat-prod-posting-groups`, `/reason-codes`, `/units-of-measure`, `/dimensions` | `TABLE … R` (BASIC) | | | R1 | |
 | `GET /jobs`, `GET /jobs/{jobId}`, `POST /jobs/{jobId}:cancel` | job_run R (өөрийн) | ✔ (cancel) | | R1 | FR-PLT-014 |
@@ -974,3 +976,286 @@ eBarimt-ийн тохиргоо, POS, лавлах, худалдан авалт�
 | `EbarimtDocument.posNo` | join `ebarimt.ebarimt_pos.pos_no` |
 | `EbarimtDocument.consumerNo` | `consumer_no` (маскласан) |
 | `Job.status` | `integration.job_run.status` (`DEAD` → `FAILED`) |
+
+---
+
+## 17. Жишээ урсгал
+
+Жишээнд хэрэглэсэн утгууд: компани `{c}` = `0199a7f0-0000-7000-8000-00000000c001`. Данс нь MN багцын дансны төлөвлөгөөнийх ([db/seed/README.md](./db/seed/README.md) §3): 1100 касс, 1110 харилцах, 1200 авлага, 2300 борлуулалтын НӨАТ, 5100 барааны орлого, 8300 банкны шимтгэл. Дугаар нь `PREFIX-YYYY-#####` (D-C7).
+
+### 17.1 B2C бэлэн борлуулалт: ноорог → preview → post → replay
+
+**1. Ноорог үүсгэх** (12-ebarimt §22.1-ийн жишээ: талх 2 × 2 750, сүү 1 × 3 300, үнэ НӨАТ-тэй).
+
+```http
+POST /api/v1/companies/{c}/sales-invoices
+Idempotency-Key: 5b0e7c1a-4f7e-4b8e-9a51-2f0d6c1e9a01
+X-CSRF: 1
+Content-Type: application/json
+
+{ "customerNumber": "C00001", "documentDate": "2026-10-06", "postingDate": "2026-10-06",
+  "pricesIncludingVat": true, "ebarimtReceiptType": "B2C_RECEIPT",
+  "lines": [ { "lineType": "ITEM", "itemNumber": "I00001", "quantity": "2", "unitPrice": "2750" },
+             { "lineType": "ITEM", "itemNumber": "I00002", "quantity": "1", "unitPrice": "3300" } ] }
+```
+
+```http
+HTTP/1.1 201 Created
+Location: /api/v1/companies/{c}/sales-invoices/0199a8b2-6f1e-7c3a-9d41-2b7e5c0a1f00
+ETag: "1"
+Cache-Control: no-store
+
+{ "id": "0199a8b2-6f1e-7c3a-9d41-2b7e5c0a1f00", "number": "DSI-000457", "status": "DRAFT", "posted": false,
+  "amount": "8000.00", "vatAmount": "800.00", "amountIncludingVat": "8800.00", "etag": "\"1\"",
+  "lines": [ { "lineNo": 10000, "lineAmount": "5500.00", "amount": "5000.00", "vatAmount": "500.00", "…": "…" },
+             { "lineNo": 20000, "lineAmount": "3300.00", "amount": "3000.00", "vatAmount": "300.00", "…": "…" } ],
+  "…": "…" }
+```
+
+Тооцоо (D-E3): баримтын НӨАТ = round(8 800 × 10/110) = 800.00. Мөрт running remainder-ээр хуваарилна: 1-р мөр round(5 500 × 10/110) = 500.00, 2-р мөр 800 − 500 = 300.00.
+
+**2. Preview** (`POST …/{id}:preview`, Idempotency-Key-гүй). Хариу: `documentNo = "***"`.
+
+| relTx | relEntry | Данс | Дебит | Кредит |
+|---|---|---|---:|---:|
+| 1 | 1 | 1200 Дансны авлага | 8 800.00 | |
+| 1 | 2 | 5100 Борлуулалтын орлого | | 8 000.00 |
+| 1 | 3 | 2300 Борлуулалтын НӨАТ | | 800.00 |
+| 2 | 4 | 1100 Касс (бэлэн, D-F5) | 8 800.00 | |
+| 2 | 5 | 1200 Дансны авлага | | 8 800.00 |
+
+`totals.balanced = true`. `ebarimt` = `{ type: B2C_RECEIPT, totalAmount: "8800.00", totalVat: "800.00", validationErrors: [] }`.
+
+**3. Батлах.**
+
+```http
+POST /api/v1/companies/{c}/sales-invoices/0199a8b2-6f1e-7c3a-9d41-2b7e5c0a1f00:post?ebarimtPrint=sync
+Idempotency-Key: 9d3f2c4e-1b7a-4e0b-8c55-77aa1e2b3c4d
+If-Match: "1"
+X-CSRF: 1
+```
+
+Хариу нь **200** (бүтэн жишээг [openapi.yaml](./api/openapi.yaml)-ийн `postSalesInvoice` → `examples.posted`-оос үзнэ):
+`invoice.id` нь өөрчлөгдөөгүй, `invoice.number = "SI-2026-00123"`, `status = POSTED`, `paymentStatus = PAID`. `posting.documentNo = "SI-2026-00123"`. Нэмэлт ваучер (төлбөр) нь `documentNo = "SI-2026-00123"`, `cashVoucherNo = "KO-2026-00015"`. `ebarimt.print = { qrData, lottery }` (`Cache-Control: no-store`).
+
+**4. Ижил түлхүүрээр давтах** (жишээ: сүлжээ тасарсан). Хариу нь **200**, `Idempotent-Replayed: true` бөгөөд body ижил. Ялгаа нь `ebarimt.print = null`, `printAvailable = false`, `ebarimt.status` нь одоогийн төлөв (API-IDEM-08). PosAPI дахин дуудагдахгүй.
+
+### 17.2 Банкаар төлбөр хүлээн авч тулгах, буцаах (FR-PTY-009, FR-PTY-011)
+
+`SI-2027-00042` = 1 100 (НӨАТ 100), харилцагчийн entry `0199b001-…-0042`.
+
+```http
+POST /api/v1/companies/{c}/payments
+Idempotency-Key: 1f6a0d0e-0c55-4a3e-b0a4-1d2c3b4a5e60
+
+{ "bankAccountId": "0199a7f0-0000-7000-8000-0000000b0001", "direction": "RECEIPT", "postingDate": "2027-01-20",
+  "amount": "500.00", "partyType": "CUSTOMER", "partyNumber": "C00017",
+  "applyTo": [ { "ledgerEntryId": "0199b001-0000-7000-8000-000000000042", "amountToApply": "500.00" } ] }
+```
+
+```json
+{ "transactionNo": 2210, "documentNo": "BR-2027-00007", "postingDate": "2027-01-20", "amount": "500.00",
+  "applications": [ { "entryNo": 311, "documentType": "INVOICE", "documentNo": "SI-2027-00042",
+                      "appliedAmount": "500.00", "remainingAmount": "600.00", "open": true, "…": "…" } ],
+  "unappliedAmount": "0.00", "…": "…" }
+```
+
+Үр дүн: G/L-д 1110 Дт 500.00, 1200 Кт 500.00. Detailed entry: төлбөрт INITIAL −500, тулгалтад нэхэмжлэх −500 ба төлбөр +500. Нэхэмжлэхийн `paymentStatus` = `PARTIALLY_PAID`.
+Буцаах: `POST /customer-ledger-entries/{paymentEntryId}:unapply` (`applicationNo` өгөхгүй бол сүүлийнх нь) → нэхэмжлэх 1 100 үлдэгдэлтэй дахин нээгдэнэ. MNT тул G/L бичилт гарахгүй (`transactionNo = null`).
+
+### 17.3 Олон алдаатай батлалт (422)
+
+Хаалттай сард батлах гэсэн, мөрт БҮНА код алга. Хариу нь `api.validation_failed`, `errors[]`-д хоёр алдаа (`gl.period_closed` → `/postingDate`, `ebarimt.classification_code_missing` → `/lines/1/classificationCode`). Бүтэн жишээг `openapi.yaml`-ийн `components.responses.UnprocessableEntity`-аас үзнэ. Transaction эхлээгүй тул дугаар зарцуулагдахгүй, idempotency түлхүүр хадгалагдахгүй. Засаад **ижил** түлхүүрээр дахин илгээж болно.
+
+### 17.4 Хуулга импорт ба тулгалт
+
+1. `POST /bank-accounts/{id}/statements:import` (multipart: `file=khan_2027-03.xlsx`, `importFormatId`=KHAN_XLSX) → **201**: `lineCount 42`, `importedLineCount 42`, `skippedDuplicateCount 0`, `balanceCheck { ok: true, difference: "0.00" }`. Ижил файлыг дахин илгээвэл **409 `bank.statement_already_imported`** (`existingResourceId`).
+2. `POST /bank-reconciliations` `{ bankAccountId, bankStatementId, statementDate: "2027-03-31", statementEndingBalance: "10500000.00" }` → 201, `ETag: "1"`.
+3. `POST /bank-reconciliations/{id}:auto-match` (`If-Match: "1"`) → `{ matchedLines: 38, high: 35, medium: 3, low: 0, unmatched: 4 }`, `ETag: "2"`.
+4. "ШИМТГЭЛ −500" мөр: `PATCH …/lines/{lineId}` `{ accountType: "GL_ACCOUNT", accountId: <8300> }` (`If-Match: "2"`) → `ETag: "3"`. Бусад мөрийг `:match`-ээр тулгана.
+5. `POST /bank-reconciliations/{id}:post` (`If-Match: "6"`) → `ReconciliationPostResult` (шимтгэлийн ваучер 8300 Дт 500 / 1110 Кт 500, тулгалт). Σ мөр ≠ эцсийн − эхний бол **422 `bank.reconciliation_balance_mismatch`**.
+
+### 17.5 Async экспорт
+
+```http
+POST /api/v1/companies/{c}/reports/trial-balance:export
+Idempotency-Key: 3e2d1c0b-aaaa-4bbb-8ccc-0d0e0f101112
+
+{ "format": "XLSX", "language": "mn", "parameters": { "dateFrom": "2026-01-01", "dateTo": "2026-12-31" } }
+```
+
+Хариу нь `202`, `Location: /api/v1/companies/{c}/jobs/0199c0de-…`, `Retry-After: 2`, `{ "status": "QUEUED", … }`. `GET /jobs/{jobId}` дуудахад `RUNNING` (`progressPercent: 40`), дараа нь `SUCCEEDED` болж `result.file.downloadUrl` (15 мин) гарна.
+
+### 17.6 Хаагдсан үеийг дахин нээх (step-up)
+
+`POST /accounting-periods/{id}:reopen` `{ "reasonText": "Банкны хуулгын алдааг засах" }` → **403 `platform.reauth_required`**. `POST /api/v1/me:reauth` (TOTP) хийсний дараа **ижил** Idempotency-Key-ээр давтахад → 200 `PeriodTransitionResult`. 403 хариу хадгалагдаагүй тул ижил түлхүүрээр давтаж болно.
+
+---
+
+## 18. Ажиглалт ба лог
+
+| ID | Дүрэм |
+|---|---|
+| API-OBS-01 | `X-Request-Id` (≤ 64, `[A-Za-z0-9._-]`) ирвэл ашиглана, эс бөгөөс UUIDv7 үүсгэнэ. Хариунд буцааж, `app.request_id` болгон тохируулна. Энэ нь `gl.gl_register.request_id`, `audit.*`, `ebarimt_document_event.request_id`-д бичигдэнэ. |
+| API-OBS-02 | W3C `traceparent`-ийг хүлээн авна (ADR-0020). `traceId` нь Problem-д гарна. Гаднаас ирсэн trace-ийн `tracestate`-д итгэхгүй. |
+| API-OBS-03 | Лог: арга, **route template** (`/companies/{companyId}/sales-invoices/{id}:post`), статус, хугацаа, principal-ийн төрөл, компани, `code`. **Хэзээ ч логлохгүй зүйл:** `Authorization`, cookie, `Idempotency-Key`-ийн утга (зөвхөн hash), request/response body-ийн мөнгө ба PII, `qrData`/`lottery` (D-J3, ADR-0020 redaction). |
+| API-OBS-04 | Бүх хариу `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Content-Language` (Problem), `X-Erp-Version` header-тэй. |
+| API-OBS-05 | Метрик (OTel → Prometheus): `erp_http_requests_total{route,method,status}`, `erp_http_request_duration_seconds` (02 §13 SLO), `erp_idempotency_replays_total`, `erp_idempotency_key_reused_total`, `erp_posting_lock_timeouts_total`, `erp_rate_limited_total{class}`, `erp_api_problem_total{code}`, R2-т `erp_webhook_deliveries_total{status}`. |
+| API-OBS-06 | Аудит: бичих хүсэлт бүрийн өөрчлөлт `audit.row_change`-д (trigger, D-I3). Posting `audit.posting_log`-д бичигдэнэ. 403 `PERMISSION_DENIED` нь `audit.security_event`-д (13 §9.6) бичигдэнэ. |
+
+---
+
+## 19. Хүлээн авах тест
+
+Хэлбэр: **Өгөгдсөн нь** (Given) / **Хэрэв** (When) / **Тэгэхэд** (Then) / **Мөн**. Бүгд integration тест (Testcontainers PostgreSQL + API host + stub PosAPI) бөгөөд `tests/Api.AcceptanceTests`-д байрлана.
+
+### 19.1 URL, id, JSON
+
+- **AT-API-001** (API-URL-03, API-GEN-07). **Өгөгдсөн нь** Ганаа К1-д role-той, К2-т role-гүй; **Хэрэв** `GET /companies/{К2}/customers` дуудвал; **Тэгэхэд** 404 `platform.company_not_found`. **Мөн** К2 байгаа эсэх илчлэгдэхгүй (байхгүй компанийн хариутай ижил body).
+- **AT-API-002** (API-URL-10, R-32). **Өгөгдсөн нь** id `X`-тэй ноорог нэхэмжлэх; **Хэрэв** `:post` хийгээд `GET /sales-invoices/X` дуудвал; **Тэгэхэд** 200, `status = POSTED`, `number = SI-2026-…`, `id = X`. **Мөн** `postedId ≠ X`, `ebarimt_document.source_id = postedId`.
+- **AT-API-003** (API-URL-12). **Өгөгдсөн нь** кредит нотын id `Y`; **Хэрэв** `GET /sales-invoices/Y` дуудвал; **Тэгэхэд** 404 `api.resource_not_found`.
+- **AT-API-004** (API-URL-08). **Өгөгдсөн нь** `customerId` = C00001-ийн id, `customerNumber = "C00002"`; **Хэрэв** нэхэмжлэх үүсгэвэл; **Тэгэхэд** 422 `api.reference_mismatch`, `pointer = /customerNumber`. **Мөн** `customerNumber = "C99999"` (байхгүй) бол 422 `api.reference_not_found`.
+- **AT-API-005** (API-JSON-05, FR-INT-001 AC2). **Өгөгдсөн нь** мөрт `"unitPrice": 1100.5` (number); **Хэрэв** илгээвэл; **Тэгэхэд** 400 `api.money_must_be_string`, `pointer = /lines/0/unitPrice`. **Мөн** `"1100.5"` (string) бол 201.
+- **AT-API-006** (API-JSON-06). **Өгөгдсөн нь** MNT журналын мөр `"amount": "100.005"`; **Тэгэхэд** 422 `api.amount_precision_exceeded`. **Мөн** `"100.00"` хүлээн авагдаж, хариунд `"100.00"` гэж гарна. **Мөн** `"unitPrice": "2750.000000"` нь `"2750"` гэж буцна.
+- **AT-API-007** (API-JSON-03, API-JSON-09). **Өгөгдсөн нь** `PATCH /customers/{id}` body `{ "nmae": "А" }`; **Тэгэхэд** 400 `api.unknown_field`. **Мөн** `{ "balanceLcy": "0.00" }` бол 400 (`api.unknown_field` эсвэл `api.read_only_field`).
+- **AT-API-008** (API-JSON-12). **Өгөгдсөн нь** серверийн цаг 2026-10-06T17:30:00Z (УБ 10-07 01:30); **Хэрэв** `postingDate`-гүй ноорог үүсгэвэл; **Тэгэхэд** `postingDate = "2026-10-07"`.
+- **AT-API-009** (API-JSON-16..17). **Өгөгдсөн нь** `dimensions: [{BRANCH, UB01}, {BRANCH, UB02}]`; **Тэгэхэд** 400 `api.request_invalid`. **Мөн** блоклогдсон утга бол 422 `gl.dimension_value_blocked`. **Мөн** `[]` илгээвэл `dimension_set_id = 0`.
+- **AT-API-010** (API-JSON-21). **Өгөгдсөн нь** INDIVIDUAL харилцагч `registrationNo = "УБ99112233"`; **Хэрэв** GET хийвэл; **Тэгэхэд** маскласан утга гарна. **Мөн** маскласан утгыг PATCH-д буцааж илгээвэл 422 `api.masked_value_not_allowed`.
+
+### 19.2 Хуудаслалт, шүүлт
+
+- **AT-API-011** (API-PAG-02, FR-INT-001 AC3). **Өгөгдсөн нь** 250 харилцагч; **Хэрэв** `?limit=500` дуудвал; **Тэгэхэд** 200 мөр, `hasMore = true`, `nextCursor ≠ null`. **Мөн** `?limit=0` бол 400.
+- **AT-API-012** (API-PAG-04). **Өгөгдсөн нь** `nextCursor`-ийн нэг тэмдэгтийг өөрчилсөн; **Тэгэхэд** 400 `api.invalid_cursor`. **Мөн** зөв cursor-ийг өөр `sort`-той илгээвэл 400 `api.cursor_mismatch`.
+- **AT-API-013** (API-PAG-06). **Өгөгдсөн нь** `GET /gl-entries?limit=50` эхний хуудсыг уншсан; **Хэрэв** шинэ posting 3 entry нэмээд хоёр дахь хуудсыг уншвал; **Тэгэхэд** давхардсан эсвэл алгассан entry байхгүй. **Мөн** шинэ entry сүүлийн хуудсанд гарна (`sort = entryNo`).
+- **AT-API-014** (API-PAG-09). **Өгөгдсөн нь** `GET /sales-invoices?custmerId=…`; **Тэгэхэд** 400 `api.unknown_query_parameter`, `parameter = custmerId`.
+- **AT-API-015** (API-PAG-08, R-37). **Өгөгдсөн нь** хэрэглэгч `sales.sales_invoice_header` R эрхтэй, `sales.sales_header` R эрхгүй; **Хэрэв** `GET /sales-invoices` дуудвал; **Тэгэхэд** зөвхөн posted баримт гарна, 403 гарахгүй. **Мөн** аль алинд нь эрхгүй бол 403.
+
+### 19.3 ETag
+
+- **AT-API-016** (API-ETAG-02, FR-INT-001 AC1). **Өгөгдсөн нь** `If-Match`-гүй PATCH; **Тэгэхэд** 428 `api.precondition_required`. **Мөн** хуучин ETag-тай бол 412 `api.etag_mismatch`, `currentEtag` ба `ETag` header одоогийн утгатай.
+- **AT-API-017** (API-WR-08). **Өгөгдсөн нь** нэхэмжлэх `ETag "4"`; **Хэрэв** `If-Match: "4"`-тэй мөр нэмбэл; **Тэгэхэд** 201, `ETag: "5"`. **Мөн** дараа нь `If-Match: "4"`-тэй `:post` хийвэл 412 (мөр нэмэгдсэнийг мэдээгүй клиент батлахгүй).
+- **AT-API-018** (API-ETAG-04). **Өгөгдсөн нь** `If-Match: *`; **Тэгэхэд** 400 `api.if_match_wildcard_not_allowed`.
+- **AT-API-019** (API-ETAG-07, FR-PTY-014, SCR-API-04). **Өгөгдсөн нь** нээлттэй авлагын entry; **Хэрэв** `PATCH { dueDate }`-ийг GET-ээс авсан `"h-…"` ETag-тай илгээвэл; **Тэгэхэд** 200, шинэ ETag. **Мөн** `audit.row_change`-д хуучин ба шинэ `due_date` бичигдэнэ. **Мөн** хаалттай entry бол 409 `party.entry_closed`.
+
+### 19.4 Idempotency
+
+- **AT-API-020** (API-IDEM-04, FR-INT-002 AC1, FR-SAL-005 AC2). **Өгөгдсөн нь** амжилттай `:post` (түлхүүр K); **Хэрэв** ижил K, ижил body-оор давтвал; **Тэгэхэд** ижил статус ба body, `Idempotent-Replayed: true`. **Мөн** `gl_register`-ийн тоо өөрчлөгдөхгүй.
+- **AT-API-021** (API-IDEM-05, FR-INT-002 AC2). **Өгөгдсөн нь** K-аар харилцагч үүсгэсэн; **Хэрэв** K-аар өөр нэртэй харилцагч үүсгэвэл; **Тэгэхэд** 422 `api.idempotency_key_reused`.
+- **AT-API-022** (API-IDEM-07, ADR-0012). **Өгөгдсөн нь** нэг ноорог; **Хэрэв** ижил K-тай 10 `:post` хүсэлтийг зэрэг илгээвэл; **Тэгэхэд** яг 1 posting (1 хуулийн дугаар) үүснэ. **Мөн** бүх хариу 200 (эсвэл зарим нь 409 `api.idempotency_in_progress` + `Retry-After`), давтахад 200 replay.
+- **AT-API-023** (API-IDEM-06). **Өгөгдсөн нь** K-тай `:post` хаалттай үеийн улмаас 422 авсан; **Хэрэв** үеийг засаад ижил K-аар давтвал; **Тэгэхэд** 200 (шинэ гүйцэтгэл). **Мөн** хуулийн дугаарын цувралд завсар үүсээгүй.
+- **AT-API-024** (API-IDEM-08, AT-EB-24). **Өгөгдсөн нь** `ebarimtPrint=sync` B2C posting, stub PosAPI `qrData = "QR-CANARY-…"`; **Хэрэв** ижил K-аар давтвал; **Тэгэхэд** `ebarimt.print = null`, `printAvailable = false`, `ebarimt.status = SUCCESS`. **Мөн** `integration.idempotency_key.response_body`-д `CANARY` байхгүй. **Мөн** PosAPI-д 2 дахь дуудлага гараагүй.
+- **AT-API-025** (API-IDEM-01). **Өгөгдсөн нь** `POST /customers` түлхүүргүй; **Тэгэхэд** 400 `api.idempotency_key_missing`. **Мөн** `POST …:preview` түлхүүргүй бол 200.
+
+### 19.5 Үйлдэл
+
+- **AT-API-026** (API-ACT-09..11, FR-GL-011). **Өгөгдсөн нь** ноорог нэхэмжлэх; **Хэрэв** `:preview` хийгээд дараа нь `:post` хийвэл; **Тэгэхэд** preview-ийн (данс, дүн, dimension) олонлог нь posting-ийнхтой тэнцүү. **Мөн** preview-ийн дараа `platform.number_series_counter` ба `ledger_counter` өөрчлөгдөөгүй.
+- **AT-API-027** (API-ACT-04). **Өгөгдсөн нь** posted нэхэмжлэх; **Хэрэв** шинэ түлхүүрээр `:post` дуудвал; **Тэгэхэд** 409 `api.document_already_posted`.
+- **AT-API-028** (API-ACT-05). **Өгөгдсөн нь** компанийн posting түгжээг өөр transaction 6 s барьж байна; **Хэрэв** `:post` дуудвал; **Тэгэхэд** 503 `api.lock_timeout`, `Retry-After: 2`. **Мөн** ижил түлхүүрээр давтахад 200.
+- **AT-API-029** (API-ACT-02, API-ERR-05). **Өгөгдсөн нь** хаалттай үеийн огноотой, 2-р мөрөнд БҮНА-гүй ноорог; **Хэрэв** `:post` хийвэл; **Тэгэхэд** 422 `api.validation_failed`, `errors` = {`gl.period_closed` /postingDate, `ebarimt.classification_code_missing` /lines/1/classificationCode}.
+- **AT-API-030** (API-ACT-13..14, FR-SAL-008). **Өгөгдсөн нь** төлөгдөөгүй `SI-2027-00042`; **Хэрэв** `:cancel` (`reasonCodeId` = CANCEL, `postingDate` 2027-03-20) хийвэл; **Тэгэхэд** 201, `Location` = шинэ кредит нот, нэхэмжлэхийн `status = CANCELLED`, `paymentStatus = PAID`. **Мөн** хэсэгчлэн төлөгдсөн бол 409 `sales.invoice_has_applications`. **Мөн** дахин цуцлах гэвэл 409 `sales.invoice_already_cancelled`.
+- **AT-API-031** (API-ACT-17, D-D5). **Өгөгдсөн нь** нэхэмжлэхээс үүссэн ваучер; **Хэрэв** `:reverse` хийвэл; **Тэгэхэд** 409 `gl.reversal_use_credit_memo`. **Мөн** журналын ваучерын үе CLOSED бол 422 `gl.period_closed`. **Мөн** OPEN бол 201, буцаалт эх огноотой, эсрэг тэмдэгтэй.
+- **AT-API-032** (API-ACT-07). **Өгөгдсөн нь** 2 ваучертай журнал, нэг нь 100.00-аар тэнцээгүй; **Хэрэв** `:post` хийвэл; **Тэгэхэд** 422, `errors`-д `gl.voucher_unbalanced` (ваучерын `documentNo`-той), юу ч батлагдаагүй.
+- **AT-API-033** (API-ACT-19). **Өгөгдсөн нь** 1 100-ийн нэхэмжлэхэд 500 тулгасан; **Тэгэхэд** `paymentStatus = PARTIALLY_PAID`, `remainingAmount = "600.00"`. **Мөн** unapply хийсний дараа `UNPAID`.
+- **AT-API-034** (FR-PTY-011). **Өгөгдсөн нь** төлбөр 2 удаагийн тулгалттай; **Хэрэв** эхний тулгалтын `applicationNo`-оор `:unapply` хийвэл; **Тэгэхэд** 409 `party.unapply_not_latest`.
+- **AT-API-035** (FR-BNK-003, D-G1). **Өгөгдсөн нь** кассын үлдэгдэл 300 000; **Хэрэв** `POST /payments` (CASH, PAYMENT, 400 000) хийвэл; **Тэгэхэд** 422 `bank.cash_negative_balance`. **Мөн** `cashVoucher.counterpartyIdDocument` байхгүй МХ-2 бол 422.
+
+### 19.6 Алдаа, эрх, rate limit
+
+- **AT-API-036** (API-ERR-01..03). **Өгөгдсөн нь** дурын 4xx; **Тэгэхэд** `Content-Type: application/problem+json`, `type`, `title`, `status`, `code`, `traceId` байна. **Мөн** `traceId` нь хариуны `traceparent`-тэй таарна. **Мөн** `Accept-Language: en` бол `title` англиар.
+- **AT-API-037** (API-AUTH-06). **Өгөгдсөн нь** Sales clerk; **Хэрэв** `POST /journals/{id}:post` дуудвал; **Тэгэхэд** 403 `platform.permission_denied`, `requiredPermission = "ACTION gl.journal.post X"`. **Мөн** байхгүй журналын id-аар дуудахад ч 403 (404 биш).
+- **AT-API-038** (API-AUTH-01). **Өгөгдсөн нь** cookie ба Bearer хоёулаа; **Тэгэхэд** 400 `platform.ambiguous_credentials`.
+- **AT-API-039** (API-AUTH-03, FR-INT-003). **Өгөгдсөн нь** `erp_cid = К1`-тэй client токен; **Хэрэв** `/companies/{К2}/sales-invoices` дуудвал; **Тэгэхэд** 404 `platform.company_not_found`.
+- **AT-API-040** (API-RL-01). **Өгөгдсөн нь** нэг хэрэглэгч 1 минутад 31 дэх `:preview`; **Тэгэхэд** 429 `platform.rate_limited`, `Retry-After` > 0, `RateLimit-Remaining: 0`.
+- **AT-API-041** (§9.6). **Өгөгдсөн нь** DB `ERC01` (касс сөрөг) гаргах нөхцөл, апп-ийн урьдчилсан шалгалтыг тест горимд унтраасан; **Тэгэхэд** хариу 422 `bank.cash_negative_balance` (500 биш), body-д SQLSTATE эсвэл хүснэгтийн нэр байхгүй.
+
+### 19.7 Async, банк, eBarimt, параметр
+
+- **AT-API-042** (API-JOB-02..05). **Өгөгдсөн нь** `POST /reports/trial-balance:export`; **Тэгэхэд** 202, `Location` = job. **Мөн** job SUCCEEDED болоход `result.file.downloadUrl` нь 15 минутын дараа 403, `GET /jobs/{id}` дахин дуудахад шинэ URL гарна. **Мөн** өөр хэрэглэгч `GET /jobs/{id}` дуудвал 404.
+- **AT-API-043** (API-JOB-06). **Өгөгдсөн нь** SUCCEEDED job; **Хэрэв** `:cancel` хийвэл; **Тэгэхэд** 409 `api.job_not_cancellable`.
+- **AT-API-044** (FR-BNK-010). **Өгөгдсөн нь** импортлогдсон хуулгын файл; **Хэрэв** ижил файлыг дахин импортолбол; **Тэгэхэд** 409 `bank.statement_already_imported`, `existingResourceId` = анхны хуулга. **Мөн** өөр файлд 5 давхардсан мөр байвал 201, `skippedDuplicateCount = 5`.
+- **AT-API-045** (FR-BNK-013 AC2). **Өгөгдсөн нь** Σ мөр ≠ эцсийн − эхний; **Хэрэв** `:post` хийвэл; **Тэгэхэд** 422 `bank.reconciliation_balance_mismatch`.
+- **AT-API-046** (12 §11.2). **Өгөгдсөн нь** UNKNOWN баримт, `last_attempt_at` 5 минутын өмнө; **Хэрэв** `:resolve { decision: NOT_REGISTERED }` хийвэл; **Тэгэхэд** 409 `ebarimt.resolution_too_early`.
+- **AT-API-047** (FR-TAX-017, D-K5). **Өгөгдсөн нь** `vat.registration_threshold_mandatory` 2027-07-01-нээс шинэ утгатай; **Хэрэв** `GET /tax-parameters/vat.registration_threshold_mandatory?date=2027-06-30` ба `?date=2027-07-01` дуудвал; **Тэгэхэд** хоёр өөр мөр гарна. **Мөн** `valueNumeric` нь string.
+- **AT-API-048** (API-WR-02). **Өгөгдсөн нь** 201 inline мөртэй create; **Тэгэхэд** 422 `api.too_many_lines`.
+- **AT-API-049** (API-VER-05). **Өгөгдсөн нь** PR нь `SalesInvoice.number`-ийг хассан; **Тэгэхэд** CI-ийн `oasdiff breaking` унана.
+
+### 19.8 Webhook (R2)
+
+- **AT-API-050** (API-WH-04). **Өгөгдсөн нь** `sales_invoice.posted` захиалга; **Хэрэв** нэхэмжлэх батлагдвал; **Тэгэхэд** consumer `webhook-signature`-ийг нууцаар шалгаж баталгаажуулна. **Мөн** `data`-д `qrData`, `lottery`, PII байхгүй.
+- **AT-API-051** (API-WH-06..07). **Өгөгдсөн нь** consumer 500 буцаадаг; **Тэгэхэд** 8 оролдлого schedule-ийн дагуу хийгдэж `DEAD` болно. **Мөн** 72 цаг тасралтгүй амжилтгүй бол захиалга `DISABLED`, Owner-т имэйл илгээгдэнэ. **Мөн** `410` ирвэл шууд `DISABLED`.
+- **AT-API-052** (API-WH-09). **Өгөгдсөн нь** `url = https://169.254.169.254/…` эсвэл private IP руу шийдэгдэх домэйн; **Тэгэхэд** 422 `webhook.url_not_allowed`.
+
+---
+
+## 20. Схемийн өөрчлөлтийн хүсэлт (SCR)
+
+Энэ баримт SQL-ийг засаагүй. Доорх хүсэлтийг `db/schema`-г эзэмшигч (D-K1) migration-оор хэрэгжүүлнэ.
+
+| ID | Тэргүүлэх | Хувилбар | Өөрчлөлт | Шалтгаан |
+|---|---|---|---|---|
+| **SCR-API-01** | Өндөр | R1 | `integration.idempotency_key`-д `response_headers jsonb` нэмэх. Зөвхөн `Location`, `ETag`, `Content-Location` түлхүүрийг хадгална (`CHECK (response_headers IS NULL OR (response_headers - ARRAY['Location','ETag','Content-Location']) = '{}'::jsonb)`). Мөн `company_id uuid NULL` нэмэх (FK `(tenant_id, company_id) → platform.company`, индекс `(tenant_id, company_id, created_at)`). | Replay нь 201-ийн `Location`/`ETag`-ийг яг буцаах ёстой (API-IDEM-04). Компани архивлах, экспорт, аудитын үед компаниар шүүх хэрэгтэй. |
+| **SCR-API-02** | Өндөр | R1 | `integration.job_definition`-д мөр нэмэх: `('rpt.report.export','Report export (XLSX/PDF/CSV)','PER_COMPANY',NULL,3)`, `('tax.vat_return.export','VAT return helper file','PER_COMPANY',NULL,3)`. `integration.job_run`-д `progress_percent smallint CHECK (progress_percent BETWEEN 0 AND 100)`, `cancel_requested_at timestamptz`, `result_file_key text` (object storage key, API-д гаргахгүй), `result_expires_at timestamptz` нэмэх. | Async job (§10): явц, цуцлалт, файлын 7 хоногийн хугацаа. 12-ийн SCR-06-тай нэг migration-д хийж болно. |
+| **SCR-API-03** | Дунд | R2 | Шинэ хүснэгт `integration.webhook_subscription` (`id`, `tenant_id`, `company_id`, `url text CHECK (url ~ '^https://')`, `description`, `event_types text[] NOT NULL`, `status CHECK IN ('ACTIVE','PAUSED','DISABLED')`, `secret_ciphertext bytea`, `previous_secret_ciphertext bytea`, `previous_secret_expires_at`, `secret_key_id text`, `failing_since timestamptz`, `disabled_reason text`, аудитын багана, `row_version`) ба `integration.webhook_delivery` (`id`, `tenant_id`, `company_id`, `subscription_id`, `event_id text`, `event_type`, `payload jsonb CHECK (NOT integration.fn_has_forbidden_ebarimt_keys(payload))`, `status CHECK IN ('PENDING','SUCCEEDED','FAILED','DEAD')`, `attempts`, `max_attempts DEFAULT 8`, `next_attempt_at`, `last_status_code`, `last_error`, `created_at`, `delivered_at`, `UNIQUE (subscription_id, event_id)`). RLS, FK индекс, 30 хоногийн цэвэрлэгээ. `job_definition`-д `('webhook.deliver','Deliver webhook events','SYSTEM',NULL,8)` нэмэх. | §11 (R2). |
+| **SCR-API-04** | Дунд | R1 | Авлага/өглөгийн entry-ийн хэрэглэгчийн засварт (`due_date`, `on_hold`) аудит бичих: `party.fn_edit_ledger_entry(p_table text, p_entry_no bigint, p_due_date date, p_on_hold text)` SECURITY DEFINER функц. Функц нь `platform.fn_ledger_update`-ийг дуудаад `audit.row_change`-д хуучин ба шинэ утгыг бичнэ. Эсвэл `fn_ledger_update` өөрөө `ledger_guard`-ийн "audited" баганад аудит бичдэг болно. | Ledger хүснэгт `row_version`-гүй тул аудитын trigger холбогддоггүй. FR-PTY-014 AC1 ("`audit.row_change`-д бичигдэнэ") одоогийн схемээр биелэхгүй. |
+| **SCR-API-05** | Дунд | R1 | `bank.bank_account_statement`-д `undone boolean NOT NULL DEFAULT false`, `undone_at timestamptz`, `undone_by uuid` нэмэх. `platform.ledger_guard`-ийн `mutable_columns`-д `undone`, `undone_at`, `undone_by` нэмэх (`undone` нь зөвхөн false → true). | `POST /bank-account-statements/{id}:undo` (FR-BNK-014). Хүснэгт append-only (`ledger_guard`) тул одоо undo-г тэмдэглэх боломжгүй. |
+| **SCR-API-06** | Бага | R1 | `bank.bank_statement`-д `line_count integer NOT NULL DEFAULT 0`, `skipped_duplicate_count integer NOT NULL DEFAULT 0` нэмэх. | Алгассан давхар мөр хадгалагддаггүй тул `skippedDuplicateCount`-ийг (FR-BNK-010 AC1) дараа нь GET-ээр харуулах боломжгүй. |
+| **SCR-API-07** | Бага | R1 | Keyset-ийн анхдагч эрэмбийн индекс: `sales.sales_header (company_id, document_type, document_date, id)`, `sales.sales_invoice_header (company_id, document_date, id)`, `sales.sales_cr_memo_header (company_id, document_date, id)`, `purchase.purchase_header (company_id, document_type, document_date, id)`, `purchase.purch_inv_header (company_id, document_date, id)`, `purchase.purch_cr_memo_header (company_id, document_date, id)`, `bank.bank_ledger_entry (company_id, bank_account_id, entry_no)`, `ebarimt.ebarimt_document (company_id, created_at, id)`. | API-PAG-12-ийн анхдагч эрэмбэ. Одоогийн индекс `posting_date` дээр байгаа бол жагсаалт `document_date`-ээр эрэмбэлэгдэнэ. Бичил компанид ачаалал бага тул тэргүүлэх зэрэг бага. |
+| **SCR-API-08** | Дунд | R1 (R2 webhook) | Эрхийн каталог ба seed (`db/seed/mn_00_catalogs.sql`, 13 §6.3–6.4): `ACTION gl.year.create` (`PERIOD_CLOSE` set-д), `ACTION platform.webhook.manage` (R2, `SECURITY` set-д, MFA). `JOURNALS_EDIT` set-д `TABLE gl.journal_batch` RIMD, `T_SETUP` бүлэгт `fx.currency_exchange_rate` нэмэх. | §14.2 API-AUTH-08. Одоо санхүүгийн жил үүсгэх ба журнал (batch) үүсгэх эрх `SETUP`-аас өөр set-д байхгүй. Ханшийн хүснэгт ямар ч бүлэгт ороогүй. |
+
+---
+
+## 21. Нээлттэй асуулт
+
+| # | Асуулт | Анхдагч шийдвэр (энэ баримтад) | Хэн шийдэх |
+|---|---|---|---|
+| Q1 | Жагсаалтад нийт тоо (`totalCount`) хэрэгтэй юу? AG Grid-ийн infinite scroll-д хэрэггүй ч "N баримт" харуулахад хэрэгтэй. | Өгөхгүй. R2-т `?includeTotal=true` (≤ 10 000 мөрийн хязгаартай `count`) нэмж болно (нэмэлт өөрчлөлт). | PO, UI |
+| Q2 | Enum-ийн бичлэг: 18-dev-setup нь `camelCase`, schema нь `UPPER_SNAKE`. | `UPPER_SNAKE` (D-K1). 18 §3.4-ийг засна. | Архитектор |
+| Q3 | `:post`-ийн хариу 200 үү, 201 үү? | 200 (resource шинээр үүсээгүй, id тогтвортой). 02 §6.3-ыг засна. | Архитектор |
+| Q4 | PATCH/DELETE-д `Idempotency-Key` заавал уу? | Сонголттой (`If-Match` хангалттай). 18 §3.4-ийг засна. | Архитектор |
+| Q5 | Үеийг OPEN-оос шууд LOCKED болгох (03 §6.2) уу, зөвхөн CLOSED-оос (13 §8.3) уу? | Зөвхөн CLOSED-оос. 03-ыг засна. | Нягтлан зөвлөх |
+| Q6 | Webhook-ийн хувилбар: R2 (энэ даалгавар) уу, R3 (13 §6.1 `API` объект) уу? | R2, `ACTION platform.webhook.manage`. 13-ыг шинэчилнэ. | PO |
+| Q7 | Problem-ийн `type` URI-ийн домэйн. | `{PublicBaseUrl}/problems/{code}` тохиргоогоор. Production домэйн тодорхой болохоор тохируулна. | DevOps |
+| Q8 | Integration client `ebarimtPrint=sync` ашиглаж QR авч болох уу? Гуравдагч POS-ийн лог руу QR алдагдах эрсдэлтэй. | Зөвшөөрнө, гэхдээ client-д `sales.document.print` X эрх байх ёстой. Ашиглалтыг `audit.security_event`-д (`EBARIMT_PRINT_API`) бичнэ. | Аюулгүй байдал, СМТТ |
+| Q9 | Баримтын posting group-ийг (Gen. Bus., VAT Bus.) API-аар дарах (override) боломж хэрэгтэй юу? | v1-д read-only, харилцагчаас л ирнэ. Хэрэгцээ гарвал нэмэлт талбараар нэмнэ. | Нягтлан зөвлөх |
+| Q10 | Нэг баримтын мөрийн дээд хязгаар 1 000 хангалттай юу? | 1 000 (02 §13: 500 мөр p95 ≤ 2 s). | Архитектор |
+| Q11 | Мастер өгөгдлийн дугаарыг өөрчлөх (rename) хэрэгтэй юу? Snapshot (`customer_no`) хуучин дугаартай үлдэнэ. | v1-д create-only. R2-т `:rename` үйлдэл (аудиттай). | PO |
+| Q12 | `ebarimtConsumerNo`-ийн маскын формат (`12****78`) 13 §10.4-тэй таарах уу? | 13-ыг дагана. Ялгаа гарвал pattern-ийг шинэчилнэ. | Аюулгүй байдал |
+| Q13 | Integration client-ийн rate limit (минутад 1 200 / 300) их хэмжээний синк (эхний үлдэгдэл, түүх) хийхэд хангалттай юу? | Хангалттай (200 мөр × 1 200 = 240 000 мөр/мин). Онцгой тохиолдолд support нэмэгдүүлнэ. | Ops |
+| Q14 | `erp.read` scope (зөвхөн GET) R2-т хэрэгтэй юу? | Санал. Бүдүүн scope-ийг permission set давхарлана. | Аюулгүй байдал |
+| Q15 | FR-INT-003 AC1 нь өөр компанид "403" гэж бичсэн. 13 §5.9 ба API-AUTH-03 нь 404. | 404 (компани байгааг илчлэхгүй). FR-INT-003 AC1-ийг засна. | PO |
+| Q16 | Валютын баримтын ханшийг (`currencyFactor`) хэрэглэгч засах (FR-FX-005, R2). | v1-д read-only. R2-т `PATCH`-ийн бичигдэх талбар болно (нэмэлт өөрчлөлт). | R2 |
+| Q17 | Худалдан авалтын НӨАТ-ын зөрүүг (VAT difference, `allow_vat_difference`) засах API: мөр бүрээр уу, VAT identifier-ээр уу? | 08/11 spec шийднэ. Санал: `PUT /purchase-invoices/{id}/vat-amount-lines`. | 08, 11 spec |
+| Q18 | Тулгалтын ажлын хуудас (`party.application_draft`, FR-PTY-010)-ийг нийтийн API-д гаргах уу? | Үгүй. Нийтийн API-д нэг удаагийн `:apply` байна. Draft нь SPA-ийн дотоод урсгалд, ижил дүрмээр 09 spec-д. | 09 spec |
+
+---
+
+## 22. Бусад баримтад тусгах засвар
+
+Энэ баримт өөр баримт засаагүй. Эзэмшигч нь доорхыг тусгана.
+
+| Баримт | Хэсэг | Засвар |
+|---|---|---|
+| [18-dev-setup.md](./18-dev-setup.md) | §3.4 | (1) Үйлдэл `…/{id}/post`, `/post-preview`, `/reverse` → `…/{id}:post`, `:preview`, `:cancel`/`:reverse`. (2) Resource `posted-sales-invoices`, `general-journal-batches` → `sales-invoices` (нэгтгэсэн), `journals`. (3) Enum `camelCase` → `UPPER_SNAKE`. (4) ETag `xmin` → `row_version`. (5) Idempotency нь POST-д заавал, PATCH/DELETE-д сонголттой. (6) Код `money.must_be_string` → `api.money_must_be_string`, `idempotency.key_reused` → `api.idempotency_key_reused`. §5.2-ын trace жишээ `…/post` → `…:post`. |
+| [02-architecture.md](./02-architecture.md) | §6.4, §6.7 | `POST …/sales-invoices/{id}/post` → `:post`; `…/{doc}/{id}/post-preview` → `:preview`. |
+| 02 | §6.3 C2 | "201 буцаана" → "200 буцаана (`Content-Location`)". |
+| 02 | §6.10 | `sales.draft_version_mismatch` → `api.etag_mismatch`; lock timeout → `api.lock_timeout`. |
+| 02 | §8.5 | `integration.idempotency_key_reused` → `api.idempotency_key_reused`. `print` хадгалахгүй (API-IDEM-08) дүрмийг нэмэх. |
+| 02 | §8.6 | `xmin` → `row_version` (`platform.fn_touch_row`). |
+| 02 | §6.8 | Хаалттай үеийн буцаалтын огноо сонгох → D-D5 (зөвхөн эх огноо, хаалттай бол залруулах журнал). |
+| 02 | §6.9 | `SOFT_LOCKED`/`HARD_LOCKED` → `OPEN`/`CLOSED`/`LOCKED`. |
+| [13-security-audit-tenancy.md](./13-security-audit-tenancy.md) | §6.3, §6.4 | `ACTION gl.year.create`, `ACTION platform.webhook.manage` (R2) нэмэх. `JOURNALS_EDIT`-д `gl.journal_batch` RIMD, `T_SETUP`-д `fx.currency_exchange_rate` нэмэх (SCR-API-08). §6.1-ийн "`API` объект R3" → webhook R2-т `ACTION`-аар. |
+| 13 | §18.1 | `api.*` кодыг 14 §9.4-өөс иш татах. `platform.rate_limited`-ийн header-ийг (`RateLimit-*`) нэмэх. |
+| [12-ebarimt-integration.md](./12-ebarimt-integration.md) | §18.1 | Posting-ийн хариу `{ invoice \| creditMemo, posting, ebarimt }` бүтэцтэй (`SalesInvoicePostResult`). Replay-ийн `ebarimt` блок одоогийн төлөвөөр дахин уншигдана (API-IDEM-08). |
+| [03-domain-model.md](./03-domain-model.md) | §6.2 | `OPEN --> LOCKED` шилжилтийг хасах (Q5), эсвэл 13-ыг засах. |
+| [01-requirements.md](./01-requirements.md) | FR-INT-001, FR-INT-003 | FR-INT-001-д 412/428-ыг §6-аас иш татах. FR-INT-003 AC1-ийн "403" → "404 `platform.company_not_found`" (Q15). |
+| [00-overview.md](./00-overview.md) | Баримтын жагсаалт | `17-api-ui.md` → API хэсэг нь `14-api.md`. 12/13/14 дугаарын зөрүүг (`12-bank-cash`, `13-currency-fx`, `14-fa-inventory`) шинэчлэх. |
+| Модулийн spec 05–11 | Алдааны код | §9.5-ын санал болгосон кодыг ашиглах эсвэл энэ баримтыг шинэчлэх. Endpoint-ийн бизнесийн дүрмийг тухайн spec-д тодорхойлохдоо энэ баримтын API-* дүрмийг иш татах. |
+
+---
+
+## Хавсралт А. OpenAPI файлын бүтэц ба засварлах заавар
+
+- **Бүтэц:** `paths` (компанийн зам `/companies/{companyId}/…`, глобал зам 3), `webhooks` (R2, 15), `components.schemas` (domain primitive `Amount`, `UnitAmount`, `Quantity`, `ExchRate`, `Percent`, `Code20`, `CurrencyCode`, `DocumentNo`, `Tin`, `Ddtd` ба тэдгээрийн `…OrNull`; enum; resource бүрд `X`, `XCreate`, `XUpdate`, `XList`), `components.parameters`, `components.responses` (RFC 9457), `components.headers`.
+- **Өргөтгөл:** `x-permission` (RIMDX), `x-release` (R1/R2), `x-requirements` (FR id), `x-db-table`, `x-tagGroups`.
+- **Шалгах:** `npx --yes @redocly/cli@latest lint docs/features/mn-micro-erp/api/openapi.yaml`. 2026-10-06-нд: алдаа 0, анхааруулга 0.
+- **Засварлахдаа:** v1-д зөвхөн нэмэлт өөрчлөлт хийнэ (API-VER-02). Request schema-д `additionalProperties: false`-ийг үргэлж тавина. Шинэ мөнгөн талбарт primitive `$ref`-ийг ашиглана (number хэзээ ч бүү ашигла). Жишээ (examples) нь schema-д таарах ёстой (`no-invalid-media-type-examples`).
