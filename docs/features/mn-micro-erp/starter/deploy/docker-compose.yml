@@ -48,7 +48,9 @@ services:
       - "${ERP_PG_PORT:-5432}:5432"
     volumes:
       - pgdata:${ERP_PG_DATA_DIR:-/var/lib/postgresql/data}
-      # One-time bootstrap (roles + databases), runs only when the volume is empty.
+      # One-time bootstrap (login roles + databases), runs only when the volume is empty. Group roles, extensions,
+      # module schemas and all objects come from Erp.Migrator `migrate` (canonical db/schema/000...920; the first
+      # run applies 000_extensions_roles.sql and needs the postgres superuser connection, 18-dev-setup.md section 3.3).
       - ../db/init:/docker-entrypoint-initdb.d:ro
       # Whole db/ folder for manual psql work: \i /db/seed/demo/....sql
       - ../db:/db:ro

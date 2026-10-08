@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Own SQL-first migration runner (ADR-0014): applies the canonical db/schema/*.sql in order and the MN seed package
+       (db/seed/legal_parameters.sql, db/seed/mn_*.sql), journaled with SHA-256 checksums in platform.schema_migration.
+       Scripts are embedded, so checksums travel with the binary / image (deploy/docker/Dockerfile copies db/). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Npgsql" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../db/schema/*.sql" LogicalName="db/schema/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../db/seed/*.sql" LogicalName="db/seed/%(Filename)%(Extension)" />
+    <!-- Structural conventions (FK indexes, COMMENTs, no float columns, FORCE RLS conventions): run by `verify`. -->
+    <EmbeddedResource Include="../../db/tests/catalog_checks.sql" LogicalName="db/tests/catalog_checks.sql" />
+  </ItemGroup>
+</Project>

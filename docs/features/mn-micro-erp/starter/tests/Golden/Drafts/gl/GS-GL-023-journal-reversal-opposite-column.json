@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "id": "GS-GL-023",
+  "title": "Журналын гүйлгээ буцаах: эсрэг баганад, storno-гүй, эх мөрийг тэмдэглэнэ",
+  "description": "Sprint 0 skeleton variant of GS-GL-006 without the bank subledger (balancing account 2650 instead of BANK01). D-C3/D-D5: буцаалт эх огноо, эх дугаартай; Дт 2650 / Кт 7210 (кредит баганад); эх мөр reversed; дахин буцаах 409.",
+  "area": "GL",
+  "release": "R1",
+  "rules": "NOW",
+  "refs": ["FR-GL-010", "FR-GL-013", "D-C3", "D-D5", "ADR-0007"],
+  "tags": ["sprint0-skeleton"],
+  "signedOffBy": [
+    { "name": "ledger-owners (Sprint 0 skeleton)", "role": "LEDGER_OWNER", "date": "2026-10-08", "note": "Draft derived from GS-GL-006 (16 §12.3). Needs ACCOUNTING_ADVISOR sign-off before moving to Scenarios/." }
+  ],
+  "setup": { "baseline": "BASE-VAT", "companies": [ { "key": "C1" } ] },
+  "steps": [
+    {
+      "id": "s1",
+      "title": "Түрээсийн зардал хуримтлуулах",
+      "at": "2026-03-10T09:00",
+      "as": "acc",
+      "company": "C1",
+      "action": "journal.post",
+      "input": { "lines": [ { "documentNo": "J-000123", "account": "7210", "balAccount": "2650", "amount": "1500000.00", "description": "3-р сарын оффисын түрээс" } ] },
+      "expectOutcome": { "status": "OK", "http": 201 },
+      "capture": { "tx": "$.vouchers[0].transactionNo" },
+      "expect": {
+        "glEntries": [
+          { "transaction": "T1", "account": "7210", "dr": "1500000.00", "documentNo": "GJ-2026-00001" },
+          { "transaction": "T1", "account": "2650", "cr": "1500000.00", "documentNo": "GJ-2026-00001" }
+        ]
+      }
+    },
+    {
+      "id": "s2",
+      "title": "Гүйлгээг шалтгаан REVERSAL-тайгаар буцаах",
+      "at": "2026-03-20T11:00",
+      "as": "acc",
+      "company": "C1",
+      "action": "transaction.reverse",
+      "input": { "transactionNo": "$tx", "reasonCode": "REVERSAL" },
+      "expectOutcome": { "status": "OK", "http": 201 },
+      "expect": {
+        "glEntries": [
+          { "transaction": "T1", "account": "2650", "dr": "1500000.00", "documentNo": "GJ-2026-00001", "postingDate": "2026-03-10", "sourceCode": "REVERSAL" },
+          { "transaction": "T1", "account": "7210", "cr": "1500000.00", "documentNo": "GJ-2026-00001", "postingDate": "2026-03-10", "sourceCode": "REVERSAL" }
+        ],
+        "numbering": [ { "series": "GJ", "year": 2026, "lastNo": "GJ-2026-00001" } ]
+      }
+    },
+    {
+      "id": "s3",
+      "title": "Дахин буцаах оролдлого",
+      "at": "2026-03-20T11:05",
+      "as": "acc",
+      "company": "C1",
+      "action": "transaction.reverse",
+      "input": { "transactionNo": "$tx", "reasonCode": "REVERSAL" },
+      "expectOutcome": { "status": "ERROR", "http": 409, "codes": ["gl.transaction_already_reversed"] },
+      "expect": { "noRowsWritten": true }
+    }
+  ],
+  "expect": {
+    "balances": [
+      { "account": "7210", "asOf": "2026-03-31", "zero": true },
+      { "account": "2650", "asOf": "2026-03-31", "zero": true }
+    ],
+    "trialBalance": {
+      "from": "2026-03-01",
+      "to": "2026-03-31",
+      "rows": [
+        { "account": "7210", "periodDr": "1500000.00", "periodCr": "1500000.00" },
+        { "account": "2650", "periodDr": "1500000.00", "periodCr": "1500000.00" }
+      ]
+    }
+  }
+}

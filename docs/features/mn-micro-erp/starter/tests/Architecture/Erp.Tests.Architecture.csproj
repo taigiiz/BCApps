@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Module-boundary and coding-rule tests (18-dev-setup.md §2.4) with ArchUnitNET + reflection over the built assemblies. -->
+  <ItemGroup>
+    <PackageReference Include="TngTech.ArchUnitNET.xUnitV3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Erp.Api/Erp.Api.csproj" />
+    <ProjectReference Include="../../src/Erp.Migrator/Erp.Migrator.csproj" />
+  </ItemGroup>
+</Project>

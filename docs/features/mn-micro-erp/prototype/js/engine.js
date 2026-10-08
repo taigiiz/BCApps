@@ -130,7 +130,7 @@
     var vps = {};
     D.vatPostingSetup.forEach(function (r) {
       vps[r[0] + '|' + r[1]] = { bus: r[0], prod: r[1], calcType: r[2], category: r[3], pct: r[4], taxType: r[5],
-        taxProductCode: r[6], salesAcc: r[7], purchAcc: r[8], reverseAcc: r[9], identifier: r[3] + (r[4] ? '' : '') };
+        taxProductCode: r[6], salesAcc: r[7], purchAcc: r[8], reverseAcc: r[9], identifier: r[10] || r[3] };
     });
     var idx = function (arr) { var m = {}; arr.forEach(function (x) { m[x.no] = x; }); return m; };
     return { accounts: accounts, accountList: list, gps: gps, vps: vps,
@@ -287,7 +287,11 @@
           partyNo: x.partyNo || null, partyTin: x.partyTin || null, deductibleConfirmed: !!x.deductibleConfirmed,
           supplierDdtd: x.supplierDdtd || null, closed: false, closedByEntryNo: null, vatReturnPeriod: null, reversed: false };
         S.vatEntries.push(e); out.vat.push(e);
-        if (x.closes) x.closes.forEach(function (o) { o.closed = true; o.closedByEntryNo = e.entryNo; o.vatReturnPeriod = x.period; });
+        if (x.closes) {                                     // entry numbers, resolved in the current state (a preview copy stays a copy)
+          var cl = {}; x.closes.forEach(function (no) { cl[no] = true; });
+          S.vatEntries.forEach(function (o) { if (cl[o.entryNo]) { o.closed = true; o.closedByEntryNo = e.entryNo; o.vatReturnPeriod = x.period; } });
+          e.vatReturnPeriod = x.period;
+        }
       });
       (v.cle || []).forEach(function (c) {
         var e = { entryNo: next('CLE'), customer: c.customer, postingDate: v.postingDate, documentType: c.docType, documentNo: docNo,
@@ -321,7 +325,7 @@
         }
         var e = { entryNo: next('BLE'), bank: b.bank, postingDate: v.postingDate, documentType: v.documentType, documentNo: docNo,
           description: b.description || v.description || '', amount: b.amount, transactionNo: tx, party: b.party || null,
-          cashVoucherNo: cv ? cv.no : null, statementStatus: 'OPEN', cfOverride: null, reversed: false, glEntryNo: glMap[b.glKey] || null };
+          cashVoucherNo: cv ? cv.no : null, statementStatus: 'OPEN', cfOverride: b.cf || null, reversed: false, glEntryNo: glMap[b.glKey] || null };
         S.ble.push(e); out.ble.push(e);
       });
       S.transactions.push({ transactionNo: tx, registerNo: res.registerNo, postingDate: v.postingDate, documentType: v.documentType,
@@ -420,7 +424,7 @@
       out.vatProd = l.vatProd || (item ? item.vatProd : a ? a.vatProd : null);
       out.uom = item ? item.uom : null;
       out.uomName = item ? D.unitsOfMeasure[item.uom] : '';
-      out.bunaa = item ? item.bunaa : (D.ebarimtSetup.defaultClassificationCode);
+      out.bunaa = l.classificationCode || (item ? item.bunaa : D.ebarimtSetup.defaultClassificationCode);   // MAP-31: line → item → setup default
       out.barcode = item ? item.barcode : null;
       out.barcodeType = item ? item.barcodeType : 'UNDEFINED';
       out.taxProductCode = item ? item.taxProductCode : null;
@@ -441,13 +445,15 @@
       return out;
     });
 
-    // VAT groups (BR-SAL-22): key = (identifier, calc type, sign); order identifier → calc type → negative first
+    // VAT groups (BR-SAL-22, BR-TAX-18): key = (vat identifier, calc type, sign); order identifier → calc type → negative first.
+    // The identifier comes from the VAT posting setup (seed: VAT10, VAT0, EXEMPT, NOVAT, RC10, CUSTOMS), not from the category:
+    // a reverse-charge or customs line is never grouped (or carried) with an ordinary VAT10 line (D-E3).
     var groups = {};
     lines.forEach(function (l) {
-      if (!l.vat) return;
+      if (!l.vat || l.LA === 0) return;                    // BR-TAX-22: CLA = 0 line is not grouped, VAT 0
       var sign = l.LA >= 0 ? '+' : '-';
-      var k = l.vat.category + '|' + l.vat.pct + '|' + l.vat.calcType + '|' + sign;
-      if (!groups[k]) groups[k] = { key: k, identifier: l.vat.category + (l.vat.pct ? ' ' + l.vat.pct + '%' : ''), category: l.vat.category, pct: l.vat.pct,
+      var k = l.vat.identifier + '|' + l.vat.calcType + '|' + sign;
+      if (!groups[k]) groups[k] = { key: k, identifier: l.vat.identifier, category: l.vat.category, pct: l.vat.pct,
         calcType: l.vat.calcType, sign: sign, label: vatLabel(l.vat), lines: [], total: 0 };
       groups[k].lines.push(l); groups[k].total += l.LA;
     });
@@ -457,15 +463,16 @@
       if (A.calcType !== B.calcType) return A.calcType < B.calcType ? -1 : 1;
       return A.sign === '-' ? -1 : 1;
     });
-    var carry = {};   // per identifier: numerator over den (§6.5)
+    var carry = {};   // per (identifier, calc type): numerator over den (§6.5)
     var glist = order.map(function (k) {
       var g = groups[k], r = BigInt(g.pct);
       var den = doc.pricesInclVat ? (100n + r) : 100n;
       var total = BigInt(g.total);
-      var carryIn = carry[g.identifier] || 0n;
+      var ck = g.identifier + '|' + g.calcType;
+      var carryIn = carry[ck] || 0n;
       var exactNum = total * r + carryIn;                    // exact VAT = exactNum / den (cents)
       var vat = roundDiv(exactNum, den);
-      if (g.sign === '-') carry[g.identifier] = exactNum - vat * den;
+      if (g.sign === '-') carry[ck] = exactNum - vat * den;
       g.den = den; g.exactNum = exactNum; g.carryIn = carryIn; g.vat = Number(vat);
       g.base = doc.pricesInclVat ? g.total - g.vat : g.total;
       g.aiv = doc.pricesInclVat ? g.total : g.total + g.vat;
@@ -538,6 +545,7 @@
   }
   function newLine(d, l) {
     var line = { type: l.type || 'ITEM', no: l.no || '', description: l.description || '', qty: l.qty || '1', price: l.price, disc: l.disc || '0', vatProd: l.vatProd || null };
+    if (l.classificationCode) line.classificationCode = l.classificationCode;
     if (line.type === 'ITEM' && line.no && SET.items[line.no]) {
       var it = SET.items[line.no];
       if (line.price === undefined || line.price === null) line.price = itemPriceFor(it, d.piv, d.vatBus || 'DOMESTIC');
@@ -745,6 +753,10 @@
     var v = SET.vendors[src.vend];
     var calc = calcDocument({ side: 'PURCHASE', docType: 'INVOICE', pricesInclVat: false, vatBus: v.vatBus, genBus: v.genBus, lines: src.lines });
     if (calc.errors.length) return { ok: false, errors: calc.errors };
+    // the prototype computes NORMAL VAT only; REVERSE_CHARGE (BR-TAX-23: line VAT 0, self-assessed 2305) and FULL_VAT
+    // (BR-TAX-24: amount 0, VAT = line) would otherwise be posted as if they were ordinary 10 % input VAT
+    var nn = calc.lines.filter(function (l) { return l.vat && l.vat.calcType !== 'NORMAL'; });
+    if (nn.length) return { ok: false, errors: nn.map(function (l) { return { code: 'tax.vat_calculation_type_not_supported', message: 'Мөр ' + (l.idx + 1) + ': ' + l.vat.calcType + ' НӨАТ-ыг прототип тооцохгүй (BR-TAX-23/24).', line: l.idx }; }) };
     var dup = S.purchInvoices.filter(function (p) { return p.vendor === v.no && p.vendorInvoiceNo === src.vendorInvoiceNo; });
     if (dup.length) return { ok: false, errors: [{ code: 'purchase.vendor_invoice_no_duplicate', message: 'Нийлүүлэгчийн нэхэмжлэхийн дугаар давхардсан (INV-18).' }] };
     if (src.ddtd && !/^\d{33}$/.test(src.ddtd)) return { ok: false, errors: [{ code: 'ebarimt.purchase_receipt_ddtd_invalid', message: 'ДДТД 33 оронтой байна (BR-TAX-47).' }] };
@@ -815,7 +827,7 @@
       gl: [{ key: 'BANK', acc: bankGlAccount(o.bank), amount: amount, origin: 'SYSTEM', sourceType: 'BANK', sourceNo: o.bank },
         { key: 'AR', acc: recAcc, amount: -amount, origin: 'SYSTEM', sourceType: 'CUSTOMER', sourceNo: c.no }],
       cle: [{ glKey: 'AR', customer: c.no, docType: 'PAYMENT', amount: -amount, cpg: cpg, applyTo: target, description: desc }],
-      ble: [{ glKey: 'BANK', bank: o.bank, amount: amount, party: c.name, description: desc, cashVoucher: bank.kind === 'CASH' ? 'KO' : null }] };
+      ble: [{ glKey: 'BANK', bank: o.bank, amount: amount, party: c.name, description: desc, cashVoucher: bank.kind === 'CASH' ? 'KO' : null, cf: o.cf || null }] };
     return post({ sourceCode: bank.kind === 'CASH' ? 'CASHVOUCHER' : 'PAYMENTREG', description: desc, vouchers: [V] }, opts);
   }
   function postVendorPayment(o, opts) {
@@ -829,7 +841,7 @@
       gl: [{ key: 'AP', acc: D.vendorPostingGroups[vpg].payables, amount: amount, origin: 'SYSTEM', sourceType: 'VENDOR', sourceNo: v.no },
         { key: 'BANK', acc: bankGlAccount(o.bank), amount: -amount, origin: 'SYSTEM', sourceType: 'BANK', sourceNo: o.bank }],
       vle: [{ glKey: 'AP', vendor: v.no, docType: 'PAYMENT', amount: amount, vpg: vpg, applyTo: target, description: desc }],
-      ble: [{ glKey: 'BANK', bank: o.bank, amount: -amount, party: v.name, description: desc, cashVoucher: bank.kind === 'CASH' ? 'KZ' : null }] };
+      ble: [{ glKey: 'BANK', bank: o.bank, amount: -amount, party: v.name, description: desc, cashVoucher: bank.kind === 'CASH' ? 'KZ' : null, cf: o.cf || null }] };
     return post({ sourceCode: bank.kind === 'CASH' ? 'CASHVOUCHER' : 'PAYMENTREG', description: desc, vouchers: [V] }, opts);
   }
   function postBankGl(o, opts) {                       // bank/cash line against a G/L account (fees, interest, taxes, salary)
@@ -838,7 +850,7 @@
     var V = { key: 'V1', postingDate: o.date, documentType: amount >= 0 ? 'PAYMENT' : 'PAYMENT', docSeries: moneySeries(o.bank, amount > 0), description: o.desc,
       gl: [{ key: 'BANK', acc: bankGlAccount(o.bank), amount: amount, origin: 'SYSTEM', sourceType: 'BANK', sourceNo: o.bank },
         { key: 'CONTRA', acc: o.acc, amount: -amount, origin: 'USER', desc: o.desc }],
-      ble: [{ glKey: 'BANK', bank: o.bank, amount: amount, party: o.party || null, description: o.desc, cashVoucher: bank.kind === 'CASH' ? (amount > 0 ? 'KO' : 'KZ') : null }] };
+      ble: [{ glKey: 'BANK', bank: o.bank, amount: amount, party: o.party || null, description: o.desc, cashVoucher: bank.kind === 'CASH' ? (amount > 0 ? 'KO' : 'KZ') : null, cf: o.cf || null }] };
     return post({ sourceCode: bank.kind === 'CASH' ? 'CASHVOUCHER' : (amount > 0 ? 'CASHRECJNL' : 'PAYMENTJNL'), description: o.desc, vouchers: [V] }, opts);
   }
   function postTransfer(o, opts) {                     // FR-BNK-007
@@ -878,45 +890,69 @@
   // ===========================================================================
   // 9. Application (posted ↔ posted, G/L-less), unapply (LIFO), reversal
   // ===========================================================================
-  function applyEntries(kind, newNo, targetNos, date, opts) {      // 06 §5.13.3 (BR-AR-20..30)
+  // targets: entry numbers, or { entryNo, amount } with amount = amountToApply (positive, ≤ |remaining|; BR-AR-22/35)
+  function applyEntries(kind, newNo, targetNos, date, opts) {      // 06 §5.13.3 (BR-AR-16, 20..30)
     opts = opts || {};
     var find = kind === 'C' ? findCle : findVle;
+    var pk = kind === 'C' ? 'customer' : 'vendor';
+    var ctlAcc = function (e) { return kind === 'C' ? D.customerPostingGroups[e.cpg].receivables : D.vendorPostingGroups[e.vpg].payables; };
     var n = find(newNo);
     if (!n) return { ok: false, errors: [{ code: 'api.resource_not_found', message: 'Бичилт олдсонгүй.' }] };
+    var req = targetNos.map(function (t) { return typeof t === 'object' ? { entryNo: t.entryNo, cap: t.amount } : { entryNo: t, cap: null }; });
+    var targets = req.map(function (r) { var e = find(r.entryNo); return e ? { e: e, cap: r.cap } : null; }).filter(Boolean);
+    var errs = [];
+    if (!targets.length) errs.push({ code: 'party.application_nothing_to_apply', message: 'Тулгах бичилт сонгоогүй (BR-AR-30).' });
+    if (!n.open) errs.push({ code: 'party.entry_closed', message: 'Тулгаж буй бичилт нээлттэй биш.' });
+    if (n.reversed || targets.some(function (t) { return t.e.reversed; })) errs.push({ code: 'party.entry_reversed', message: 'Буцаагдсан бичилтийг тулгахгүй (BR-AR-33).' });
+    if (targets.some(function (t) { return t.e[pk] !== n[pk]; })) errs.push({ code: 'party.application_customer_mismatch', message: 'Зөвхөн нэг харилцагчийн бичилтүүдийг тулгана (INV-27).' });
+    if (targets.some(function (t) { return ctlAcc(t.e) !== ctlAcc(n); })) errs.push({ code: 'party.application_posting_group_mismatch', message: 'Авлага/өглөгийн данс өөр бичилтүүдийг тулгахгүй (BR-AR-16).' });
+    if (targets.some(function (t) { return t.e.entryNo === n.entryNo || !t.e.open || Math.sign(t.e.remaining) === Math.sign(n.remaining); }))
+      errs.push({ code: 'party.application_sign_mismatch', message: 'Эсрэг тэмдэгтэй, нээлттэй бичилтүүдийг л тулгана (BR-AR-20).' });
+    targets.forEach(function (t) {
+      if (t.cap !== null && (!(t.cap > 0) || t.cap > Math.abs(t.e.remaining))) errs.push({ code: 'party.application_exceeds_remaining', message: t.e.documentNo + ': тулгах дүн үлдэгдлээс их (BR-AR-35).' });
+    });
+    var minDate = targets.reduce(function (m, t) { return t.e.postingDate > m ? t.e.postingDate : m; }, n.postingDate);
+    if (date < minDate) errs.push({ code: 'party.application_date_before_entries', message: 'Тулгалтын огноо (' + fmtDate(date) + ') оролцогч бичилтийн хамгийн хожуу огнооноос (' + fmtDate(minDate) + ') өмнө байж болохгүй (BR-AR-27).' });
     var p = periodOf(date);
-    if (!p || p.status !== 'OPEN') return { ok: false, errors: [{ code: 'gl.period_closed', message: 'Тулгалтын огноо нээлттэй үед байх ёстой (BR-AR-28).' }] };
-    var targets = targetNos.map(find).filter(Boolean);
-    var bad = targets.filter(function (t) { return !t.open || Math.sign(t.remaining) === Math.sign(n.remaining); });
-    if (bad.length) return { ok: false, errors: [{ code: 'party.application_sign_mismatch', message: 'Эсрэг тэмдэгтэй, нээлттэй бичилтүүдийг л тулгана (BR-AR-20).' }] };
+    if (!p || p.status !== 'OPEN') errs.push({ code: 'gl.period_closed', message: 'Тулгалтын огноо нээлттэй үед байх ёстой (BR-AR-28).' });
+    if (errs.length) return { ok: false, errors: errs };
     if (opts.preview) {
       var rem = Math.abs(n.remaining), plan = [];
-      targets.forEach(function (t) { var a = Math.min(rem, Math.abs(t.remaining)); if (a > 0) { plan.push({ entryNo: t.entryNo, documentNo: t.documentNo, amount: a }); rem -= a; } });
+      targets.forEach(function (t) { var a = Math.min(rem, Math.abs(t.e.remaining), t.cap === null ? Infinity : t.cap); if (a > 0) { plan.push({ entryNo: t.e.entryNo, documentNo: t.e.documentNo, amount: a }); rem -= a; } });
       return { ok: true, preview: true, plan: plan, unapplied: rem };
     }
+    // posted ↔ posted: subledger only, no G/L, transaction_no NULL (BR-AR-25); one application_no for the run (BR-AR-24)
     var appNo = next('APPLICATION_NO'), total = 0, rows = [];
-    targets.forEach(function (t) { total += applyPair(kind, n, t, date, null, appNo, rows); });
+    targets.forEach(function (t) { if (n.remaining !== 0) total += applyPair(kind, n, t.e, date, null, appNo, rows, t.cap); });
     return { ok: true, applicationNo: appNo, applied: total, rows: rows };
   }
-  function unapply(kind, applicationNo, date) {          // BR-AR-40..43 (hard LIFO)
-    var rows = (kind === 'C' ? S.dcle : S.dvle).filter(function (r) { return r.applicationNo === applicationNo && r.entryType === 'APPLICATION' && !r.unapplied; });
+  function unapply(kind, applicationNo, date) {          // 06 §5.14, BR-AR-40..46 (hard LIFO)
+    var det = kind === 'C' ? S.dcle : S.dvle;
+    var rows = det.filter(function (r) { return r.applicationNo === applicationNo && r.entryType === 'APPLICATION' && !r.unapplied; });
     if (!rows.length) return { ok: false, errors: [{ code: 'party.application_not_found', message: 'Тулгалт олдсонгүй.' }] };
     var ek = kind === 'C' ? 'cleEntryNo' : 'vleEntryNo';
-    var entries = rows.map(function (r) { return r[ek]; });
-    var later = (kind === 'C' ? S.dcle : S.dvle).filter(function (r) { return r.entryType === 'APPLICATION' && !r.unapplied && entries.indexOf(r[ek]) >= 0 && r.applicationNo > applicationNo; });
+    var find = kind === 'C' ? findCle : findVle;
+    var entries = rows.map(function (r) { return r[ek]; }).filter(function (x, i, a) { return a.indexOf(x) === i; });
+    var later = det.filter(function (r) { return r.entryType === 'APPLICATION' && !r.unapplied && entries.indexOf(r[ek]) >= 0 && r.applicationNo > applicationNo; });
     if (later.length) return { ok: false, errors: [{ code: 'party.unapply_not_latest', message: 'Энэ бичилтэд хийгдсэн хожуу тулгалтыг эхлээд буцаана уу (BR-AR-41).' }] };
+    if (entries.some(function (no) { return find(no).reversed; })) return { ok: false, errors: [{ code: 'party.entry_reversed', message: 'Буцаагдсан бичилтийн тулгалтыг буцаахгүй (BR-AR-43).' }] };
     var maxDate = rows.reduce(function (m, r) { return r.postingDate > m ? r.postingDate : m; }, '');
-    if (date < maxDate) return { ok: false, errors: [{ code: 'party.unapply_date_before_application', message: 'Буцаах огноо тулгалтын огнооноос өмнө байж болохгүй.' }] };
+    if (date < maxDate) return { ok: false, errors: [{ code: 'party.unapply_date_before_application', message: 'Буцаах огноо тулгалтын огнооноос өмнө байж болохгүй (BR-AR-42).' }] };
     var p = periodOf(date);
     if (!p || p.status !== 'OPEN') return { ok: false, errors: [{ code: 'gl.period_closed', message: 'Нээлттэй үеийн огноо сонгоно уу.' }] };
-    rows.forEach(function (r) {
-      r.unapplied = true;
+    // mirror rows: new application_no (undo no), transaction_no NULL, −amount, unapplied = true, unapplied_by ↔ (BR-AR-44, 45)
+    var undoNo = next('APPLICATION_NO');
+    rows.slice().sort(function (a, b) { return a.entryNo - b.entryNo; }).forEach(function (r) {
       var m = JSON.parse(JSON.stringify(r));
-      m.entryNo = next(kind === 'C' ? 'DCLE' : 'DVLE'); m.amount = -r.amount; m.postingDate = date; m.unapplied = true; m.unappliedOf = r.entryNo;
-      (kind === 'C' ? S.dcle : S.dvle).push(m);
-      var e = (kind === 'C' ? findCle : findVle)(r[ek]);
-      e.remaining -= r.amount; e.open = e.remaining !== 0; if (e.open) { e.closedByEntryNo = null; e.closedAtDate = null; }
+      m.entryNo = next(kind === 'C' ? 'DCLE' : 'DVLE'); m.amount = -r.amount; m.postingDate = date; m.transactionNo = null;
+      m.applicationNo = undoNo; m.unapplied = true; m.unappliedOf = r.entryNo; m.unappliedByEntryNo = null;
+      det.push(m);
+      r.unapplied = true; r.unappliedByEntryNo = m.entryNo;
+      var e = find(r[ek]);
+      e.remaining -= r.amount; e.open = e.remaining !== 0;
     });
-    return { ok: true };
+    entries.forEach(function (no) { var e = find(no); if (e.open) { e.closedByEntryNo = null; e.closedAtDate = null; } });   // BR-AR-46
+    return { ok: true, applicationNo: applicationNo, undoApplicationNo: undoNo };
   }
   var REVERSIBLE = ['GENJNL', 'CASHRECJNL', 'PAYMENTJNL', 'CASHVOUCHER', 'PAYMENTREG', 'OPENING', 'PAYROLLJNL'];
   function reverseTransaction(txNo, reasonCode, opts) {            // D-D5, 05 §5.10
@@ -961,12 +997,19 @@
   // ===========================================================================
   // 10. VAT settlement and payment (08 §5.10 — BC VAT Settlement: 2300/1300 → 2310)
   // ===========================================================================
+  // 08 §5.9 scope: an OPEN period takes every SALE / PURCHASE entry not yet assigned to a return with vat_date ≤ period end
+  // (purchases only once deductible-confirmed or zero) — so input VAT confirmed after its own month was closed falls into
+  // the next open return (BR-TAX-49, W-TAX-10); a CLOSED / SUBMITTED period shows exactly the entries assigned to it.
+  function vatScope(vp) {
+    if (vp.status === 'OPEN') return S.vatEntries.filter(function (e) {
+      return (e.type === 'SALE' || e.type === 'PURCHASE') && !e.vatReturnPeriod && e.vatDate <= vp.end &&
+        (e.type === 'SALE' || e.deductibleConfirmed || e.amount === 0 || e.closed || e.reversed);
+    });
+    return S.vatEntries.filter(function (e) { return e.type !== 'SETTLEMENT' && e.vatReturnPeriod === vp.period; });
+  }
   function vatSettlementPlan(period) {
     var vp = S.vatPeriods.filter(function (p) { return p.period === period; })[0];
-    var scope = S.vatEntries.filter(function (e) {
-      return monthOf(e.vatDate) === period && !e.closed && !e.reversed && e.type !== 'SETTLEMENT' &&
-        (e.type === 'SALE' || (e.type === 'PURCHASE' && (e.deductibleConfirmed || e.amount === 0)));
-    });
+    var scope = vatScope(vp).filter(function (e) { return !e.closed && !e.reversed; });
     var groups = {};
     scope.forEach(function (e) {
       var k = e.type + '|' + e.vatBus + '|' + e.vatProd;
@@ -974,7 +1017,13 @@
       if (!groups[k]) groups[k] = { type: e.type, vatBus: e.vatBus, vatProd: e.vatProd, setup: s, amount: 0, entries: [] };
       groups[k].amount += e.amount; groups[k].entries.push(e);
     });
-    return { period: vp, scope: scope, groups: Object.keys(groups).map(function (k) { return groups[k]; }) };
+    var list = Object.keys(groups).map(function (k) { return groups[k]; });
+    list.sort(function (a, b) {                             // BR-TAX-74: VAT bus → VAT prod → PURCHASE first
+      if (a.vatBus !== b.vatBus) return a.vatBus < b.vatBus ? -1 : 1;
+      if (a.vatProd !== b.vatProd) return a.vatProd < b.vatProd ? -1 : 1;
+      return a.type === 'PURCHASE' ? -1 : 1;
+    });
+    return { period: vp, scope: scope, groups: list };
   }
   function vatSettle(period, date, opts) {
     opts = opts || {};
@@ -983,12 +1032,12 @@
     var net = 0;
     plan.groups.forEach(function (g, i) {
       if (g.amount === 0) {
-        V.vat.push({ type: 'SETTLEMENT', base: 0, amount: 0, vatBus: g.vatBus, vatProd: g.vatProd, category: g.setup.category, pct: g.setup.pct, taxType: g.setup.taxType, closes: g.entries, period: period, vatDate: date });
+        V.vat.push({ type: 'SETTLEMENT', base: 0, amount: 0, vatBus: g.vatBus, vatProd: g.vatProd, category: g.setup.category, pct: g.setup.pct, taxType: g.setup.taxType, closes: g.entries.map(function (e) { return e.entryNo; }), period: period, vatDate: plan.period.end });
         return;
       }
       var a = g.type === 'SALE' ? g.setup.salesAcc : g.setup.purchAcc;
       V.gl.push({ key: 'S' + i, acc: a, amount: -g.amount, origin: 'SYSTEM', desc: 'НӨАТ-ын хаалт ' + monthLabel(period) });
-      V.vat.push({ glKey: 'S' + i, type: 'SETTLEMENT', base: 0, amount: -g.amount, vatBus: g.vatBus, vatProd: g.vatProd, category: g.setup.category, pct: g.setup.pct, taxType: g.setup.taxType, closes: g.entries, period: period, vatDate: date });
+      V.vat.push({ glKey: 'S' + i, type: 'SETTLEMENT', base: 0, amount: -g.amount, vatBus: g.vatBus, vatProd: g.vatProd, category: g.setup.category, pct: g.setup.pct, taxType: g.setup.taxType, closes: g.entries.map(function (e) { return e.entryNo; }), period: period, vatDate: plan.period.end });
       net += g.amount;
     });
     if (net !== 0) V.gl.push({ key: 'NET', acc: '2310', amount: net, origin: 'SYSTEM', desc: 'НӨАТ-ын тооцоо ' + monthLabel(period) });
@@ -997,6 +1046,7 @@
     if (errs.length) return { ok: false, errors: errs };
     var r = (V.gl.length >= 2) ? post({ sourceCode: 'VATSTMT', description: V.description, vouchers: [V] }, { preview: opts.preview }) : { ok: true, result: null };
     if (!r.ok || opts.preview) { r.plan = plan; r.net = -net; return r; }
+    if (!r.result) plan.scope.forEach(function (e) { e.vatReturnPeriod = period; });   // BR-TAX-75: nothing to post → assignment only
     plan.period.status = 'CLOSED';
     plan.period.settlementTx = r.result ? r.result.vouchers[0].transactionNo : null;
     plan.period.settlementNet = -net;                      // + = payable
@@ -1014,7 +1064,7 @@
     periods: function () { return S.vatPeriods; },
     entries: function () { return S.vatEntries; },
     unconfirmedInput: function (upTo) {                     // BR-TAX-50
-      return S.vatEntries.filter(function (e) { return e.type === 'PURCHASE' && e.calcType === 'NORMAL' && e.amount !== 0 && !e.deductibleConfirmed && !e.closed && !e.reversed && (!upTo || e.vatDate <= upTo); });
+      return S.vatEntries.filter(function (e) { return e.type === 'PURCHASE' && e.calcType === 'NORMAL' && e.amount !== 0 && !e.deductibleConfirmed && !e.closed && !e.reversed && !e.vatReturnPeriod && (!upTo || e.vatDate <= upTo); });
     }
   };
 
@@ -1035,6 +1085,7 @@
       if (from && e.postingDate < from) continue;
       if (opts.onlyOpening && e.sourceCode !== 'OPENING') continue;
       if (opts.excludeOpening && e.sourceCode === 'OPENING') continue;
+      if (opts.excludeClosing && e.isClosing) continue;
       if (f(e.account)) s += e.amount;
     }
     return s;
@@ -1075,14 +1126,26 @@
       (byTx[e.transactionNo] || (byTx[e.transactionNo] = [])).push(e);
     });
     var cats = {}, detail = [];
+    var ovrByTx = {};                                       // BR-RPT-73: bank ledger entry override of the МГТ category
+    S.ble.forEach(function (b) { if (b.cfOverride && b.amount) (ovrByTx[b.transactionNo] || (ovrByTx[b.transactionNo] = [])).push(b); });
+    var addC = function (c, v) { if (v) cats[c] = (cats[c] || 0) + v; };
     Object.keys(byTx).forEach(function (k) {
       var es = byTx[k];
       var delta = es.filter(function (e) { return cash.indexOf(e.account) >= 0; }).reduce(function (s, e) { return s + e.amount; }, 0);
       if (delta === 0) return;
       var contra = {};
       es.forEach(function (e) { if (cash.indexOf(e.account) >= 0) return; var c = acc(e.account).cf || 'NON_CASH'; contra[c] = (contra[c] || 0) - e.amount; });
-      Object.keys(contra).forEach(function (c) { if (contra[c] === 0) return; cats[c] = (cats[c] || 0) + contra[c]; });
-      detail.push({ transactionNo: +k, postingDate: es[0].postingDate, documentNo: es[0].documentNo, description: es[0].description, delta: delta, contra: contra });
+      var ovr = ovrByTx[k] || [], used = {};
+      ovr.forEach(function (b) { used[b.cfOverride] = (used[b.cfOverride] || 0) + b.amount; addC(b.cfOverride, b.amount); });
+      var rest = delta - ovr.reduce(function (s, b) { return s + b.amount; }, 0);
+      var keys = Object.keys(contra).filter(function (c) { return contra[c] !== 0; });
+      if (!ovr.length) keys.forEach(function (c) { addC(c, contra[c]); });
+      else if (rest !== 0) {                                // 10 §6.9: rest by contra weights, cumulative rounding
+        keys.sort(function (a, b) { return Math.abs(contra[b]) - Math.abs(contra[a]) || (a < b ? -1 : 1); });
+        var w = keys.reduce(function (s, c) { return s + contra[c]; }, 0), cum = 0, prev = 0;
+        keys.forEach(function (c) { cum += contra[c]; var cur = Number(roundDiv(BigInt(rest) * BigInt(cum), BigInt(w))); addC(c, cur - prev); used[c] = (used[c] || 0) + cur - prev; prev = cur; });
+      }
+      detail.push({ transactionNo: +k, postingDate: es[0].postingDate, documentNo: es[0].documentNo, description: es[0].description, delta: delta, contra: ovr.length ? used : contra, override: ovr.length ? ovr.map(function (b) { return b.cfOverride; }) : null });
     });
     var opening = glBalance(function (n) { return cash.indexOf(n) >= 0; }, addDays(from, -1)) + glBalance(function (n) { return cash.indexOf(n) >= 0; }, to, from, { onlyOpening: true });
     var closing = glBalance(function (n) { return cash.indexOf(n) >= 0; }, to);
@@ -1110,7 +1173,7 @@
           if (c.mode === 'opening') v = glBalance(r.totaling, null, null, { onlyOpening: true });
           else if (r.amountType === 'B') v = glBalance(r.totaling, c.to);
           else if (r.amountType === 'G') v = cf ? cf.opening : glBalance(r.totaling, addDays(c.from, -1));
-          else v = glBalance(r.totaling, c.to, c.from);
+          else v = glBalance(r.totaling, c.to, c.from, { excludeClosing: true });   // net change: the year-end closing voucher (D-D4) would zero ОДТ
         } else if (r.type === 'C') {
           v = r.totaling.split('|').reduce(function (s, k) { return s + (cf.categories[k] || 0); }, 0);
         } else if (r.type === 'F') {
@@ -1128,7 +1191,8 @@
 
   // ТТ-03а (08 §5.9) from VAT entries; R-VAT-26/27 sign rules; NULL group = all groups
   function vatReturn(period) {
-    var es = S.vatEntries.filter(function (e) { return monthOf(e.vatDate) === period && e.type !== 'SETTLEMENT' && !e.reversed; });
+    var vp0 = S.vatPeriods.filter(function (p) { return p.period === period; })[0];
+    var es = vatScope(vp0);
     var rows = D.tt03aRows.map(function (r) { return { row: r[0], name: r[1], type: r[2], genType: r[3], vatBus: r[4], vatProd: r[5], category: r[6], rowTot: r[7], amountType: r[8], confirmed: r[9], calcOpp: r[10], printOpp: r[11], box: r[12] }; });
     var vals = {};
     rows.forEach(function (r) {
@@ -1150,7 +1214,7 @@
     });
     var vp = S.vatPeriods.filter(function (p) { return p.period === period; })[0];
     return { period: period, vatPeriod: vp, rows: rows, values: vals, entries: es,
-      unconfirmed: es.filter(function (e) { return e.type === 'PURCHASE' && e.amount !== 0 && !e.deductibleConfirmed; }) };
+      unconfirmed: vp.status === 'OPEN' ? E.vat.unconfirmedInput(vp.end) : [] };
   }
 
   // Aging by due date (D-F7, 10 §6.10) from detailed entries up to asOf
@@ -1424,9 +1488,7 @@
     out['CUE-03'] = { value: byKind.CASH + byKind.BANK + byKind.WALLET, breakdown: byKind, state: 'NONE' };
     var P = S.vatPeriods.filter(function (p) { return p.status !== 'SUBMITTED' && p.start <= Dt; })[0];
     if (P) {
-      var es = S.vatEntries.filter(function (e) { return monthOf(e.vatDate) === P.period && e.type !== 'SETTLEMENT'; });
-      var v = -(es.filter(function (e) { return e.type === 'SALE'; }).reduce(function (s, e) { return s + e.amount; }, 0) +
-        es.filter(function (e) { return e.type === 'PURCHASE' && e.deductibleConfirmed; }).reduce(function (s, e) { return s + e.amount; }, 0));
+      var v = vatReturn(P.period).values['14'];             // same scope and rows as ТТ-03а (08 §5.9)
       var days = daysBetween(Dt, P.due);
       out['CUE-04'] = { value: v, period: P.period, due: P.due, days: days, state: days <= 3 ? 'UNFAVORABLE' : days <= 7 ? 'AMBIGUOUS' : 'NONE', current: P.end >= Dt };
     }
@@ -1560,9 +1622,9 @@
     var vrBad = [];
     S.vatPeriods.forEach(function (p) {
       if (p.start > D.meta.today) return;
-      var vr = vatReturn(p.period);
-      var sale = -S.vatEntries.filter(function (e) { return e.type === 'SALE' && e.category === 'VAT10' && monthOf(e.vatDate) === p.period; }).reduce(function (s, e) { return s + e.amount; }, 0);
-      var ded = S.vatEntries.filter(function (e) { return e.type === 'PURCHASE' && e.vatBus === 'DOMESTIC' && e.vatProd === 'VAT10' && e.deductibleConfirmed && monthOf(e.vatDate) === p.period; }).reduce(function (s, e) { return s + e.amount; }, 0);
+      var vr = vatReturn(p.period), sc = vatScope(p);
+      var sale = -sc.filter(function (e) { return e.type === 'SALE' && e.category === 'VAT10'; }).reduce(function (s, e) { return s + e.amount; }, 0);
+      var ded = sc.filter(function (e) { return e.type === 'PURCHASE' && e.vatBus === 'DOMESTIC' && e.vatProd === 'VAT10' && e.deductibleConfirmed; }).reduce(function (s, e) { return s + e.amount; }, 0);
       if (vr.values['2'] !== sale || vr.values['12'] !== -ded || vr.values['14'] !== sale - ded) vrBad.push(p.period);
       if (p.settlementNet !== null && p.settlementNet !== vr.values['14']) vrBad.push(p.period + ' (хаалт)');
     });
@@ -1592,7 +1654,7 @@
       'МГТ 7 = ' + fmtCents(mgt.values.cur['7']) + ' · дэвтэр ' + fmtCents(mgt.values.cur['LEDGER']) + ' · X = ' + fmtCents(mgt.values.cur['X'] || 0), 'FR-RPT-011, BR-PER-39');
     // ODT net profit = −Σ income statement accounts
     var odt = financialStatement('ODT', {});
-    var plSum = glBalance(function (n) { return n >= '5000'; }, D.meta.today, D.fiscalYear.year + '-01-01');
+    var plSum = glBalance(function (n) { return n >= '5000'; }, D.meta.today, D.fiscalYear.year + '-01-01', { excludeClosing: true });
     add('ODT', 'ОДТ 22 (цэвэр ашиг) = орлого, зардлын дансны нийлбэр', odt.values.cur['22'] === plSum, 'ОДТ 22 ' + fmtCents(-odt.values.cur['22']) + ' · данс ' + fmtCents(-plSum), 'FR-RPT-009');
     // INV-08 gapless numbering
     var gaps = [];

@@ -28,9 +28,9 @@
 
 ### 0.2 Нэрийн зөрүүг шийдсэн байдал (D-K1: schema давамгайлна)
 
-[02-architecture.md](./02-architecture.md) ба [ADR-0012](./adr/ADR-0012-outbox-idempotency-ebarimt.md)-д өөр нэр хэрэглэсэн байна. Энэ баримт **зөвхөн schema-ийн нэрийг** хэрэглэнэ:
+[02-architecture.md](./02-architecture.md) ба [ADR-0012](./adr/ADR-0012-outbox-idempotency-ebarimt.md)-ийн өмнөх хувилбарт өөр нэр хэрэглэсэн байсан; 2026-10-08-нд тэдгээрийг schema-ийн нэрээр шинэчилсэн (02-architecture "Нийцүүлэлтийн тэмдэглэл"). Доорх хүснэгт нь хуучин нэрийг таних лавлагаа. Энэ баримт **зөвхөн schema-ийн нэрийг** хэрэглэнэ:
 
-| 02-architecture / ADR-0012 | Schema (энэ баримт) | Тэмдэглэл |
+| Хуучин нэр (02-architecture / ADR-0012, 2026-10-08-аас өмнө) | Schema (энэ баримт) | Тэмдэглэл |
 |---|---|---|
 | `ebarimt.receipt` | `ebarimt.ebarimt_document` (+ `ebarimt_sub_receipt`, `ebarimt_document_line`) | — |
 | `ebarimt.receipt_event` | `ebarimt.ebarimt_document_event` | trigger-ээр бичигдэнэ |
@@ -1234,7 +1234,7 @@ for r in purchase_receipt where status = 'IMPORTED':
 | `POST /setup:verify-tin` | `getInfo` (+ хуулийн этгээдийн регистрээр `getTinInfo`) | `T_SETUP` R | SET-01, SET-11 |
 | `GET /reference/districts` | `getBranchInfo` жагсаалт | `T_SETUP` R | SET-03 |
 | `POST /setup:register-merchant` | outbox `ebarimt.merchant.register` | `ebarimt.merchant.register` X | REG-01 |
-| `POST /setup:send-data` | `sendData`-г гараар (instance-ийн ops-д) | `ebarimt.send_data.trigger` X | §14. Instance нь олон тенантад хамаатай тул instance бүрд 10 мин-д 1 удаа (rate limit, давтвал 429 `api.rate_limited`) |
+| `POST /setup:send-data` | `sendData`-г гараар (instance-ийн ops-д) | `ebarimt.send_data.trigger` X | §14. Instance нь олон тенантад хамаатай тул instance бүрд 10 мин-д 1 удаа (rate limit, давтвал 429 `platform.rate_limited`) |
 | `GET`, `POST`, `PUT /pos` | POS бүртгэл | `T_SETUP` R / I / M | SET-05 |
 | `GET /readiness` | Бэлэн байдлын тайлан | `T_SETUP` R | SET-07 |
 | `GET /documents?status=&from=&to=&posId=&type=` | Баримтын жагсаалт (keyset) | `ebarimt.ebarimt_document` R | `consumer_no` маскласан |
@@ -1689,7 +1689,7 @@ ERP: (1) Дэвтэр 3 × 3 500 − хөнгөлөлт 500 = 10 000 (НӨАТ 9
 }
 ```
 
-### 22.5 Жишээ E — бүтэн B2C буцаалт (`DELETE`, кредит нот SCM-2026-00011 жишээ A-г бүтэн цуцалсан)
+### 22.5 Жишээ E — бүтэн B2C буцаалт (`DELETE`, кредит нот SC-2026-00011 жишээ A-г бүтэн цуцалсан)
 
 ```http
 DELETE http://posapi-01.ebarimt.internal:7080/rest/receipt
@@ -1703,7 +1703,7 @@ Connection: close
 
 Хариу (UNVERIFIED; mock): HTTP 200 `{"status": "SUCCESS", "message": ""}`. Үр дүн: DELETE баримт SUCCESS (`ddtd` NULL), жишээ A-гийн баримт CANCELLED (`INACTIVATED_BY:<DELETE баримтын id>`).
 
-### 22.6 Жишээ F — хэсэгчилсэн буцаалт (`inactiveId`, кредит нот SCM-2026-00012)
+### 22.6 Жишээ F — хэсэгчилсэн буцаалт (`inactiveId`, кредит нот SC-2026-00012)
 
 Жишээ A-аас 1 талх (2 750, НӨАТ 250) буцаасан. `NetState`: Талх 1 × 2 750 (250), Сүү 1 × 3 300 (300). Шинэ НӨАТ 800 − 250 = 550 = `round(6 050 × 10/110)` ✔.
 
@@ -1758,7 +1758,7 @@ Connection: close
 
 ### 22.7 Жишээ G — өмнөх сарын B2B засвар (`inactiveId` + `reportMonth`)
 
-2026-10-05-нд (Asia/Ulaanbaatar, сарын 5 ≤ 7) жишээ B-д 10% үнийн бууралт: кредит нот SCM-2026-00010, G/L мөр 30 000 + НӨАТ 3 000 = 33 000, `vat_date = posting_date = 2026-09-30` (9-р сарын НӨАТ-ын үе OPEN; §12.6). `AMOUNT_ONLY` → шинэ дүн 297 000 (НӨАТ 27 000). `bill_seq = 119`: тоолуур reset-гүй, монотон тул 2026-10-05-ны дугаар нь 09-28-ны 98-аас их, 10-06-ны жишээ A-ийн 123-аас бага байна.
+2026-10-05-нд (Asia/Ulaanbaatar, сарын 5 ≤ 7) жишээ B-д 10% үнийн бууралт: кредит нот SC-2026-00010, G/L мөр 30 000 + НӨАТ 3 000 = 33 000, `vat_date = posting_date = 2026-09-30` (9-р сарын НӨАТ-ын үе OPEN; §12.6). `AMOUNT_ONLY` → шинэ дүн 297 000 (НӨАТ 27 000). `bill_seq = 119`: тоолуур reset-гүй, монотон тул 2026-10-05-ны дугаар нь 09-28-ны 98-аас их, 10-06-ны жишээ A-ийн 123-аас бага байна.
 
 ```json
 {
@@ -2185,7 +2185,7 @@ Stub PosAPI (`posapi-mock`) дээр integration тест; дүнгийн шал
 | # | Асуудал | Эзэмшигч / арга |
 |---|---|---|
 | 42 | `sales.document.print` X seed ба 13 §6.3-т байхгүй (14-api, OpenAPI, 15-ui-ux ашигладаг) | 13 CR-23-т нэмэх (§28 #13); хүртэл `sales.invoice.post`/`sales.pos.post`-оор шалгана |
-| 43 | `api/openapi.yaml` ба 14-api §15.5 `x-permission: ACTION ebarimt.document.resolve` | 14-api эзэмшигч (§28 #15). Энэ review OpenAPI-г засаагүй тул linter дахин ажиллуулаагүй |
+| 43 | `api/openapi.yaml` ба 14-api §15.5 `x-permission: ACTION ebarimt.document.resolve` | 14-api эзэмшигч (§28 #15). Энэ review OpenAPI-г засаагүй тул linter дахин ажиллуулаагүй. **Шийдэгдсэн (2026-10-08 шалгав, REVIEW-consistency):** OpenAPI ба 14 §15.5 нь `ACTION ebarimt.unknown.resolve`-ийг хэрэглэдэг; redocly lint цэвэр |
 | 44 | Сарын 8-аас хойш өмнөх сарын B2B **хэсэгчилсэн** засвар posting-ийг блоклодог (§12.6, FR-EBR-011 AC2) ↔ бүтэн цуцлалт блоклохгүй (RET-51) — бизнесийн зөрүү | OQ-25 (бизнес эзэн, татварын зөвлөх) |
 
 ### Энэ review-ээр нэмэгдсэн schema өөрчлөлтийн хүсэлт

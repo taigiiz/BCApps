@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Public contract of the Tax module: the VAT ledger line other modules put into a PostingDocument. -->
+  <ItemGroup>
+    <ProjectReference Include="../../GeneralLedger/Contracts/Erp.GeneralLedger.Contracts.csproj" />
+  </ItemGroup>
+</Project>

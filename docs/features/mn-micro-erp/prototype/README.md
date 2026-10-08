@@ -23,13 +23,18 @@
 | `#sales-invoices` | Борлуулалтын нэхэмжлэх: ноорог / батлагдсан / кредит нот | Бүтээгдсэн | `js/screens/sales.js` |
 | `#sales-invoice` | Нэхэмжлэхийн ноорог: харилцагч, огноо, нөхцөл, "Үнэ НӨАТ-тэй", eBarimt төрөл, мөрүүд, шууд тооцоо, FactBox, "Тооцоог харах", урьдчилан харах, батлах (F9) | Бүтээгдсэн | `js/screens/sales.js` |
 | `#posted-invoice` | Батлагдсан нэхэмжлэх: төлбөрийн ба eBarimt төлөв, төлөвийн түүх, PosAPI JSON, бичилтүүд, хэвлэх цонх (QR-тай нэг удаа / QR-гүй хуулбар) | Бүтээгдсэн | `js/screens/sales.js` |
-| `#purchase-invoices` | Худалдан авалтын нэхэмжлэх, ДДТД, орцын НӨАТ баталгаажуулах | Бүтээгдсэн (унших + баталгаажуулах) | `js/screens/purchases.js` |
-| `#notes` | Тайлбарын жагсаалт | Бүтээгдсэн | `js/screens/system.js` |
+| `#credit-memo` | Кредит нот: эх нэхэмжлэхээс мөр хуулах, буцаах тоо, шалтгаан, автомат тулгалт, eBarimt-ийн засварын гинж | Бүтээгдсэн | `js/screens/sales-ar.js` |
+| `#customers`, `#customer` | Харилцагчийн жагсаалт ба насжилт; карт (бичилт + detailed, насжилт, тулгалт/тулгалт цуцлах, дансны хуулга) | Бүтээгдсэн | `js/screens/sales-ar.js` |
+| `#cust-apply` | Төлбөр бүртгэх ба тулгах (Applies-to ID) | Бүтээгдсэн | `js/screens/sales-ar.js` |
+| `#purchase-invoices`, `#purchase-invoice` | Худалдан авалтын жагсаалт, ноорог засварлагч, ДДТД, орцын НӨАТ баталгаажуулах | Бүтээгдсэн | `js/screens/sales-ar.js` (`js/screens/purchases.js`-ийн анхны жагсаалтыг дарж бүртгэнэ) |
+| `#cash`, `#bank-rec` | Кассын баримт МХ-1/МХ-2 ба кассын дэвтэр; хуулга импорт, автомат тулгалт, тулгалтын тайлан | Бүтээгдсэн | `js/screens/cash-bank.js` |
+| `#ebarimt` | eBarimt хяналт: төлөв, UNKNOWN/ERROR шийдвэрлэх, засварын гинж | Бүтээгдсэн | `js/screens/sales-ar.js` |
+| `#coa`, `#journal`, `#trial-balance`, `#periods` | Дансны төлөвлөгөө, ерөнхий журнал ба буцаалт, гүйлгээ баланс, үе ба хаалт | Бүтээгдсэн | `js/screens/gl.js` |
+| `#financial-statements`, `#vat-return`, `#setup` | Маягт А (СБТ/ОДТ/ӨӨТ/МГТ, e-balance), ТТ-03а ба НӨАТ-ын хаалт, компани тохируулах wizard | Бүтээгдсэн | `js/screens/reports-tax.js` |
+| `#notes` | Тайлбарын жагсаалт: бүлгээр, шүүлтүүртэй (дүрэм, хүснэгт, BC объект) | Бүтээгдсэн | `js/screens/system.js` |
 | `#checks` | Хөдөлгүүрийн инвариант (PASS/FAIL) | Бүтээгдсэн | `js/screens/system.js` |
-| `#coa`, `#journal`, `#trial-balance`, `#periods` | Санхүү, хаалт | Удахгүй | `js/screens/gl.js` |
-| `#customers`, `#customer`, `#ebarimt` | Харилцагч, авлага, тулгалт, eBarimt хяналт | Удахгүй | `js/screens/sales-ar.js` |
-| `#cash`, `#bank-rec` | Кассын баримт МХ-1/МХ-2, хуулга ба тулгалт | Удахгүй | `js/screens/cash-bank.js` |
-| `#financial-statements`, `#vat-return`, `#setup` | Маягт А, ТТ-03а, тохируулах wizard | Удахгүй | `js/screens/reports-tax.js` |
+
+Цэс нь 15 §2.3-ын мэдээллийн архитектурын дарааллыг дагана (Борлуулалт → Худалдан авалт → Мөнгө → eBarimt → Санхүү → Татвар → Хаалт → Тайлан → Тохиргоо); прототипт бүтээсэн дэлгэцүүд л цэсэнд байна (UX-NAV-06: "Удахгүй" цэс харуулахгүй). Замын мөрийн сүүлийн хэсэг нь бичлэг (баримтын дугаар, харилцагчийн нэр, UX-NAV-07).
 
 Туршиж үзэх урсгал: **Нүүр → "+ Шинэ нэхэмжлэх"** эсвэл **Борлуулалт → Нэхэмжлэх → DSI-000036** (FR-SAL-003-ийн бөөрөнхийлөлтийн жишээ) → мөр өөрчлөх → "Тооцоог харах" → "Урьдчилан харах" → **Батлах (F9)** → батлагдсан баримт ба eBarimt-ийн төлөв → `#checks` (бүх инвариант PASS хэвээр). Бэлэн B2C ноорог DSI-000035-ийг батлахад QR-тай хэвлэх цонх нээгдэнэ.
 
@@ -74,7 +79,7 @@
 | **`js/screens/cash-bank.js`**, `js/notes/cash-bank.js`, `css/cash-bank.css` | Cash/bank builder | `#cash` (МХ-1/МХ-2), `#bank-rec` (хуулга импорт + тулгалт) |
 | **`js/screens/reports-tax.js`**, `js/notes/reports-tax.js`, `css/reports-tax.css` | Reports/tax builder | `#financial-statements`, `#vat-return`, `#setup` |
 
-Эдгээр файл одоо **"Удахгүй" stub**-тэй (`ERP.app.stub(...)`) тул апп бүрэн ажиллана. Builder нь `ERP.app.stub({...})`-ийг `ERP.app.registerScreen({...})`-ээр солино. Бүх файл `app.html`-д ачаалах дарааллаараа орсон (`data → engine → annotations → notes/* → app → screens/*`), `build_standalone.py` ижил дарааллыг `app.html`-ээс уншина.
+Бүх area файл одоо `ERP.app.registerScreen({...})`-ээр бүрэн дэлгэцээ бүртгэсэн (stub үлдээгүй). Бүх файл `app.html`-д ачаалах дарааллаараа орсон (`data → engine → annotations → notes/* → app → screens/*`), `build_standalone.py` ижил дарааллыг `app.html`-ээс уншина.
 
 ## 6. Нийтийн API (builder-ууд зөвхөн эдгээрийг хэрэглэнэ)
 
@@ -82,7 +87,7 @@
 
 | Функц | Тайлбар |
 |---|---|
-| `registerScreen({ route, title, crumbs, intro, owner, render(el, ctx), onLeave? })` | Дэлгэц бүртгэх. `route` нь bare `#token`. `crumbs` = `[['Бүлэг'], ['Хуудас', 'route?']]`. `intro` = 2–4 өгүүлбэр (HTML зөвшөөрнө). `render` нь хоосон контейнерт зурна. |
+| `registerScreen({ route, title, crumbs, intro, owner, render(el, ctx), crumbRecord?(ctx), onLeave? })` | Дэлгэц бүртгэх. `route` нь bare `#token`. `crumbs` = `[['Бүлэг'], ['Хуудас', 'route?']]`. `intro` = 2–4 өгүүлбэр (HTML зөвшөөрнө). `render` нь хоосон контейнерт зурна. `crumbRecord` нь замын мөрийн сүүлийн хэсэгт бичлэгийн нэр/дугаар буцаана (UX-NAV-07). |
 | `stub({ route, title, crumbs, intro, owner, plan })` | "Удахгүй" placeholder. |
 | `navigate(route, ctxPatch?)` | `ERP.app.ctx`-д утга тавиад шилжинэ (жишээ `navigate('posted-invoice', { postedNo: 'SI-2026-00001' })`). |
 | `refresh()` | Одоогийн дэлгэцийг дахин зурна. |
@@ -109,15 +114,15 @@
 | Мөнгө | `money.toCents(str)`, `money.fmt(cents, { sym, blankZero })`, `money.compact(cents)`, `money.parseScaled(str, scale) → BigInt`, `money.roundDiv(n, d)`, `money.fmtQty`, `money.fmtPrice`, `money.fmtRatio(num, den, digits)` |
 | Огноо | `dates.fmt`, `dates.addDays`, `dates.daysBetween(a, b)`, `dates.endOfMonth`, `dates.calcDate(formula, date)`, `dates.monthLabel('2026-09')` |
 | Тохиргоо | `setup.account(no)`, `setup.accounts()`, `setup.customer(no)`, `setup.vendor(no)`, `setup.item(no)`, `setup.bank(no)`, `setup.genPostingSetup(bus, prod)`, `setup.vatSetup(bus, prod)`, `setup.bankGlAccount(bankNo)`, `setup.receivablesAccount(cpg)`, `setup.payablesAccount(vpg)`, `setup.vatLabel(setup)` |
-| Тооцоо | `calcDocument({ side:'SALE'|'PURCHASE', docType, pricesInclVat, vatBus, genBus, lines:[{ type:'ITEM'|'GL_ACCOUNT', no, qty, price, disc, vatProd? }] })` → `{ lines, groups (alloc алхамтай), amount, vatAmount, amountInclVat, vatByIdentifier, errors }`; `itemPriceFor(item, piv, vatBus)` |
+| Тооцоо | `calcDocument({ side:'SALE'|'PURCHASE', docType, pricesInclVat, vatBus, genBus, lines:[{ type:'ITEM'|'GL_ACCOUNT', no, qty, price, disc, vatProd?, classificationCode? }] })` (бүлэг = VAT identifier × тооцооны төрөл × тэмдэг, BR-TAX-18) → `{ lines, groups (alloc алхамтай), amount, vatAmount, amountInclVat, vatByIdentifier, errors }`; `itemPriceFor(item, piv, vatBus)` |
 | Ноорог | `drafts.list()`, `drafts.get(no)`, `drafts.create(customerNo, { docType, documentDate, postingDate, lines, appliesTo, reason })`, `drafts.setCustomer(d, no)`, `drafts.setPricesInclVat(d, piv, recalc)`, `drafts.addLine(d, line)`, `drafts.setLineNo(d, i, type, no)`, `drafts.removeLine(d, i)`, `drafts.remove(no)`, `drafts.dueDate(d)`, `drafts.calc(d)`, `drafts.resolvedEbarimtType(d)` |
 | Борлуулалт | `sales.precheck(d)`, `sales.preview(d)` → `{ ok, result (дугаар '***'), calc, ebarimtRequest }`, `sales.post(d, { interactive:true })` → `{ ok, posted, ebarimt, printPayload? }`, `sales.postedInvoices()`, `sales.postedCreditMemos()`, `sales.getPosted(no)`, `sales.paymentStatus(posted)` → `{ status, badge, remaining }`, `sales.customerBalance(no, asOf)` |
 | Худалдан авалт | `purchases.post({ id, date, vend, vendorInvoiceNo, lines, ddtd, confirm }, { preview })`, `purchases.list()`, `purchases.confirmInputVat(no, ddtd)` |
-| Мөнгө | `payments.receipt({ date, bank, cust, amount?, appliesTo? })`, `payments.vendorPayment({ date, bank, vend, amount?, appliesTo })`, `payments.bankGl({ date, bank, acc, amount, desc, party })`, `payments.transfer({ date, from, to, amount, desc })` — бүгд `(o, { preview })` |
+| Мөнгө | `payments.receipt({ date, bank, cust, amount?, appliesTo?, cf? })`, `payments.vendorPayment({ date, bank, vend, amount?, appliesTo, cf? })`, `payments.bankGl({ date, bank, acc, amount, desc, party, cf? })` (`cf` = банкны бичилтийн МГТ-ийн ангиллын override, BR-RPT-73), `payments.transfer({ date, from, to, amount, desc })` — бүгд `(o, { preview })` |
 | Журнал | `journal.post({ date, series:'GJ'|'OB', source, desc, reason, lines:[{ acc|bank|cust|vend, amt, desc, … }] }, { preview })` |
-| Дэд дэвтэр | `ledger.applyCustomer(newEntryNo, [targetEntryNo], date, { preview })`, `ledger.applyVendor(...)`, `ledger.unapplyCustomer(applicationNo, date)`, `ledger.unapplyVendor(...)`, `ledger.reverseTransaction(txNo, reasonCode, { preview })` |
-| НӨАТ | `vat.settlementPlan(period)`, `vat.settle(period, date, { preview })`, `vat.pay(period, date, bank)`, `vat.periods()`, `vat.entries()`, `vat.unconfirmedInput(upTo)` |
-| Тайлан | `reports.glBalance(filter, to, from, { onlyOpening, excludeOpening })`, `reports.bankBalance(bank, asOf)`, `reports.trialBalance({ from, to })`, `reports.financialStatement('SBT'|'ODT'|'MGT', { asOf })` → `{ columns, rows, values, displayValue(row, colId) }`, `reports.cashFlow({ from, to })`, `reports.vatReturn('2026-09')`, `reports.aging('customer'|'vendor', asOf)`, `reports.salesByMonth(2026)`, `reports.accountEntries(no, from, to)`, `reports.bankStatement(bank, 'YYYY-MM')` |
+| Дэд дэвтэр | `ledger.applyCustomer(newEntryNo, [targetEntryNo | { entryNo, amount }], date, { preview })` (харилцагч, авлагын данс, огноо, тэмдгийг шалгана; G/L-гүй, `transactionNo = null`), `ledger.applyVendor(...)`, `ledger.unapplyCustomer(applicationNo, date)` → `{ undoApplicationNo }` (толин тусгал мөр шинэ application №-тэй, BR-AR-44/45), `ledger.unapplyVendor(...)`, `ledger.reverseTransaction(txNo, reasonCode, { preview })` |
+| НӨАТ | `vat.settlementPlan(period)`, `vat.settle(period, date, { preview })` (scope 08 §5.9: нээлттэй үе = оноогдоогүй, `vat_date ≤ үеийн төгсгөл`; хаагдсан үе = оноогдсон entry), `vat.pay(period, date, bank)`, `vat.periods()`, `vat.entries()`, `vat.unconfirmedInput(upTo)` |
+| Тайлан | `reports.glBalance(filter, to, from, { onlyOpening, excludeOpening, excludeClosing })`, `reports.bankBalance(bank, asOf)`, `reports.trialBalance({ from, to })`, `reports.financialStatement('SBT'|'ODT'|'MGT', { asOf })` → `{ columns, rows, values, displayValue(row, colId) }`, `reports.cashFlow({ from, to })`, `reports.vatReturn('2026-09')`, `reports.aging('customer'|'vendor', asOf)`, `reports.salesByMonth(2026)`, `reports.accountEntries(no, from, to)`, `reports.bankStatement(bank, 'YYYY-MM')` |
 | eBarimt | `ebarimt.documents()`, `ebarimt.get(id)`, `ebarimt.buildRequest(doc)`, `ebarimt.chainOk(request)`, `ebarimt.dispatch(id)`, `ebarimt.chainStatus(posted)`, `ebarimt.decideType(requested, customer)`, `ebarimt.itemsFromLines(lines)` |
 | Нүүр | `home.cues()` (CUE-01..17), `home.closeChecklist('2026-09')` |
 | Бусад | `post(postingDocument, { preview })` (доод түвшний ваучер), `invariants()`, `periods.list()`, `periods.of(date)`, `periods.setStatus(period, status)`, `state()` (уншихад л; ledger-ийг шууд өөрчлөхгүй), `boot()` |
@@ -132,6 +137,7 @@
 
 ```
 node tests/engine_check.js
+python3 build_standalone.py && node tests/browser_check.js   # Playwright: 22 зам × (1280/390 px, цайвар/бараан), screenshots/
 ```
 
 Хөдөлгүүрийн инвариант (гүйлгээ тэнцэл, гүйлгээ баланс, авлага/өглөг/банкны дэд дэвтэр = хяналтын данс, НӨАТ-ын бичилт = 2300+1300, ТТ-03а = VAT entry, баримтын НӨАТ = eBarimt totalVAT, eBarimt нийлбэрийн гинж, СБТ тэнцэл, МГТ = дэвтрийн мөнгө, завсаргүй дугаар, QR хадгалаагүй, касс сөрөг биш), баримтын жишээ тоо (06 §6.2–6.5 Жишээ 6-A/B/C, FR-SAL-003 AC1, 15 §16.2-ын 55 990.01, 12 §6.2-ын мөр хуваалт), posting-ийн зан төлөв (preview дугаар зарцуулахгүй, хаалттай үе, хяналтын данс, тулгалт/unapply, буцаалт, орцын НӨАТ баталгаажуулах) ба тайлбарын баримтын холбоосыг шалгана.

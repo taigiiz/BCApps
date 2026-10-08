@@ -10,49 +10,50 @@
 - **Order 47/2018.** Батлагдсан НББ-ийн программд гүйлгээг **нуух, далдлах, санаатайгаар будлиулах, завших боломжгүй** байх шаардлага тавигддаг ([mn-accounting.md](../research/mn-accounting.md) §2.5).
 - **BC-ийн загвар:**
   - G/L Entry нь append-only.
-  - Залруулгыг толин тусгал буцаалтаар (reversal) хийдэг: `Correction` (улаан сторно), `Reversed by Entry No.`.
+  - Залруулгыг толин тусгал буцаалтаар (reversal) хийдэг: `Reversed by Entry No.`; сонголтоор `Correction` (улаан сторно). Манай систем storno-г **хэрэглэхгүй** ([DECISIONS](../DECISIONS.md) D-C3).
   - Cust. Ledger Entry-ийн мөнгөний түүх Detailed Entry-д append-only хадгалагддаг ([bc-gl-posting.md](../research/bc-gl-posting.md) R-GL-POSTING-38..40; [bc-subledgers-application.md](../research/bc-subledgers-application.md) §1).
 - **BC-ийн өөрчлөгддөг талбарууд.** BC-ийн entry-д `Open`, `Remaining Amount`, `Reversed` гэх мэт өөрчлөгдөх талбарууд бий. Бид тэдгээрийг өөрчлөгдөхгүй мөрөөс тусгаарлах хэрэгтэй.
 - **PostgreSQL-ийн хамгаалалт.** `REVOKE` нь эзэмшигч ба superuser-ийг хамгаалдаггүй. `TRUNCATE`-ийн trigger зөвхөн statement-level байдаг.
 
 ## Шийдвэр
 
-1. **Append-only хүснэгтүүд:**
+1. **Append-only хүснэгтүүд** (канон каталог: `platform.ledger_guard`, [910_ledger_guards.sql](../db/schema/910_ledger_guards.sql)):
 
    | Схем | Хүснэгт |
    |---|---|
-   | `gl` | `gl_transaction`, `gl_entry`, `gl_register`, `gl_entry_reversal` |
-   | `tax` | `vat_entry`, `vat_settlement` |
-   | `parties` | `cust_ledger_entry`, `detailed_cust_ledg_entry`, `vend_ledger_entry`, `detailed_vend_ledg_entry` |
-   | `cash_bank` | `bank_ledger_entry`, posted `payment_document` |
-   | `inventory` | `item_ledger_entry`, `value_entry` |
-   | `fixed_assets` | `fa_ledger_entry` |
-   | `sales`, `purchases` | posted баримтууд, `sales.cancelled_document` |
-   | `audit` | `row_change`, `security_event` |
-   | бусад | `ebarimt.receipt_event`, `currency.ref_official_rate`, `platform.document_signature`, `integration.integration_attempt` |
+   | `gl` | `gl_transaction`, `gl_entry`, `gl_register`, `accounting_period_status_log`, `dimension_set`, `dimension_set_entry` |
+   | `tax` | `vat_entry`, `gl_entry_vat_entry_link`, `city_tax_entry`, `vat_return_snapshot` |
+   | `party` | `cust_ledger_entry`, `detailed_cust_ledger_entry`, `vendor_ledger_entry`, `detailed_vendor_ledger_entry` (D-K2) |
+   | `bank` | `bank_ledger_entry`, `posted_cash_voucher`, `bank_account_statement`, `bank_account_statement_line` |
+   | `inv` | `item_ledger_entry`, `value_entry`, `item_application_entry`, `gl_item_ledger_relation`, `posted_item_journal`, `posted_item_journal_line` |
+   | `fa` | `fa_ledger_entry` |
+   | `fx` | `exch_rate_adjmt_register`, `exch_rate_adjmt_ledger_entry` |
+   | `sales`, `purchase` | posted баримтууд (`sales_invoice_*`, `sales_cr_memo_*`, `purch_inv_*`, `purch_cr_memo_*`), `cancelled_document` |
+   | `audit` | `row_change`, `posting_log`, `security_event` |
+   | бусад | `ebarimt.ebarimt_document_line`, `ebarimt.ebarimt_document_payment`, `ebarimt.ebarimt_document_event`, `rpt.filing_submission`, `rpt.statement_snapshot`, `platform.number_allocation`, `platform.document_rendition`, `platform.archive_package`, `platform.document_signature`, `platform.tenant_purge_log` |
 
-   Бүрэн жагсаалтыг [02-architecture.md](../02-architecture.md) §8.1 тогтооно.
+   Бүрэн жагсаалтыг [02-architecture.md](../02-architecture.md) §8.1 ба `platform.ledger_guard` тогтооно.
 
 2. **Гурван давхаргын хамгаалалт:**
-   - `REVOKE UPDATE, DELETE, TRUNCATE … FROM erp_app, erp_worker, erp_ops_ro`;
-   - `BEFORE UPDATE OR DELETE` row trigger (`trg_<table>__block_update_delete`) `core.fn_block_ledger_mutation()`-ийг дуудаж exception шиднэ (`ERA01`);
-   - `BEFORE TRUNCATE` statement trigger (`trg_<table>__block_truncate`).
+   - `REVOKE UPDATE, DELETE, TRUNCATE … FROM app_user, app_worker, app_readonly` (group role; login `erp_app`, `erp_worker` нь гишүүн);
+   - `BEFORE UPDATE OR DELETE` row trigger (`trg_<table>_immutable`) `platform.fn_guard_immutable()`-ийг дуудаж, whitelist-ээс бусад өөрчлөлтөд exception шиднэ (`ERL01`);
+   - `BEFORE TRUNCATE` statement trigger (`trg_<table>_no_truncate`, мөн `platform.fn_guard_immutable()`).
 
-   Migration-ий helper `core.fn_make_append_only('schema.table')` эдгээрийг нэг дор үүсгэнэ.
-3. **Өөрчлөгддөг төлөв тусдаа проекц хүснэгтэд** байна. Проекцыг posting transaction дотор синхроноор шинэчилнэ. Ledger-ээс бүрэн дахин тооцоолж болно.
-   - `parties.cust_open_item` (нээлттэй эсэх, үлдэгдэл);
-   - `gl.account_period_balance`;
-   - `inventory.item_cost_state`.
+   Baseline-д 910 файлын loop эдгээрийг `platform.ledger_guard`-ийн мөр бүрд үүсгэнэ; дараагийн migration шинэ ledger хүснэгтэд `platform.ledger_guard`-д мөр нэмж, ижил trigger-үүдийг ил бичнэ ([ADR-0014](./ADR-0014-sql-first-migrations.md)).
+3. **Өөрчлөгддөг системийн талбар** (D-C4): BC-ийн `Open`, `Remaining Amount`, `Reversed`, `Closed by` зэрэг талбарууд ledger мөр дээрээ үлдэнэ, гэхдээ:
+   - `mutable_columns` (`reversed`, `reversed_by_*`, `closed_by_entry_no`, `deductible_confirmed*` г.м.) нь зөвхөн SECURITY DEFINER `platform.fn_ledger_update(table, key, changes)`-ээр өөрчлөгдөнө;
+   - `trigger_columns` (`party.*_ledger_entry.remaining_amount`, `remaining_amount_lcy`, `open`) нь detailed entry-ийн дотоод trigger-ээр л өөрчлөгдөнө, application-оос хүлээж авахгүй;
+   - үеийн үлдэгдэл, нээлттэй entry нь view (`gl.v_gl_account_period_balance`, `party.v_cust_open_entry`); `inv.item_cost_state` нь ledger биш, тусдаа төлөвийн хүснэгт.
 4. **Залруулга зөвхөн шинэ бичилтээр:**
-   - Журналын ваучер → `ReverseTransaction`: шинэ transaction, `is_correction = true` (улаан сторно), `gl_entry_reversal (original_entry_id, reversal_entry_id)`.
+   - Журналын ваучер → `ReverseTransaction`: шинэ transaction, эх entry бүрийн **эсрэг тэмдэгтэй** entry (storno биш: эсрэг баганад орно, D-C3); холбоос `gl_entry.reversed_entry_no`, `gl_transaction.reverses_transaction_no`, эх мөрийн `reversed`/`reversed_by_*` нь `platform.fn_ledger_update`-ээр.
    - Posted нэхэмжлэх → Cancel ба Correct (credit memo + тулгалт).
-   - Тулгалт → unapply (detailed мөрийн толин тусгал, LIFO).
-   - Буцаалтын огноо: эх үе нээлттэй бол эх огноо. Хаагдсан бол нээлттэй цонхноос хэрэглэгч сонгоно. Шалтгааны код заавал ([02-architecture.md](../02-architecture.md) §6.8).
-5. **"Буцаагдсан" төлвийг** `gl_entry_reversal`-ээс JOIN-оор гаргана. Эх мөрийг өөрчлөхгүй.
-6. **Hash chain.** `gl_register` бүр `prev_hash` ба `hash`-тай (SHA-256). Hash нь register, transaction, G/L entry ба VAT entry-г хамарна. Шөнө бүр шалгана ([02-architecture.md](../02-architecture.md) §8.7).
-7. **Цорын ганц үл хамаарах зүйл: тенантын purge.** Тенант `PURGE_APPROVED` төлөвтэй үед `erp_migrator` (`SET ROLE erp_owner`) нь `app.tenant_id` ба `erp.purge_tenant` тохиргоотой session-оор `platform.fn_purge_tenant`-ийг ажиллуулна. Энэ нь гэрээ дууссаны дараах журам бөгөөд аудитын логт бичигдэнэ ([02-architecture.md](../02-architecture.md) §7.7).
+   - Тулгалт → unapply (detailed мөрийн эсрэг тэмдэгтэй мөр, LIFO).
+   - Буцаалтын огноо: эх үе `OPEN` бол эх огноогоор. Хаагдсан бол буцаалт хийхгүй, одоогийн үед залруулах баримт (`corrects_transaction_no`) хийнэ. Шалтгааны код заавал (D-D5, [02-architecture.md](../02-architecture.md) §6.8).
+5. **"Буцаагдсан" төлөв** нь эх мөрийн whitelisted `reversed` / `reversed_by_entry_no` багана (D-C4); тусдаа `gl_entry_reversal` хүснэгт байхгүй.
+6. **Hash chain.** `gl_register` бүр `hash_version`, `prev_hash` ба `hash`-тай (SHA-256). Hash нь register, transaction, G/L entry ба VAT entry-г хамарна. Шөнө бүр шалгана ([02-architecture.md](../02-architecture.md) §8.7).
+7. **Үл хамаарах зүйл: тенантын purge.** Тенант `PURGE_APPROVED` төлөвтэй үед `erp_migrator` (`SET ROLE app_owner`) нь `app.tenant_id` ба `erp.purge_tenant` тохиргоотой session-оор purge журмыг ажиллуулна; guard нь `platform.fn_purge_in_progress(tenant_id)` үнэн үед л DELETE-ийг зөвшөөрнө, нотолгоо `platform.tenant_purge_log`-д. Энэ нь гэрээ дууссаны дараах журам бөгөөд аудитын логт бичигдэнэ ([02-architecture.md](../02-architecture.md) §7.7).
 8. **Ledger-ийг UPDATE-ээр backfill хийхгүй.** Шинэ багана NULL-тэй байна ([ADR-0014](./ADR-0014-sql-first-migrations.md)).
-9. **Хадгалах хугацаатай append-only хүснэгт** (`audit.*` 10 жил, `integration.integration_attempt` 2 жил) сараар хуваагдана. Хугацаа дууссан partition-ийг `core.fn_rotate_partitions()` DETACH + DROP хийнэ. Мөр бүрийг DELETE хийхгүй тул guard trigger өөрчлөгдөхгүй ([02-architecture.md](../02-architecture.md) §8.1).
+9. **Хадгалах хугацаатай append-only хүснэгт** (`audit.row_change`, `audit.security_event`, `audit.posting_log`, `ebarimt.ebarimt_document_event` — 10 жил эсвэл тенантын override) нь `platform.ledger_guard.allow_delete_after` цонхтой; хугацаа дууссан мөрийг `audit.fn_purge_expired` / `audit.fn_purge_platform_rows` batch-аар устгана (legal hold үед устгахгүй). Partition R1-д хэрэглэхгүй ([02-architecture.md](../02-architecture.md) §8.1).
 
 ## Үр дагавар
 
@@ -64,14 +65,14 @@
 **Сөрөг ба эрсдэл:**
 - **Алдаатай бичилтийг зөвхөн буцаалтаар засна.** Ledger дэх мөрийн тоо өснө, хэрэглэгч сургалт шаардана.
 - **Migration-д ledger-ийн өгөгдлийг засах боломжгүй.** Схемийн хувьслыг сайн төлөвлөх шаардлагатай.
-- **Проекц ledger-ээс зөрж болно.**
-  - Бууруулах арга: шөнийн тулгалт ба дахин тооцоолох job ([02-architecture.md](../02-architecture.md) §8.8).
+- **Ledger-ийн cache багана (`remaining_*`, `open`) detailed entry-ээс зөрж болно.**
+  - Бууруулах арга: trigger-ээр л шинэчлэгдэнэ; шөнийн тулгалт ба дахин тооцоолох job ([02-architecture.md](../02-architecture.md) §8.8).
 
 **Шалгах (CI):**
-- Ledger хүснэгт бүрт `erp_app`, `erp_worker`-оор UPDATE, DELETE, TRUNCATE оролдоход амжилтгүй болно. `erp_migrator` (`SET ROLE erp_owner`)-оор оролдоход guard trigger `ERA01` өгнө.
-- Тенантгүй append-only хүснэгт (`currency.ref_official_rate`) дээр UPDATE оролдоход мөн `ERA01` гарна (guard функц `tenant_id` баганаас хамаарахгүй).
+- Ledger хүснэгт бүрт `erp_app`, `erp_worker`-оор UPDATE, DELETE, TRUNCATE оролдоход амжилтгүй болно (эрхгүй). `erp_migrator` (`SET ROLE app_owner`)-оор whitelist-ээс гадуур UPDATE/DELETE оролдоход guard trigger `ERL01` өгнө.
+- Тенантгүй append-only хүснэгт (`platform.tenant_purge_log`) дээр UPDATE оролдоход мөн `ERL01` гарна (guard функц `tenant_id` баганаас хамаарахгүй).
 - Entry-гүй `gl_transaction` commit хийх оролдлого `ERB01` өгнө.
-- Каталогийн тест: append-only жагсаалтын хүснэгт бүр trigger-тэй байна.
+- Каталогийн тест: `platform.ledger_guard`-ийн хүснэгт бүр `trg_<table>_immutable` ба `trg_<table>_no_truncate` trigger-тэй байна.
 - Property test: post хийгээд reverse хийхэд данс бүрийн нийлбэр 0 болно.
 
 ## Харьцуулсан хувилбарууд

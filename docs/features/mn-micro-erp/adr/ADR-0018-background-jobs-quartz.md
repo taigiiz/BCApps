@@ -29,13 +29,13 @@
 
 1. **Outbox dispatcher-ийг өөрсдөө бичнэ.** Энэ нь `erp-worker` дахь `BackgroundService`.
    - `LISTEN outbox` + 2 s polling. `LISTEN` нь PgBouncer-ийг тойрсон тусдаа холболтоор явна;
-   - `integration.fn_claim_outbox` (SECURITY DEFINER, `FOR UPDATE SKIP LOCKED`);
+   - `integration.fn_claim_outbox(worker, topics, limit, lease)` (SECURITY DEFINER, `app_rls_bypass` эзэмшинэ, EXECUTE зөвхөн `app_worker`, `FOR UPDATE SKIP LOCKED`) — `integration.outbox`-оос;
    - lease ба reaper;
-   - мессежийн төрөл бүрд `RetryPolicy` (`NONE`, `STANDARD`, `EXTENDED`), backoff, `DEAD` төлөв;
+   - `topic` бүрд `RetryPolicy` (`max_attempts`; eBarimt `ebarimt.receipt.send` = 1, D-I6), backoff (`available_at`), `DEAD` төлөв;
    - `depends_on_id`-ээр дараалал баталгаажуулна.
 
    Ойролцоогоор 300 мөр код. Бүрэн unit ба integration test-тэй.
-2. **Хуваарьт ажилд Quartz.NET** ашиглана: ADO.NET job store (`quartz` схем, PostgreSQL), clustering асаалттай. Ингэснээр нэг ажил олон worker-т давхар ажиллахгүй.
+2. **Хуваарьт ажилд Quartz.NET** ашиглана: ADO.NET job store (`quartz` схем, PostgreSQL; Quartz-ийн стандарт `qrtz_*` DDL нь тусдаа migration — канон схемд хараахан ороогүй, [02-architecture.md](../02-architecture.md) "Нийцүүлэлтийн тэмдэглэл"), clustering асаалттай. Ажлын каталог ба cron нь `integration.job_definition`-д ([140_integration_audit.sql](../db/schema/140_integration_audit.sql)), гүйлт `integration.job_run`-д. Ингэснээр нэг ажил олон worker-т давхар ажиллахгүй.
    - **Глобал ажил**: ханш, PosAPI-ийн хяналт, лавлах өгөгдөл, цэвэрлэгээ.
    - **Компанийн ажил** нь fan-out хэлбэртэй: Quartz-ийн глобал ажил `platform.fn_list_active_companies`-ээр компаниудыг гүйлгэж, компани бүрд outbox мессеж (`job.*`) үүсгэнэ. Гүйцэтгэлийг dispatcher тенантын контекст дотор хийнэ.
 3. **Хуваарь** (Asia/Ulaanbaatar):
@@ -49,16 +49,16 @@
    | `EbarimtSalesTotalsJob` | 02:00 (01:00–07:00-ийн цонх) |
    | `DepreciationFanOutJob` | Сар бүрийн 1-нд 02:00 (санал. Хэрэглэгч батална) |
    | `HashChainVerifyJob` | 04:00 |
-   | `ConsistencyCheckJob` | 04:30 |
-   | `CleanupJob` (idempotency 7 хоног, outbox 30 хоног, хугацаа дууссан `identity.user_session`) | 05:00 |
-   | `PartitionMaintenanceJob` (`core.fn_rotate_partitions()`: дараагийн 3 сарын partition үүсгэх, хугацаа дууссаныг устгах) | Сар бүрийн 1, 03:30 |
+   | `ConsistencyCheckJob` (`platform.fn_integrity_report` компани бүрд) | 04:30 |
+   | `CleanupJob` (`integration.cleanup` → `integration.fn_purge_expired`: idempotency 7 хоног, outbox/inbox 30 хоног, job_run 90 хоног; хугацаа дууссан `identity.user_session`) | 05:00 |
+   | `RetentionPurgeJob` (`audit.fn_purge_expired` тенант бүрд, `audit.fn_purge_platform_rows`: 10 жилийн хадгалалт дууссан аудитын мөр; partition-гүй) | Сар бүрийн 1, 03:30 |
    | `NumberSeriesNextYearJob` | 12-р сарын 1 |
 
 4. **Тенантын ажлын тогтвортой байдал:**
    - Нэг ажлын transaction ≤ 30 s.
    - Урт ажлыг chunk-лана.
    - Компани бүрд нэг зэрэг 1 async тайлан ажиллана.
-5. **Ажиглалт.** `integration.job_run`, OTel метрик (`erp_outbox_*`) ба ops UI-ийн "Dead letter" жагсаалт. Тэндээс гараар дахин дараалалд оруулах боломжтой. eBarimt-ийн `NONE` бодлоготой мессежийг дахин оруулах боломжгүй: UNKNOWN-ийг шийдэх урсгалаар л явна.
+5. **Ажиглалт.** `integration.job_run`, OTel метрик (`erp_outbox_*`) ба ops UI-ийн "Dead letter" жагсаалт. Тэндээс гараар дахин дараалалд оруулах боломжтой. eBarimt-ийн `ebarimt.receipt.send` (`max_attempts = 1`) мессежийг дахин оруулах боломжгүй: UNKNOWN-ийг шийдэх урсгалаар л явна.
 
 ## Үр дагавар
 

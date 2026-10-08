@@ -9,6 +9,7 @@
        intro: ['2–4 sentences: purpose, who uses it, what happens on post'],
        owner: 'js/screens/sales.js',
        render: function (el, ctx) { ... },  // el = empty container; ctx = ERP.app.ctx (shared navigation context)
+       crumbRecord: function (ctx) { ... }, // optional: record label for the last breadcrumb (UX-NAV-07), e.g. 'SI-2026-00001'
        onLeave: function () { ... }         // optional
      });
    Placeholders for later builders: ERP.app.stub({ route, title, crumbs, intro, owner, plan: [...] }).
@@ -159,10 +160,11 @@
   // Information architecture (15 §2.3), reduced to the prototype's routes
   var NAV = [
     { label: 'Нүүр', route: 'home', single: true },
-    { label: 'Борлуулалт', items: [['Нэхэмжлэх', 'sales-invoices'], ['Харилцагч', 'customers'], ['eBarimt хяналт', 'ebarimt']] },
+    { label: 'Борлуулалт', items: [['Нэхэмжлэх', 'sales-invoices'], ['Кредит нот', 'credit-memo'], ['Харилцагч', 'customers']] },
     { label: 'Худалдан авалт', items: [['Нэхэмжлэх', 'purchase-invoices']] },
     { label: 'Мөнгө', items: [['Кассын баримт (МХ-1/МХ-2)', 'cash'], ['Хуулга ба тулгалт', 'bank-rec']] },
-    { label: 'Санхүү', items: [['Ерөнхий журнал', 'journal'], ['Дансны төлөвлөгөө', 'coa']] },
+    { label: 'eBarimt', items: [['Хяналт', 'ebarimt']] },
+    { label: 'Санхүү', items: [['Ерөнхий журнал', 'journal'], ['Дансны төлөвлөгөө', 'coa'], ['Авлагын тулгалт', 'cust-apply']] },
     { label: 'Татвар', items: [['НӨАТ-ын тайлан (ТТ-03а)', 'vat-return']] },
     { label: 'Хаалт', items: [['Санхүүгийн жил ба үе', 'periods']] },
     { label: 'Тайлан', items: [['Гүйлгээ баланс', 'trial-balance'], ['Санхүүгийн тайлан (Маягт А)', 'financial-statements']] },
@@ -218,7 +220,7 @@
     nav.addEventListener('click', function (ev) { if (ev.target.closest('a')) document.getElementById('app').classList.remove('nav-open'); });
   }
   function markNav(route) {
-    var alias = { 'sales-invoice': 'sales-invoices', 'posted-invoice': 'sales-invoices', customer: 'customers' }[route] || route;
+    var alias = { 'sales-invoice': 'sales-invoices', 'posted-invoice': 'sales-invoices', customer: 'customers', 'purchase-invoice': 'purchase-invoices' }[route] || route;
     ui.$$('#sidebar a[data-route]').forEach(function (a) { if (a.getAttribute('data-route') === alias) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   }
 
@@ -239,7 +241,7 @@
     page.innerHTML =
       '<nav class="breadcrumb" aria-label="Замын мөр">' + crumbs.map(function (c, i) {
         var last = i === crumbs.length - 1;
-        return (c[1] && !last ? '<a href="#' + c[1] + '">' + ui.esc(c[0]) + '</a>' : '<span>' + ui.esc(c[0]) + '</span>') + (last ? '' : '<span aria-hidden="true">›</span>');
+        return (c[1] && !last ? '<a href="#' + c[1] + '">' + ui.esc(c[0]) + '</a>' : '<span' + (last ? ' id="crumb-last" aria-current="page"' : '') + '>' + ui.esc(c[0]) + '</span>') + (last ? '' : '<span aria-hidden="true">›</span>');
       }).join('') + '</nav>' +
       (s.intro ? '<details class="intro" id="intro-' + route + '"' + (introOpen ? ' open' : '') + '><summary><span class="chev" aria-hidden="true">▸</span>Энэ дэлгэц<span class="muted" style="font-weight:400">— ' + ui.esc(s.title) + '</span></summary><div class="intro-body">' +
         (Array.isArray(s.intro) ? s.intro : [s.intro]).map(function (p) { return '<p>' + p + '</p>'; }).join('') + '</div></details>' : '') +
@@ -248,7 +250,11 @@
     if (intro) intro.addEventListener('toggle', function () { LS.set('ui:intro:' + route, intro.open ? '1' : '0'); });
     try { s.render(document.getElementById('screen-body'), app.ctx); }
     catch (e) { document.getElementById('screen-body').innerHTML = ui.errList([{ code: 'ui.render_failed', message: String(e && e.message || e) }], 'Дэлгэц зурахад алдаа гарлаа'); if (window.console) console.error(e); }
-    document.title = s.title + ' — ' + ERP.data.company.nameShort + ' — Бичил ERP прототип';
+    // UX-NAV-07: the last breadcrumb segment is the record (document number or name) when the screen shows one
+    var rec = null;
+    if (s.crumbRecord) { try { rec = s.crumbRecord(app.ctx); } catch (e) { rec = null; } }
+    if (rec) { var cl = document.getElementById('crumb-last'); if (cl) cl.textContent = rec; }
+    document.title = (rec ? rec + ' · ' : '') + s.title + ' — ' + ERP.data.company.nameShort + ' — Бичил ERP прототип';
     markNav(route);
     app.decorateNotes();
     closePanelIfForeign();

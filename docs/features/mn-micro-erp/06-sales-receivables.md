@@ -2174,7 +2174,7 @@ BR-2027-00025-ын 04-10-ны APPLICATION мөрүүд (SI-30 −500, BR-25 +500
 | `POST /payments` (`partyType = CUSTOMER`, `applyTo[]`) | банкны spec | §5.13.5 |
 | `GET /reports/customer-aging?asOf=&detail=&customerId=&agingBucketSetId=&separateCredits=` | `REPORT rpt.customer_aging` | §5.17 |
 | `GET /reports/customer-statement?customerId=&from=&to=` (санал) | `REPORT rpt.customer_statement` | §5.18 |
-| `POST /reports/{reportCode}:export` | `ACTION rpt.report.export` | Async |
+| `POST /reports/{reportCode}:export` | `ACTION rpt.export.excel` + тухайн `REPORT` (14 §15.5) | Async |
 
 ### 10.2 Дэлгэц
 

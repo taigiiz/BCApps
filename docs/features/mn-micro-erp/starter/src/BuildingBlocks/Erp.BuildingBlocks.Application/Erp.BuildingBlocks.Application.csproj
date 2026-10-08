@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Application-level abstractions shared by every module: business calendar, tenant scope, transactional session. -->
+  <ItemGroup>
+    <ProjectReference Include="../Erp.BuildingBlocks.Domain/Erp.BuildingBlocks.Domain.csproj" />
+  </ItemGroup>
+</Project>

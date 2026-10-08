@@ -37,30 +37,33 @@
       }).join('') + '</div>' +
       '<div class="row"><label class="sr-only" for="sl-search">Хайх</label><input class="input" id="sl-search" type="search" placeholder="Дугаар эсвэл харилцагч…" value="' + ui.esc(ctx.salesSearch || '') + '" style="width:220px"></div></div>';
     if (tab === 'drafts') {
-      html += '<div class="card"><div class="table-wrap"><table class="grid-table"><thead><tr><th>Ноорог №</th><th>Харилцагч</th><th>Баримтын огноо</th><th>Бүртгэлийн огноо</th><th class="num">Нийт дүн ≈</th><th>Төлөв</th></tr></thead><tbody>' +
+      html += '<div class="card" data-note="sales.draft-list"><div class="table-wrap"><table class="grid-table"><thead><tr><th>Ноорог №</th><th>Харилцагч</th><th>Баримтын огноо</th><th>Бүртгэлийн огноо</th><th class="num">Нийт дүн ≈</th><th>Төлөв</th></tr></thead><tbody>' +
         (drafts.filter(function (d) { return match(d.no + ' ' + (d.customerName || '')); }).map(function (d) {
           var c = E().drafts.calc(d);
           return '<tr class="clickable" data-draft="' + d.no + '" tabindex="0"><td class="code">' + d.no + '</td><td>' + ui.esc(d.customerName || '— харилцагчгүй —') + '</td><td>' + ui.date(d.documentDate) + '</td><td>' + ui.date(d.postingDate) + '</td>' + ui.moneyCell(c.amountInclVat) + '<td>' + ui.pill('DRAFT') + '</td></tr>';
-        }).join('') || '<tr><td colspan="6" class="empty">Ноорог алга. "+ Шинэ нэхэмжлэх" дарж эхлүүлнэ үү.</td></tr>') + '</tbody></table></div></div>' +
+        }).join('') || '<tr><td colspan="6" class="empty">' + (q ? 'Хайлтад тохирох ноорог алга.' : 'Ноорог алга. "+ Шинэ нэхэмжлэх" дарж эхлүүлнэ үү.') + '</td></tr>') + '</tbody></table></div></div>' +
         '<p class="xs muted">Ноорогийн дугаар (DSI-…) завсартай байж болно; хуулийн дугаар SI-2026-##### зөвхөн батлахад олгогдоно (D-C7).</p>';
     } else if (tab === 'posted') {
       html += '<div class="card" data-note="sales.posted-list"><div class="table-wrap"><table class="grid-table"><thead><tr><th>Дугаар</th><th>Огноо</th><th>Харилцагч</th><th class="num">Нийт дүн</th><th class="num">Үлдэгдэл</th><th>Төлбөр</th><th>eBarimt</th><th>Төлөх огноо</th></tr></thead><tbody>' +
-        inv.slice().reverse().filter(function (p) { return match(p.no + ' ' + p.customerName); }).map(function (p) {
+        (inv.slice().reverse().filter(function (p) { return match(p.no + ' ' + p.customerName); }).map(function (p) {
           var ps = E().sales.paymentStatus(p);
           return '<tr class="clickable" data-posted="' + p.no + '" tabindex="0"><td class="code">' + p.no + '</td><td>' + ui.date(p.postingDate) + '</td><td>' + ui.esc(p.customerName) + '</td>' + ui.moneyCell(p.amountInclVat) + ui.moneyCell(ps.remaining, { blankZero: true }) +
             '<td>' + ui.pill(ps.badge) + '</td><td>' + ui.pill(chainBadge(p)) + '</td><td>' + ui.date(p.dueDate) + '</td></tr>';
-        }).join('') + '</tbody></table></div></div>';
+        }).join('') || '<tr><td colspan="8" class="empty">' + (q ? 'Хайлтад тохирох батлагдсан нэхэмжлэх алга.' : 'Батлагдсан нэхэмжлэх алга. Ноорог батлахад энд гарна.') + '</td></tr>') + '</tbody></table></div></div>';
     } else {
-      html += '<div class="card"><div class="table-wrap"><table class="grid-table"><thead><tr><th>Дугаар</th><th>Огноо</th><th>Харилцагч</th><th>Эх нэхэмжлэх</th><th>Шалтгаан</th><th class="num">Нийт дүн</th><th>eBarimt</th></tr></thead><tbody>' +
-        cms.slice().reverse().filter(function (p) { return match(p.no + ' ' + p.customerName); }).map(function (p) {
+      html += '<div class="row between"><p class="small muted" style="margin:0">Кредит нот нь батлагдсан нэхэмжлэхээс үүсч, эх нэхэмжлэхэд автоматаар тулгагдана (BR-SAL-63).</p><button class="btn" type="button" id="sl-new-cm">+ Кредит нот</button></div>' +
+        '<div class="card" data-note="sales.cm-list"><div class="table-wrap"><table class="grid-table"><thead><tr><th>Дугаар</th><th>Огноо</th><th>Харилцагч</th><th>Эх нэхэмжлэх</th><th>Шалтгаан</th><th class="num">Нийт дүн</th><th>eBarimt</th></tr></thead><tbody>' +
+        (cms.slice().reverse().filter(function (p) { return match(p.no + ' ' + p.customerName); }).map(function (p) {
           return '<tr class="clickable" data-posted="' + p.no + '" tabindex="0"><td class="code">' + p.no + '</td><td>' + ui.date(p.postingDate) + '</td><td>' + ui.esc(p.customerName) + '</td><td class="code">' + ui.esc(p.appliesTo || '') + '</td><td>' + ui.esc(ERP.data.reasonCodes[p.reason] || p.reason || '') + '</td>' + ui.moneyCell(p.amountInclVat) + '<td>' + ui.pill(chainBadge(p)) + '</td></tr>';
-        }).join('') + '</tbody></table></div></div><p class="xs muted">Кредит нот үүсгэх, нэхэмжлэх цуцлах дэлгэцийг дараагийн шатанд (js/screens/sales-ar.js) бүтээнэ.</p>';
+        }).join('') || '<tr><td colspan="7" class="empty">' + (q ? 'Хайлтад тохирох кредит нот алга.' : 'Кредит нот алга.') + '</td></tr>') + '</tbody></table></div></div>';
     }
     el.innerHTML = html;
     ui.$$('.tab', el).forEach(function (b) { b.addEventListener('click', function () { ctx.salesTab = b.getAttribute('data-tab'); renderList(el, ctx); app.decorateNotes(); ui.$('#tab-' + ctx.salesTab).focus(); }); });
     var s = ui.$('#sl-search');
     s.addEventListener('input', function () { ctx.salesSearch = s.value; var pos = s.selectionStart; renderList(el, ctx); app.decorateNotes(); var n = ui.$('#sl-search'); n.focus(); n.setSelectionRange(pos, pos); });
     ui.$('#sl-new').addEventListener('click', function () { var d = E().drafts.create(null); app.navigate('sales-invoice', { draftNo: d.no }); });
+    var ncm = ui.$('#sl-new-cm');
+    if (ncm) ncm.addEventListener('click', function () { app.navigate('credit-memo'); });
     ui.$$('tr[data-draft]', el).forEach(function (tr) {
       var go = function () { app.navigate('sales-invoice', { draftNo: tr.getAttribute('data-draft') }); };
       tr.addEventListener('click', go); tr.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') go(); });
@@ -158,7 +161,7 @@
     var pm = ERP.data.paymentMethods[d.method];
     var focusId = document.activeElement && document.activeElement.id;
     var html = '<div class="page-head"><div class="title-wrap"><h1>Борлуулалтын нэхэмжлэх</h1><span class="docno">' + d.no + '</span>' + ui.pill('DRAFT') + '</div>' +
-      '<span class="small muted">Ноорог санах ойд хадгалагдсан · ' + ui.esc(d.note || '') + '</span></div>';
+      '<span class="small muted">Ноорог санах ойд хадгалагдсан' + (d.note ? ' · ' + ui.esc(d.note) : '') + '</span></div>';
     html += '<div class="actionbar" data-note="sales.actions">' +
       '<button class="btn primary" id="act-post" type="button">Батлах <span class="kbd">F9</span></button>' +
       '<button class="btn" id="act-preview" type="button">Урьдчилан харах</button>' +
@@ -188,7 +191,8 @@
       (resolved === 'B2B_RECEIPT' ? '<div class="field"><label for="f-buyertin">Худалдан авагчийн ТТД</label><input class="input mono" id="f-buyertin" value="' + ui.esc(customer(d.customer).tin || '') + '" readonly></div>' : '') +
       (resolved === 'B2C_RECEIPT' ? '<div class="field"><label for="f-consumer">Иргэний eBarimt дугаар (8 орон)</label><input class="input mono" id="f-consumer" inputmode="numeric" maxlength="8" value="' + ui.esc(d.consumerNo || '') + '" placeholder="заавал биш"></div>' : '') +
       '</div></div></details>';
-    // lines
+    html += '</div><aside class="factbox" id="factbox">' + factbox(d, c, ctx) + '</aside></div>';
+    // lines: full width under header + FactBox (the grid has 10 columns; BC lines subpage spans the page)
     html += '<div class="card" data-note="sales.lines"><div class="card-head"><h2>Мөрүүд</h2><span class="small muted">' + (d.piv ? 'Үнэ НӨАТ-тэй' : 'Үнэ НӨАТ-гүй') + '</span></div><div class="card-body flush"><div class="table-wrap"><table class="grid-table lines-grid"><thead><tr>' +
       '<th>Төрөл</th><th>Дугаар</th><th>Тайлбар</th><th class="num">Тоо</th><th>Нэгж</th><th class="num">Нэгжийн үнэ</th><th class="num">Хөн.%</th><th class="num">Мөрийн дүн</th><th>НӨАТ</th><th><span class="sr-only">Устгах</span></th></tr></thead><tbody>' +
       d.lines.map(function (l, i) {
@@ -211,7 +215,6 @@
       (d.lines.length ? '' : '<tr><td colspan="10" class="empty">Мөр алга. "+ Мөр нэмэх" дарна уу.</td></tr>') + '</tbody></table></div></div></div>';
     html += '<div id="totals-box">' + totalsHtml(c) + '</div>';
     html += '<div data-note="sales.calc" id="calc-wrap">' + ui.calc('Тооцоог харах: мөрийн дүн ба НӨАТ', calcBody(d, c), 'calc-details') + '</div>';
-    html += '</div><aside class="factbox" id="factbox">' + factbox(d, c, ctx) + '</aside></div>';
     el.innerHTML = html;
     bindEditor(el, ctx, d);
     if (focusId && document.getElementById(focusId)) document.getElementById(focusId).focus();
@@ -404,7 +407,7 @@
     var cle = S.cle.filter(function (e) { return e.documentNo === p.no; });
     var det = S.dcle.filter(function (x) { return cle.some(function (e) { return e.entryNo === x.cleEntryNo; }); });
     var ble = S.ble.filter(function (b) { return txs.indexOf(b.transactionNo) >= 0; });
-    return '<div class="table-wrap"><table class="grid-table"><thead><tr><th>Entry №</th><th>Гүйлгээ №</th><th>Данс</th><th>Нэр</th><th class="num">Дебит</th><th class="num">Кредит</th><th>Source</th></tr></thead><tbody>' +
+    return '<div class="table-wrap"><table class="grid-table"><thead><tr><th>Бичилт №</th><th>Гүйлгээ №</th><th>Данс</th><th>Нэр</th><th class="num">Дебит</th><th class="num">Кредит</th><th title="Source code (эх сурвалжийн код)">Эх код</th></tr></thead><tbody>' +
       gl.map(function (e) { return '<tr><td class="code">' + e.entryNo + '</td><td class="code">' + e.transactionNo + '</td><td class="code">' + e.account + '</td><td>' + ui.esc(setup.account(e.account).name) + '</td>' + ui.moneyCell(Math.max(e.amount, 0), { blankZero: true }) + ui.moneyCell(Math.max(-e.amount, 0), { blankZero: true }) + '<td class="code">' + e.sourceCode + '</td></tr>'; }).join('') +
       '</tbody></table></div>' +
       '<div class="grid cols-2"><div><h3 class="small">НӨАТ-ын бичилт (tax.vat_entry)</h3><div class="table-wrap"><table class="grid-table"><thead><tr><th>№</th><th>Ангилал</th><th class="num">Суурь</th><th class="num">НӨАТ</th><th>Хаагдсан</th></tr></thead><tbody>' +
@@ -435,8 +438,8 @@
       (hasPayload ? '<button class="btn primary" id="pp-print" type="button">eBarimt хэвлэх цонх (QR-тай)</button>' : '') +
       (doc && doc.status === 'SUCCESS' ? '<button class="btn" id="pp-copy" type="button">Хуулбар харах (QR-гүй)</button>' : '') +
       '<a class="btn" href="#sales-invoices">Жагсаалт руу</a>' +
-      '<button class="btn" type="button" disabled title="Дараагийн шатанд: js/screens/sales-ar.js">Кредит нот үүсгэх</button>' +
-      '<button class="btn" type="button" disabled title="Дараагийн шатанд: js/screens/cash-bank.js / sales-ar.js">Төлбөр бүртгэх</button></div>';
+      '<button class="btn" type="button" disabled title="Кредит нотыг зөвхөн батлагдсан нэхэмжлэхээс үүсгэнэ">Кредит нот үүсгэх</button>' +
+      '<button class="btn" type="button" disabled title="Зөвхөн үлдэгдэлтэй нэхэмжлэхэд төлбөр бүртгэнэ">Төлбөр бүртгэх</button></div>';
     if (doc && (doc.status === 'ERROR' || doc.status === 'UNKNOWN')) html += '<div class="banner danger" data-note="posted.ebarimt-problem"><strong>' + (isInv ? 'Нэхэмжлэх' : 'Кредит нот') + ' батлагдсан. Зөвхөн eBarimt-ийн баримт асуудалтай.</strong> ' + (doc.status === 'UNKNOWN' ? 'Илгээсэн эсэх нь тодорхойгүй — автоматаар дахин илгээхгүй, eBarimt хяналтаар гараар шийдвэрлэнэ (D-J2). ' : 'Алдааг засаад eBarimt хяналтаас дахин илгээнэ. ') + '<a href="#ebarimt">eBarimt хяналт ›</a></div>';
     html += '<div class="doc-layout"><div class="doc-main">';
     html += '<div class="card"><div class="card-body"><dl class="form-grid ro-grid">' +
@@ -444,6 +447,12 @@
         ['Төлөх огноо', ui.date(p.dueDate)], ['НӨАТ-ын огноо', ui.date(p.vatDate)], ['Төлбөрийн нөхцөл', (ERP.data.paymentTerms[p.terms] || {}).name], ['Төлбөрийн хэлбэр', (ERP.data.paymentMethods[p.method] || {}).name],
         ['Үнийн горим', p.piv ? 'НӨАТ-тэй' : 'НӨАТ-гүй'], ['eBarimt төрөл', ebLabel(p.ebarimtType)]].concat(isInv ? [] : [['Эх нэхэмжлэх', p.appliesTo || '—'], ['Шалтгаан', ERP.data.reasonCodes[p.reason] || p.reason || '—']])
         .map(function (x) { return '<div class="field"><dt class="flabel">' + x[0] + '</dt><dd>' + ui.esc(x[1]) + '</dd></div>'; }).join('') + '</dl></div></div>';
+    html += '</div><aside class="factbox">';
+    html += '<div class="card"><div class="card-head"><h3>Төлбөр</h3>' + (isInv ? ui.pill(ps.badge) : '') + '</div><div class="card-body"><dl class="kv"><dt>Нийт</dt><dd>' + fmtM(p.amountInclVat) + '</dd><dt>Үлдэгдэл</dt><dd>' + fmtM(isInv ? ps.remaining : 0) + '</dd>' +
+      (p.cashVoucherNo ? '<dt>Кассын баримт</dt><dd class="code">' + p.cashVoucherNo + '</dd>' : '') + '<dt>Төлөх огноо</dt><dd>' + ui.date(p.dueDate) + '</dd></dl></div></div>';
+    if (doc) html += '<div class="card"><div class="card-head"><h3>eBarimt</h3>' + ui.pill(chain) + '</div><div class="card-body small">' + (doc.ddtd ? 'ДДТД <span class="mono">…' + doc.ddtd.slice(-6) + '</span><br>' + ui.esc(fmtTs(doc.ebarimtDate || '')) : ui.esc(doc.errorText || 'ДДТД олгогдоогүй')) + '</div></div>';
+    html += '</aside></div>';
+    // lines, eBarimt, JSON and entries: full width under header + FactBox
     html += '<div class="card"><div class="card-head"><h2>Мөрүүд</h2></div><div class="card-body flush"><div class="table-wrap"><table class="grid-table"><thead><tr><th>Дугаар</th><th>Тайлбар</th><th class="num">Тоо</th><th class="num">Нэгжийн үнэ</th><th class="num">Хөн.%</th><th class="num">Дүн (НӨАТ-гүй)</th><th class="num">НӨАТ</th><th class="num">Нийт</th><th>Данс</th><th>taxType</th></tr></thead><tbody>' +
       p.lines.filter(function (l) { return l.no; }).map(function (l) { return '<tr><td class="code">' + ui.esc(l.no) + '</td><td>' + ui.esc(l.description) + '</td><td class="num">' + ui.esc(l.qty) + ' ' + ui.esc(l.uomName || '') + '</td><td class="num">' + ui.esc(E().money.fmtPrice(E().money.parseScaled(l.unitPrice, 6))) + '</td><td class="num">' + ui.esc(l.disc) + '</td>' + ui.moneyCell(l.amount) + ui.moneyCell(l.vat) + ui.moneyCell(l.aiv) + '<td class="code">' + l.account + '</td><td class="code">' + l.taxType + '</td></tr>'; }).join('') +
       '</tbody></table></div></div></div>';
@@ -467,11 +476,6 @@
       html += '<div class="banner">' + (p.ebarimtType === 'NONE' ? 'Энэ баримтад eBarimt гаргахгүй.' : 'eBarimt тохируулаагүй тул баримт гараагүй.') + '</div>';
     }
     html += '<div class="card" data-note="posted.entries"><div class="card-head"><h2>Бичилтүүд (Navigate)</h2><span class="small muted">гүйлгээ ' + [p.transactionNo, p.paymentTransactionNo].filter(Boolean).join(', ') + '</span></div><div class="card-body stack">' + entriesHtml(p) + '</div></div>';
-    html += '</div><aside class="factbox">';
-    html += '<div class="card"><div class="card-head"><h3>Төлбөр</h3>' + (isInv ? ui.pill(ps.badge) : '') + '</div><div class="card-body"><dl class="kv"><dt>Нийт</dt><dd>' + fmtM(p.amountInclVat) + '</dd><dt>Үлдэгдэл</dt><dd>' + fmtM(isInv ? ps.remaining : 0) + '</dd>' +
-      (p.cashVoucherNo ? '<dt>Кассын баримт</dt><dd class="code">' + p.cashVoucherNo + '</dd>' : '') + '<dt>Төлөх огноо</dt><dd>' + ui.date(p.dueDate) + '</dd></dl></div></div>';
-    if (doc) html += '<div class="card"><div class="card-head"><h3>eBarimt</h3>' + ui.pill(chain) + '</div><div class="card-body small">' + (doc.ddtd ? 'ДДТД <span class="mono">…' + doc.ddtd.slice(-6) + '</span><br>' + ui.esc(fmtTs(doc.ebarimtDate || '')) : ui.esc(doc.errorText || 'ДДТД олгогдоогүй')) + '</div></div>';
-    html += '</aside></div>';
     el.innerHTML = html;
     var b;
     if ((b = ui.$('#pp-print'))) b.addEventListener('click', function () { openPrint(p, true); });
@@ -554,6 +558,7 @@
     intro: ['Нэхэмжлэхийн ноорог: харилцагч, огноо, нөхцөл, мөрүүдийг оруулахад дүн ба НӨАТ шууд тооцогдоно. "Урьдчилан харах" нь ерөнхий дэвтэр, НӨАТ, авлагын ямар бичилт үүсэхийг батлахаас өмнө харуулна.',
       '<strong>Батлах (F9)</strong> үед нэг гүйлгээнд: хуулийн дугаар SI-2026-##### олгогдож, орлого/НӨАТ/авлагын бичилт, (бэлэн бол) кассын МХ-1, eBarimt баримт бүгд үүснэ. Мөр нэмж, үнэ солиод доорх "Тооцоог харах"-аас НӨАТ-ын хуваарилалтыг ажиглаарай.'],
     render: renderEditor,
+    crumbRecord: function (ctx) { return ctx.draftNo || null; },
     onLeave: function () { if (keyHandler) { document.removeEventListener('keydown', keyHandler); keyHandler = null; } }
   });
   // F9 = post while the editor is open (UX-POST-05)
@@ -570,6 +575,7 @@
     intro: ['Батлагдсан баримт зөвхөн уншигдана. Энд төлбөрийн төлөв, eBarimt-ийн төлөвийн түүх, PosAPI руу илгээсэн JSON, ерөнхий дэвтэр/НӨАТ/авлагын бичилтүүдийг харна.',
       'B2C баримтыг батлах үед QR ба сугалаатай хэвлэх цонх нэг л удаа гарна; хаасны дараа зөвхөн QR-гүй хуулбар хэвлэгдэнэ.'],
     render: renderPosted,
+    crumbRecord: function (ctx) { return ctx.postedNo || null; },
     onLeave: function () { /* print payload survives only while its modal is open */ }
   });
 })();

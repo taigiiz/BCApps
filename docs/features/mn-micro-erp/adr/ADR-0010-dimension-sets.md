@@ -20,30 +20,30 @@
 
 ## Шийдвэр
 
-1. **Хүснэгтүүд (`gl` схем, компанийн түвшинд):**
+1. **Хүснэгтүүд (`gl` схем, компанийн түвшинд; канон: [030_dimension.sql](../db/schema/030_dimension.sql)):**
 
    | Хүснэгт | Агуулга |
    |---|---|
    | `dimension` | `code`, `name`, `blocked` |
    | `dimension_value` | `dimension_id`, `code`, `name`, `parent_id`, `value_type ∈ {STANDARD, TOTAL}`, `blocked` |
-   | `dimension_set` | `id` (UUIDv7), `key_hash` (UNIQUE), `key_text` |
-   | `dimension_set_entry` | `set_id`, `dimension_id`, `value_id`. Нэг удаа бичигдэнэ, өөрчлөгдөхгүй |
+   | `dimension_set` | `id` (uuid PK), **`dimension_set_id bigint`** (BC-ийн Dimension Set ID; `UNIQUE (company_id, dimension_set_id)`), `key_hash` (`UNIQUE (company_id, key_hash)`), `key_text`, `entry_count` |
+   | `dimension_set_entry` | `dimension_set_id`, `dimension_id`, `dimension_value_id`, `global_dimension_no` (0/1/2). Нэг удаа бичигдэнэ, өөрчлөгдөхгүй (append-only) |
    | `default_dimension` | `entity_type`, `entity_id NULL` (NULL = тухайн төрлийн бүх мөр), `dimension_id`, `value_id NULL`, `value_posting ∈ {NONE, CODE_MANDATORY, SAME_CODE, NO_CODE}` |
 
-2. **Set-ийг агуулгын түлхүүрээр олно. ID нь UUIDv7.**
-   - `key_text = join(sort_asc("dimension_id:value_id"), ";")`, `key_hash = sha256(key_text)`.
-   - `UNIQUE (tenant_id, company_id, key_hash)`.
-   - Үүсгэх: `INSERT … (id = UUIDv7, key_hash, key_text) ON CONFLICT (tenant_id, company_id, key_hash) DO NOTHING RETURNING id`. Мөр буцаагүй бол (өөр session аль хэдийн үүсгэсэн) `SELECT id … WHERE key_hash = …`. Дараа нь `dimension_set_entry`-г нэг удаа бичнэ.
-   - Хоосон багц = **nil UUID** (`00000000-0000-0000-0000-000000000000`) sentinel. BC-ийн "0"-тэй ижил. Энэ мөрийг `ICompanySeeder` компани бүрд үүсгэнэ, ингэснээр FK бүрэн ажиллана.
+2. **Set-ийг агуулгын түлхүүрээр олно. Түлхүүр нь `dimension_set_id bigint` (BC-тэй адил).**
+   - `key_text = join(sort_asc("dimension_id:value_id"), ";")`, `key_hash = sha256(key_text)` (`pgcrypto.digest`).
+   - `UNIQUE (company_id, key_hash)`.
+   - Үүсгэх: `gl.fn_get_dimension_set_id(value_ids uuid[]) → bigint`. Байгаа бол буцаана; үгүй бол `gl.dimension_set_id_seq`-ээс шинэ id авч `INSERT … ON CONFLICT (company_id, key_hash) DO NOTHING`; зэрэг үүсгэсэн өөр session ялвал түүний id-г буцаана. Дараа нь `dimension_set_entry`-г нэг удаа бичнэ.
+   - Хоосон багц = **`dimension_set_id = 0`** (BC-ийн "0"; `CHECK ((dimension_set_id = 0) = (entry_count = 0))`). Ledger-ийн `dimension_set_id bigint NOT NULL DEFAULT 0` ба `(company_id, dimension_set_id) → gl.dimension_set` FK тул 0-ийн мөрийг компани бүрд provisioning үүсгэнэ.
    - Ижил багц ямагт ижил ID авна: утгын дараалал ба эх сурвалжаас хамаарахгүй, зэрэг хүсэлт давхардал үүсгэхгүй (BC R-07..R-09).
    - Application нь компани бүрийн `key_hash → id`-г санах ойд кэшлэнэ (багц хэзээ ч өөрчлөгдөхгүй тул кэш хүчингүй болохгүй).
    - **Зөвхөн commit хийгдсэн id-г кэшлэнэ.** Posting-ийн transaction дотор шинээр үүссэн багцыг `TenantSession`-ий post-commit hook кэшид нэмнэ. Preview эсвэл алдаатай posting rollback хийгдвэл тэр багц DB-ээс арилна. Кэшид орсон бол дараагийн posting FK алдаа өгнө. Кэшээс олдоогүй id-г ямагт insert-or-select-оор авна.
 3. **Утгыг surrogate id-аар** хадгална. Утгын кодыг нэрлэж солиход багц өөрчлөгдөхгүй. Блоклогдсон утгыг posting-ийн үед дахин шалгана (R-18).
 4. **Хязгаар.** v1-д компанид **≤ 4 идэвхтэй dimension** байна. Эхний 2 нь UI-д мөрийн багана болж харагдана (shortcut).
-5. **Ledger-д global dimension-ий багана хуулахгүй.**
-   - Ledger append-only тул global-ийг сольвол дахин бичих боломжгүй.
-   - Бичил бизнесийн хэмжээнд `dimension_set_entry`-тэй JOIN хийх нь хангалттай хурдан.
-   - Хурдан тайланд `gl.account_period_balance` проекцын түлхүүрт `dimension_set_id`-г оруулна.
+5. **Global dimension (D-D2: 2 ширхэг)** нь `gl.general_ledger_setup.global_dimension_1_id/_2_id`-д тохируулагдана.
+   - Ledger мөрийн `global_dim_1_value_id`/`global_dim_2_value_id` нь `dimension_set_id`-ээс `BEFORE INSERT` trigger (`gl.fn_derive_global_dimensions`)-ээр гарна; оролтоос хүлээж авахгүй.
+   - Ledger append-only тул global dimension-ийг сольсны дараа хуучин мөрийн утга өөрчлөгдөхгүй; бусад dimension-ийн тайланг `dimension_set_entry`-тэй JOIN хийнэ.
+   - Үеийн үлдэгдлийн тайлан `gl.v_gl_account_period_balance` view-ээр (тусдаа проекцын хүснэгтгүй).
 6. **Default-ийн давуу эрэмбэ** тогтмол (BC-ийн priority хүснэгтийн оронд):
    1. хэрэглэгчийн шууд оруулсан утга;
    2. мөрийн бараа эсвэл данс;
@@ -65,7 +65,7 @@
 **Эерэг:**
 - BC-ийн семантиктай ижил. Тайлан уян хатан.
 - Dimension нэмэхэд схем өөрчлөгдөхгүй.
-- Агуулгын hash дээрх UNIQUE түлхүүр зэрэгцээ ажиллагаанд аюулгүй. ID нь бусад техникийн id-тай адил UUIDv7 ([ADR-0008](./ADR-0008-gapless-numbering.md)).
+- Агуулгын hash дээрх UNIQUE түлхүүр зэрэгцээ ажиллагаанд аюулгүй. Ledger-т хадгалах түлхүүр нь BC-тэй адил `bigint` `dimension_set_id` (0 = хоосон); мөрийн техникийн `id` нь бусадтай адил uuid ([ADR-0008](./ADR-0008-gapless-numbering.md)).
 
 **Сөрөг ба эрсдэл:**
 - **Global баганагүй** тул dimension-ээр шүүх тайланд JOIN хэрэгтэй. 5 000 тенантын хэмжээнд гүйцэтгэлийг §13-ийн SLO-оор хянана. Хэрэгтэй бол проекц нэмнэ. Ledger-ийг өөрчлөхгүй.
@@ -85,9 +85,9 @@
 | BC-ийн мод (`Dimension Set Tree Node`) | BC-тэй адил | Олон мөр, түгжээ, олон удаагийн хайлт | Hash түлхүүр илүү энгийн |
 | Dimension бүрд тусдаа багана (ERPNext) | Query энгийн | Dimension нэмэхэд схем өөрчлөгдөнө. Append-only ledger-д багана нэмэх асуудалтай | Уян хатан биш |
 | JSON `analytic_distribution` (Odoo) | Уян | Индекс ба шалгалт сул. Хувиар хуваах нь өөр семантик | BC-ийн семантикаас өөр |
-| Агуулгаас тооцсон UUIDv5 ID (DB-гүй тооцоолно) | DB-тэй харилцахгүй | UUIDv7-ийн нийтлэг дүрмээс хазайна | Техникийн id-ийн дүрмийг (UUIDv7) баримтална |
-| `bigint` serial set ID (BC шиг integer) | Жижиг түлхүүр | UUIDv7-ийн нийтлэг дүрмээс хазайна | Нэг төрлийн id |
-| Ledger-д 2 global багана (BC R-23) | Хурдан шүүлтүүр | Append-only-той зөрчилдөнө (global солих) | Бичил хэмжээнд хэрэггүй |
+| Агуулгаас тооцсон UUIDv5 ID (DB-гүй тооцоолно) | DB-тэй харилцахгүй | Ledger-ийн түлхүүр 16 байт, BC-ийн 0-тэй харгалзахгүй | Канон схем `bigint` сонгосон |
+| UUIDv7 set ID (nil UUID = хоосон) | Нэг төрлийн id | 16 байт түлхүүр ledger бүрд; BC-ийн integer семантикаас хазайна | **Сонгоогүй** (2026-10-08 нийцүүлэлт: канон схем `dimension_set_id bigint`, 0 = хоосон) |
+| Ledger-д global багана хуулахгүй (зөвхөн JOIN) | Global солиход ledger өөрчлөгдөхгүй | Шүүлтүүр удаан | **Сонгоогүй**: канон схем BC R-23-ийн дагуу `global_dim_1/2_value_id`-г insert үед trigger-ээр гаргадаг; global солиход хуучин мөр өөрчлөгдөхгүй |
 
 ## Холбоос
 

@@ -792,8 +792,8 @@ FA00002 (ачааны машин), 2027 он (4–12-р сар, 9 сар):
 | `POSITIVE_ADJMT` | + | Эхний үлдэгдэл (`OPENING`) | Дт | Кт толгойн `bal_gl_account_id` |
 | `NEGATIVE_ADJMT` | − | Барааны журнал, тооллого | Кт | Дт `inventory_adjmt_account` (эсвэл override) |
 
-- Барааны данс = `inventory_posting_setup(location_id = анхдагч эсвэл NULL, item.inventory_posting_group)`.
-- `cogs_account_id`, `inventory_adjmt_account_id` = `general_posting_setup(gen_bus, item.gen_prod)`, `'*'` fallback (D-F1). Борлуулалтад `gen_bus` = харилцагчийнх. Барааны журналд `gen_bus` = NULL (`'*'` мөр).
+- Барааны данс = `inventory_posting_setup(location_id = анхдагч эсвэл NULL, item.inventory_posting_group_id)`.
+- `cogs_account_id`, `inventory_adjmt_account_id` = `general_posting_setup(gen_bus, item.gen_prod_posting_group_id)`, `'*'` fallback (D-F1). Борлуулалтад `gen_bus` = харилцагчийнх. Барааны журналд `gen_bus` = NULL (`'*'` мөр).
 - Seed-ийн `direct_cost_applied_account_id` R2-т ашиглагдахгүй (худалдан авалт барааны дансыг шууд дебитлэнэ, FR-INV-003).
 
 ---
@@ -1530,7 +1530,7 @@ DB-ийн хөрвүүлэлт (14 §9.6-д нэмэх): `23514` + `item_cost_st
 | OQ-INV-04 | Тооллогын дутагдал/илүүдлийг 6120 (COGS ангилал) эсвэл 8440/8240 (бусад зардал/орлого) руу бичих үү? Нярав хариуцуулах (1350) урсгал хэрэгтэй юу? | 6120; SCR-INV-03-аар тохируулах | ⚠ Нягтлан зөвлөх |
 | OQ-INV-05 | Хоцорсон огноотой нийлүүлэгчийн нэхэмжлэх (бараа өмнө ирсэн) түгээмэл үед BLOCK бодлого хэт хатуу уу? Пилотоор хэмжих | R2: BLOCK; R3: RECOST сонголт | Пилот |
 | OQ-INV-06 | Тээвэр, гаалийн зардлыг (landed cost) барааны өртөгт нэмэх (item charge) R2-т хэрэгтэй юу (mn-tax R7)? | R3 (recost-той хамт) | Бүтээгдэхүүний эзэн |
-| OQ-ARCH-01 | 02 §4.2.8-д `phys_count`, `phys_count_line` гэж бичсэн; энэ spec SCR-INV-01-ээр `item_journal` (`PHYS_COUNT` төрөл) болгосон. 02-ыг шинэчлэх | SCR-INV-01 | Архитектор |
+| OQ-ARCH-01 | ~~02 §4.2.8-д `phys_count`, `phys_count_line` гэж бичсэн; энэ spec SCR-INV-01-ээр `item_journal` (`PHYS_COUNT` төрөл) болгосон. 02-ыг шинэчлэх~~ **Шийдэгдсэн (2026-10-08):** 02 §4.2.8 ба [110_inv.sql](./db/schema/110_inv.sql) нь `inv.item_journal` (+ `posted_item_journal`) хэрэглэдэг ([REVIEW-consistency.md](./REVIEW-consistency.md)) | SCR-INV-01 | Архитектор |
 | OQ-ARCH-02 | 02 §4.2.8 нь `ICostCalculator`-ийг "posting transaction дотор, advisory lock-ийн дор" гэж заасан; энэ spec (S11-10) өртгийг A үед тооцоод B үед `row_version`-оор шалгадаг. Аль нь вэ? | S11-10 (05-ийн `PostingDocument` A үед бүрэн угсрагдах загвартай нийцнэ); 02-ыг шинэчлэх | Архитектор |
 | OQ-ARCH-03 | 03 §8 "R2-т схемийн өөрчлөлтгүйгээр идэвхжинэ" (ҮХ, бараа) гэсэн нь SCR-FA-01/02, SCR-INV-01-тэй зөрнө (TAX run POSTED төлөвийг одоогийн CHECK хориглодог; тооллого/барааны журналын хүснэгт байхгүй) | 03-ыг засах | Архитектор |
 

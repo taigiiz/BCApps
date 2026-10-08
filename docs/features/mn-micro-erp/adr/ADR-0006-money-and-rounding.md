@@ -26,22 +26,21 @@
    - `Money` value object = (`decimal Amount`, `CurrencyCode Currency`).
    - Бөөрөнхийлөлтийг **зөвхөн** `MoneyMath.Round(value, decimals)` хийнэ. Энэ нь `Math.Round(value, decimals, MidpointRounding.AwayFromZero)`-тэй ижил.
    - Domain ба persistence давхаргад `double`, `float` ба `MidpointRounding` заагаагүй `Math.Round` (`Math.Round(x, 2)` ч мөн, учир нь default нь `ToEven`) хэрэглэвэл analyzer ба architecture test алдаа гаргана. `Math.Round` зөвхөн `MoneyMath.Round` дотор байна.
-2. **DB-ийн домэйн:**
+2. **DB-ийн домэйн** (канон: [010_platform.sql](../db/schema/010_platform.sql), [DECISIONS](../DECISIONS.md) D-C1):
 
    | Домэйн | Төрөл | Хэрэглээ |
    |---|---|---|
-   | `core.amount` | `numeric(19,4)`, `NaN` хориотой | Баримт ба FCY дүн |
-   | `core.amount_lcy` | `numeric(19,4)`, `VALUE = round(VALUE, 2)` | MNT ledger дүн |
-   | `core.unit_price` | `numeric(19,6)` | Нэгжийн үнэ |
-   | `core.qty` | `numeric(19,4)` | Тоо хэмжээ |
-   | `core.pct` | `numeric(9,6)`, 0–100 | Хувь |
-   | `core.fx_rate` | **`numeric(38,18)`**, `> 0 AND < 1e10` | Ханш |
+   | `platform.amount` | `numeric(19,4)` | Бүх мөнгөн дүн (баримт, FCY, LCY/MNT ledger); валютын нарийвчлалаар бөөрөнхийлж хадгална |
+   | `platform.unit_amount` | `numeric(19,6)` | Нэгжийн үнэ / өртөг |
+   | `platform.quantity` | `numeric(19,5)` | Тоо хэмжээ |
+   | `platform.percent` | `numeric(9,5)`, 0–100 | Хувь |
+   | `platform.exch_rate` | **`numeric(38,18)`** | Ханш ба валютын коэффициент |
 
-   `< 1e10` хязгаар нь ханшийг `System.Decimal`-ийн 28–29 оронд багтаана.
-3. **Нарийвчлал.** Дүнг хадгалахаас өмнө **валютын нарийвчлалаар** бөөрөнхийлнэ. `currency.ref_currency.amount_precision`-ийн утга: MNT 0.01, USD 0.01, JPY 1. Бүртгэлийн валют MNT, нарийвчлал нь **0.01-ээр тогтмол**. eBarimt мөн 2 оронтой. Хэвлэх нэгж (₮ эсвэл мянган ₮) нь зөвхөн харуулалтын параметр.
+   LCY-д тусдаа domain (`amount_lcy`) байхгүй: 0.01-ийн бөөрөнхийлөлтийг engine/writer (`MoneyMath.Round`) хангаж, integration тест (`AssertNoHiddenRounding`) ба `platform.fn_integrity_report`-ийн I-08 (`UNROUNDED_MNT`) шалгана. Ханшийн `0 < rate < 1e10` хязгаарыг (`System.Decimal`-ийн 28–29 оронд багтаах) application шалгана.
+3. **Нарийвчлал.** Дүнг хадгалахаас өмнө **валютын нарийвчлалаар** бөөрөнхийлнэ. `fx.currency.amount_rounding_precision` (ISO анхдагч нь `fx.iso_currency.minor_units`)-ийн утга: MNT 0.01, USD 0.01, JPY 1. Бүртгэлийн валют MNT, нарийвчлал нь **0.01-ээр тогтмол**. eBarimt мөн 2 оронтой. Хэвлэх нэгж (₮ эсвэл мянган ₮) нь зөвхөн харуулалтын параметр.
 4. **Бөөрөнхийлөх дүрэм** ([02-architecture.md](../02-architecture.md) §8.4):
    - мөрийн дүн `round(qty × unit_price) − хөнгөлөлт`;
-   - НӨАТ ба НХАТ нь `tax_code` бүлэг бүрд нэг удаа бөөрөнхийлөгдөж, мөрт running remainder-ээр хуваарилагдана;
+   - НӨАТ ба НХАТ нь VAT identifier бүлэг бүрд нэг удаа бөөрөнхийлөгдөж, мөрт running remainder-ээр хуваарилагдана (D-E3);
    - НӨАТ-тэй үнэд `VAT = round(gross × r/(100+r))`;
    - FCY→LCY хуримтлагдсан нийлбэрийн аргаар;
    - НӨАТ-ын бөөрөнхийлөлтийн төрөл `NEAREST` (default), `UP`, `DOWN` (абсолют утгаар).

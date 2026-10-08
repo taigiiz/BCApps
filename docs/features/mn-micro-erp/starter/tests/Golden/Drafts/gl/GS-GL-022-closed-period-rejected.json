@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "id": "GS-GL-022",
+  "title": "Хаалттай үе рүү бичихийг татгалзах, нээлттэй үе хэвийн",
+  "description": "Sprint 0 skeleton scenario (not yet in the 16 §12 catalog). D-D3: 2026-01 CLOSED; 01-20-ны журнал 422 gl.period_closed (preview ч мөн адил), юу ч бичигдэхгүй; 02-03-ны журнал GJ-2026-00001.",
+  "area": "GL",
+  "release": "R1",
+  "rules": "NOW",
+  "refs": ["FR-GL-024", "D-D3", "D-C7"],
+  "tags": ["sprint0-skeleton"],
+  "signedOffBy": [
+    { "name": "ledger-owners (Sprint 0 skeleton)", "role": "LEDGER_OWNER", "date": "2026-10-08", "note": "Draft. Needs ACCOUNTING_ADVISOR sign-off and a catalog entry before moving to Scenarios/." }
+  ],
+  "setup": {
+    "baseline": "BASE-VAT",
+    "companies": [ { "key": "C1", "overrides": { "periods": [ { "month": "2026-01", "status": "CLOSED" } ] } } ]
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "title": "Хаалттай 1-р сар руу журнал",
+      "at": "2026-02-05T09:00",
+      "as": "acc",
+      "company": "C1",
+      "action": "journal.post",
+      "input": { "lines": [ { "documentNo": "J-000001", "postingDate": "2026-01-20", "account": "7210", "balAccount": "2650", "amount": "500000.00" } ] },
+      "expectOutcome": { "status": "ERROR", "http": 422, "codes": ["gl.period_closed"] },
+      "expect": { "noRowsWritten": true }
+    },
+    {
+      "id": "s2",
+      "title": "Нээлттэй 2-р сар руу журнал",
+      "at": "2026-02-05T09:05",
+      "as": "acc",
+      "company": "C1",
+      "action": "journal.post",
+      "input": { "lines": [ { "documentNo": "J-000002", "postingDate": "2026-02-03", "account": "7210", "balAccount": "2650", "amount": "500000.00" } ] },
+      "expectOutcome": { "status": "OK", "http": 201 },
+      "expect": {
+        "glEntries": [
+          { "transaction": "T1", "account": "7210", "dr": "500000.00", "documentNo": "GJ-2026-00001", "postingDate": "2026-02-03" },
+          { "transaction": "T1", "account": "2650", "cr": "500000.00", "documentNo": "GJ-2026-00001", "postingDate": "2026-02-03" }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "periods": [ { "month": "2026-01", "status": "CLOSED" }, { "month": "2026-02", "status": "OPEN" } ],
+    "balances": [ { "account": "7210", "asOf": "2026-01-31", "zero": true } ]
+  }
+}

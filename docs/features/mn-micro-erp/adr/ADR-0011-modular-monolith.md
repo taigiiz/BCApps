@@ -14,7 +14,7 @@
 ## Шийдвэр
 
 1. **Нэг deployable.** Нэг solution, нэг container image, гурван эхлэх цэг: `Erp.Api`, `Erp.Worker`, `Erp.Migrator` (migration-ий тусдаа алхам).
-2. **13 модуль:** Platform, Integration, Currency, GeneralLedger, Tax, EBarimt, Parties, Inventory, FixedAssets, Cash&Bank, Sales, Purchases, Reporting.
+2. **13 модуль** (`src/Modules/<Module>` → PostgreSQL схем, [02-architecture.md](../02-architecture.md) §4.1): Platform (`platform`, `identity`, `audit`), Integration (`integration`), Currency (`fx`), GeneralLedger (`gl`), Tax (`tax`), EBarimt (`ebarimt`), Parties (`party`), Inventory (`inv`), FixedAssets (`fa`), CashBank (`bank`), Sales (`sales`), Purchases (`purchase`), Reporting (`rpt`). Схемийн нэрийн эх сурвалж нь [db/schema](../db/schema/) ([DECISIONS](../DECISIONS.md) D-K1).
    - Модуль бүр **өөрийн PostgreSQL схемтэй**.
    - Модуль бүр 5 project-тэй: `Erp.<M>.Contracts` (нийтийн), `Erp.<M>.Domain`, `Erp.<M>.Application`, `Erp.<M>.Infrastructure`, `Erp.<M>.Api` (бусад нь `internal`). Нийтлэг код `Erp.BuildingBlocks.*`-д байна ([18-dev-setup.md](../18-dev-setup.md) §2).
 3. **Хамаарлын матриц** ([02-architecture.md](../02-architecture.md) §4.3) мөчлөггүй граф (DAG) байна.
@@ -38,8 +38,8 @@
    - ledger-т зөвхөн engine ба writer бичих;
    - eBarimt receipt client-д retry байхгүй;
    - endpoint бүрт эрхийн шаардлага байх.
-9. **Ledger-ийн эзэмшил.** Ledger хүснэгт бүрийг эзэмшигч модуль нь өөрийн `ILedgerWriter<T>`-ээр, posting service-ийн нээсэн transaction дотор бичнэ: `gl.*`-г GeneralLedger, `tax.vat_entry`-г Tax, `parties.*_ledger_entry`-г Parties, `cash_bank.bank_ledger_entry`-г Cash&Bank, `inventory.*`-г Inventory, `fixed_assets.fa_ledger_entry`-г FixedAssets. Architecture test: ledger хүснэгтийн `INSERT` SQL зөвхөн posting service эсвэл тухайн хүснэгтийг эзэмшигч модулийн ledger writer-т байна. GL өөр модулийн схемд бичихгүй.
-   - **Авлага/өглөгийн ledger Parties-д** байна (BC-д Sales/Receivables, Purchases/Payables-д байдаг). Sales, Purchases, Cash&Bank гурвуулаа үүнд бичдэг. Ledger-ийг Sales-д байрлуулбал Sales → Cash&Bank ("одоо төлсөн" төлбөр) ба Cash&Bank → Sales (төлбөр тулгах) мөчлөг үүснэ.
+9. **Ledger-ийн эзэмшил.** Ledger хүснэгт бүрийг эзэмшигч модуль нь өөрийн `ILedgerWriter<T>`-ээр, posting service-ийн нээсэн transaction дотор бичнэ: `gl.*`-г GeneralLedger, `tax.vat_entry`-г Tax, `party.cust_ledger_entry`/`party.vendor_ledger_entry` + detailed-ийг Parties, `bank.bank_ledger_entry`-г CashBank, `inv.*`-г Inventory, `fa.fa_ledger_entry`-г FixedAssets. Architecture test: ledger хүснэгтийн `INSERT` SQL зөвхөн posting service эсвэл тухайн хүснэгтийг эзэмшигч модулийн ledger writer-т байна. GL өөр модулийн схемд бичихгүй.
+   - **Авлага/өглөгийн ledger Parties-д (`party` схем)** байна ([DECISIONS](../DECISIONS.md) D-K2; BC-д Sales/Receivables, Purchases/Payables-д байдаг). Sales, Purchases, CashBank гурвуулаа үүнд Parties-ийн `ILedgerWriter`-ээр бичдэг; Sales/Purchase модуль зөвхөн баримтаа эзэмшинэ. Ledger-ийг Sales-д байрлуулбал Sales → CashBank ("одоо төлсөн" төлбөр) ба CashBank → Sales (төлбөр тулгах) мөчлөг үүснэ.
 10. **Ирээдүйд модулийг тусгаарлах.** Модулийг тусдаа service болгох шаардлага гарвал (жишээ нь EBarimt-ийг гаднаас ажиллуулах) Contracts ба outbox нь шилжилтийн зам болно. Энэ нь v1-ийн зорилго **биш**.
 
 ## Үр дагавар

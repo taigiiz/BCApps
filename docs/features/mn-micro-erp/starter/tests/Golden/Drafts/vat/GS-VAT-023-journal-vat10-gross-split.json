@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "id": "GS-VAT-023",
+  "title": "Журналын НӨАТ 10% (gross арга): 110 000 = 100 000 + 10 000, VAT entry суурь мөртэй холбогдоно",
+  "description": "Sprint 0 skeleton scenario (not yet in the 08 §11.2 / 16 §12.4 catalog). 05-posting-engine.md §6.4: VAT = round(A × 10/110) = 10 000, суурь = 100 000. Борлуулалт: Дт 1580 110 000 / Кт 5110 100 000 / Кт 2300 10 000; худалдан авалт: Дт 7213 100 000 / Дт 1300 10 000 / Кт 2650 110 000.",
+  "area": "VAT",
+  "release": "R1",
+  "rules": "NOW",
+  "refs": ["FR-TAX-007", "D-E1", "D-E3", "D-E9", "ADR-0006"],
+  "tags": ["sprint0-skeleton"],
+  "signedOffBy": [
+    { "name": "ledger-owners (Sprint 0 skeleton)", "role": "LEDGER_OWNER", "date": "2026-10-08", "note": "Draft. Needs ACCOUNTING_ADVISOR and TAX_ADVISOR sign-off before moving to Scenarios/." }
+  ],
+  "setup": { "baseline": "BASE-VAT", "companies": [ { "key": "C1" } ] },
+  "steps": [
+    {
+      "id": "s1",
+      "title": "Үйлчилгээний борлуулалт журналаар, НӨАТ-тэй 110 000",
+      "at": "2026-03-15T10:00",
+      "as": "acc",
+      "company": "C1",
+      "action": "journal.post",
+      "input": {
+        "lines": [
+          { "documentNo": "J-000010", "account": "1580", "amount": "110000.00", "description": "Зөвлөх үйлчилгээ (НӨАТ-тэй)" },
+          { "documentNo": "J-000010", "account": "5110", "amount": "-110000.00", "genPostingType": "SALE", "genBusPostingGroup": "DOMESTIC",
+            "genProdPostingGroup": "SERVICES", "vatBusPostingGroup": "DOMESTIC", "vatProdPostingGroup": "VAT10" }
+        ]
+      },
+      "expectOutcome": { "status": "OK", "http": 201 },
+      "expect": {
+        "glEntries": [
+          { "transaction": "T1", "account": "1580", "dr": "110000.00" },
+          { "transaction": "T1", "account": "5110", "cr": "100000.00", "vatAmount": "-10000.00" },
+          { "transaction": "T1", "account": "2300", "cr": "10000.00" }
+        ],
+        "vatEntries": [
+          { "type": "SALE", "vatCategory": "VAT10", "calcType": "NORMAL", "vatPercent": "10", "base": "-100000.00", "amount": "-10000.00",
+            "vatDate": "2026-03-15", "ebarimtTaxType": "VAT_ABLE", "closed": false }
+        ]
+      }
+    },
+    {
+      "id": "s2",
+      "title": "Бичиг хэргийн худалдан авалт журналаар, НӨАТ-тэй 110 000",
+      "at": "2026-03-16T10:00",
+      "as": "acc",
+      "company": "C1",
+      "action": "journal.post",
+      "input": {
+        "lines": [
+          { "documentNo": "J-000011", "account": "7213", "balAccount": "2650", "amount": "110000.00", "genPostingType": "PURCHASE",
+            "genBusPostingGroup": "DOMESTIC", "genProdPostingGroup": "MISC", "vatBusPostingGroup": "DOMESTIC", "vatProdPostingGroup": "VAT10",
+            "description": "Бичиг хэрэг (НӨАТ-тэй)" }
+        ]
+      },
+      "expectOutcome": { "status": "OK", "http": 201 },
+      "expect": {
+        "glEntries": [
+          { "transaction": "T1", "account": "7213", "dr": "100000.00", "vatAmount": "10000.00" },
+          { "transaction": "T1", "account": "1300", "dr": "10000.00" },
+          { "transaction": "T1", "account": "2650", "cr": "110000.00" }
+        ],
+        "vatEntries": [
+          { "type": "PURCHASE", "vatCategory": "VAT10", "calcType": "NORMAL", "vatPercent": "10", "base": "100000.00", "amount": "10000.00",
+            "vatDate": "2026-03-16", "deductibleConfirmed": false }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "balances": [
+      { "account": "2300", "asOf": "2026-03-31", "cr": "10000.00" },
+      { "account": "1300", "asOf": "2026-03-31", "dr": "10000.00" },
+      { "account": "5110", "asOf": "2026-03-31", "cr": "100000.00" }
+    ]
+  }
+}

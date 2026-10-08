@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Pure G/L rules (balanced voucher, rounding, postable account, open period / posting window). References the shared kernel only. -->
+  <ItemGroup>
+    <ProjectReference Include="../../../BuildingBlocks/Erp.BuildingBlocks.Domain/Erp.BuildingBlocks.Domain.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,2061 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.mn-erp.local/golden-scenario/v1.json",
+  "title": "MN micro ERP golden scenario v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "title",
+    "area",
+    "release",
+    "rules",
+    "refs",
+    "signedOffBy",
+    "setup",
+    "steps"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "$ref": "#/$defs/scenarioId"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 160
+    },
+    "description": {
+      "type": "string"
+    },
+    "area": {
+      "enum": [
+        "GL",
+        "VAT",
+        "SAL",
+        "AR",
+        "PUR",
+        "AP",
+        "CASH",
+        "REC",
+        "FX",
+        "CLOSE",
+        "RPT",
+        "EBR",
+        "FA",
+        "INV"
+      ]
+    },
+    "release": {
+      "enum": [
+        "R1",
+        "R2",
+        "R3"
+      ]
+    },
+    "rules": {
+      "enum": [
+        "NOW",
+        "2027"
+      ]
+    },
+    "status": {
+      "enum": [
+        "SIGNED",
+        "DEPRECATED"
+      ],
+      "default": "SIGNED"
+    },
+    "refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^((FR|NFR|CMP)-[A-Z0-9-]+|D-[A-K][0-9]+|INV-[0-9]{2}|AT-[A-Z]+-[0-9]+|ADR-[0-9]{4}|TST-[A-Z]+-[0-9]{2})$"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "uniqueItems": true
+    },
+    "extends": {
+      "$ref": "#/$defs/scenarioId"
+    },
+    "signedOffBy": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/signOff"
+      }
+    },
+    "variants": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/variant"
+      }
+    },
+    "setup": {
+      "$ref": "#/$defs/setup"
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "expect": {
+      "$ref": "#/$defs/expectations"
+    },
+    "invariants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "disable",
+        "reason"
+      ],
+      "properties": {
+        "disable": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^I-[0-9]{2}$"
+          },
+          "minItems": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 10
+        }
+      }
+    }
+  },
+  "$defs": {
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^GS-(GL|VAT|SAL|AR|PUR|AP|CASH|REC|FX|CLOSE|RPT|EBR|FA|INV)-[0-9]{3}$"
+    },
+    "money": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]{0,14})\\.[0-9]{2}$"
+    },
+    "fcyAmount": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]{0,14})(\\.[0-9]{1,4})?$"
+    },
+    "unitPrice": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,12})(\\.[0-9]{1,6})?$"
+    },
+    "qty": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]{0,13})(\\.[0-9]{1,5})?$"
+    },
+    "rate": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,9})(\\.[0-9]{1,18})?$"
+    },
+    "percent": {
+      "type": "string",
+      "pattern": "^(100(\\.0{1,5})?|[0-9]{1,2}(\\.[0-9]{1,5})?)$"
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+    },
+    "businessTime": {
+      "type": "string",
+      "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]$"
+    },
+    "accountNo": {
+      "type": "string",
+      "pattern": "^[0-9]{4}$"
+    },
+    "code": {
+      "type": "string",
+      "pattern": "^[A-Z0-9_\\-\\.]{1,20}$"
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,30}$"
+    },
+    "varRef": {
+      "type": "string",
+      "pattern": "^\\$[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)*$"
+    },
+    "relEntry": {
+      "type": "string",
+      "pattern": "^(#[0-9]{1,4}|\\$[a-zA-Z][a-zA-Z0-9_.]*)$"
+    },
+    "relTx": {
+      "type": "string",
+      "pattern": "^(T[0-9]{1,3}|\\$[a-zA-Z][a-zA-Z0-9_.]*)$"
+    },
+    "errorCode": {
+      "type": "string",
+      "pattern": "^[a-z]+(\\.[a-z0-9_]+)+$"
+    },
+    "documentNo": {
+      "type": "string",
+      "pattern": "^([A-Z]{1,4}-20[0-9]{2}-[0-9]{5}|\\*\\*\\*|\\$[a-zA-Z][a-zA-Z0-9_.]*)$"
+    },
+    "signOff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "role",
+        "date"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 2
+        },
+        "role": {
+          "enum": [
+            "ACCOUNTING_ADVISOR",
+            "TAX_ADVISOR",
+            "PILOT_ACCOUNTANT",
+            "LEDGER_OWNER"
+          ]
+        },
+        "date": {
+          "$ref": "#/$defs/date"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "rules"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/key"
+        },
+        "rules": {
+          "enum": [
+            "NOW",
+            "2027"
+          ]
+        },
+        "shiftDates": {
+          "type": "string",
+          "pattern": "^[+-][0-9]{1,2}[DMY]$"
+        },
+        "expectOverride": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/expectations"
+          }
+        }
+      }
+    },
+    "setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline",
+        "companies"
+      ],
+      "properties": {
+        "baseline": {
+          "enum": [
+            "BASE-VAT",
+            "BASE-NONVAT",
+            "NONE"
+          ]
+        },
+        "users": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/user"
+          }
+        },
+        "companies": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/companySetup"
+          }
+        },
+        "posapiMock": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "receiptTimeoutSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "faults": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "merchantTin",
+                  "fault"
+                ],
+                "properties": {
+                  "merchantTin": {
+                    "type": "string",
+                    "pattern": "^[0-9]{11,14}$"
+                  },
+                  "fault": {
+                    "enum": [
+                      "SUCCESS",
+                      "DELAY",
+                      "REJECT",
+                      "EMPTY_RESPONSE",
+                      "CONNECTION_RESET",
+                      "HTTP_502",
+                      "MALFORMED",
+                      "AMOUNT_MISMATCH",
+                      "DOWN"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "user": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "role"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/key"
+        },
+        "role": {
+          "enum": [
+            "OWNER",
+            "ACCOUNTANT",
+            "EXTERNAL_ACCOUNTANT",
+            "SALES_CLERK",
+            "VIEWER"
+          ]
+        },
+        "companies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/key"
+          }
+        }
+      }
+    },
+    "companySetup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/key"
+        },
+        "name": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "vatRegistered": {
+              "type": "boolean"
+            },
+            "cityTaxPayer": {
+              "type": "boolean"
+            },
+            "tin": {
+              "type": "string",
+              "pattern": "^[0-9]{11,14}$"
+            },
+            "districtCode": {
+              "type": "string",
+              "pattern": "^[0-9]{4}$"
+            },
+            "firstFiscalYear": {
+              "type": "integer",
+              "minimum": 2020,
+              "maximum": 2100
+            },
+            "invoiceRoundingEnabled": {
+              "type": "boolean"
+            },
+            "allowPostingFrom": {
+              "$ref": "#/$defs/date"
+            },
+            "allowPostingTo": {
+              "$ref": "#/$defs/date"
+            },
+            "maxVatDifferenceAllowed": {
+              "$ref": "#/$defs/money"
+            },
+            "salesDiscountPosting": {
+              "enum": [
+                "NO_DISCOUNTS",
+                "INVOICE_DISCOUNTS",
+                "LINE_DISCOUNTS",
+                "ALL_DISCOUNTS"
+              ]
+            },
+            "globalDimensions": {
+              "type": "array",
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/code"
+              }
+            }
+          }
+        },
+        "overrides": {
+          "$ref": "#/$defs/overrides"
+        },
+        "openingBalances": {
+          "$ref": "#/$defs/openingBalances"
+        }
+      }
+    },
+    "overrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "glAccounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "account"
+            ],
+            "properties": {
+              "account": {
+                "$ref": "#/$defs/accountNo"
+              },
+              "blocked": {
+                "type": "boolean"
+              },
+              "directPosting": {
+                "type": "boolean"
+              },
+              "vatProdPostingGroup": {
+                "$ref": "#/$defs/code"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "generalPostingSetup": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "bus",
+              "prod"
+            ],
+            "properties": {
+              "bus": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "prod": {
+                "$ref": "#/$defs/code"
+              },
+              "delete": {
+                "type": "boolean"
+              },
+              "salesAccount": {
+                "$ref": "#/$defs/accountNo"
+              },
+              "purchaseAccount": {
+                "$ref": "#/$defs/accountNo"
+              },
+              "blocked": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "periods": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "month",
+              "status"
+            ],
+            "properties": {
+              "month": {
+                "type": "string",
+                "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])$"
+              },
+              "status": {
+                "enum": [
+                  "OPEN",
+                  "CLOSED",
+                  "LOCKED"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "vatReturnPeriods": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "month",
+              "status"
+            ],
+            "properties": {
+              "month": {
+                "type": "string",
+                "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])$"
+              },
+              "status": {
+                "enum": [
+                  "OPEN",
+                  "CLOSED",
+                  "SUBMITTED"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "bankAccounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "kind",
+              "postingGroup"
+            ],
+            "properties": {
+              "code": {
+                "$ref": "#/$defs/code"
+              },
+              "kind": {
+                "enum": [
+                  "BANK",
+                  "CASH",
+                  "WALLET"
+                ]
+              },
+              "postingGroup": {
+                "$ref": "#/$defs/code"
+              },
+              "currency": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              },
+              "bankAccountNo": {
+                "type": "string"
+              },
+              "balanceLastStatement": {
+                "$ref": "#/$defs/money"
+              },
+              "lastStatementNo": {
+                "type": "string"
+              },
+              "preventNegativeBalance": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "customers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/party"
+          }
+        },
+        "vendors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/party"
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "genProd",
+              "vatProd"
+            ],
+            "properties": {
+              "code": {
+                "$ref": "#/$defs/code"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "SERVICE",
+                  "NON_INVENTORY",
+                  "INVENTORY"
+                ]
+              },
+              "genProd": {
+                "$ref": "#/$defs/code"
+              },
+              "vatProd": {
+                "$ref": "#/$defs/code"
+              },
+              "classificationCode": {
+                "type": "string",
+                "pattern": "^[0-9]{7}$"
+              },
+              "taxProductCode": {
+                "type": "string"
+              },
+              "measureUnit": {
+                "type": "string"
+              },
+              "barCode": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "values"
+            ],
+            "properties": {
+              "code": {
+                "$ref": "#/$defs/code"
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/code"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "vatPostingSetup": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "bus",
+              "prod"
+            ],
+            "properties": {
+              "bus": {
+                "$ref": "#/$defs/code"
+              },
+              "prod": {
+                "$ref": "#/$defs/code"
+              },
+              "ebarimtTaxProductCode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nonDeductibleVatPercent": {
+                "$ref": "#/$defs/percent"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "fiscalYears": {
+          "description": "Baseline-ийн санхүүгийн жилийн жагсаалтыг орлоно",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 2020,
+            "maximum": 2100
+          }
+        },
+        "currencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          }
+        },
+        "exchangeRates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "currency",
+              "startingDate",
+              "rate"
+            ],
+            "properties": {
+              "currency": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              },
+              "startingDate": {
+                "$ref": "#/$defs/date"
+              },
+              "rate": {
+                "$ref": "#/$defs/rate"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "ebarimt": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "merchantTin": {
+              "type": "string",
+              "pattern": "^[0-9]{11,14}$"
+            },
+            "posNo": {
+              "type": "string"
+            },
+            "nonVatPayerTaxType": {
+              "enum": [
+                "NOT_VAT",
+                "VAT_FREE"
+              ]
+            }
+          }
+        },
+        "textToAccountRules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "text",
+              "direction",
+              "account"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "direction": {
+                "enum": [
+                  "IN",
+                  "OUT"
+                ]
+              },
+              "account": {
+                "$ref": "#/$defs/accountNo"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "taxParameters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "paramCode",
+              "effectiveFrom",
+              "value"
+            ],
+            "properties": {
+              "paramCode": {
+                "type": "string"
+              },
+              "effectiveFrom": {
+                "$ref": "#/$defs/date"
+              },
+              "effectiveTo": {
+                "$ref": "#/$defs/date"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "party": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/code"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "ORGANIZATION",
+            "INDIVIDUAL",
+            "FOREIGN"
+          ]
+        },
+        "tin": {
+          "type": "string",
+          "pattern": "^[0-9]{7,14}$"
+        },
+        "postingGroup": {
+          "$ref": "#/$defs/code"
+        },
+        "genBus": {
+          "$ref": "#/$defs/code"
+        },
+        "vatBus": {
+          "$ref": "#/$defs/code"
+        },
+        "paymentTerms": {
+          "$ref": "#/$defs/code"
+        },
+        "paymentMethod": {
+          "$ref": "#/$defs/code"
+        },
+        "pricesIncludingVat": {
+          "type": "boolean"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "bankAccountNo": {
+          "type": "string"
+        },
+        "blocked": {
+          "type": "boolean"
+        },
+        "applicationMethod": {
+          "enum": [
+            "MANUAL",
+            "APPLY_TO_OLDEST"
+          ]
+        }
+      }
+    },
+    "openingBalances": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "date"
+      ],
+      "properties": {
+        "date": {
+          "$ref": "#/$defs/date"
+        },
+        "gl": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/drCrLine"
+          }
+        },
+        "bank": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "bankAccount"
+            ],
+            "properties": {
+              "bankAccount": {
+                "$ref": "#/$defs/code"
+              },
+              "dr": {
+                "$ref": "#/$defs/money"
+              },
+              "cr": {
+                "$ref": "#/$defs/money"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "customers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/openItem"
+          }
+        },
+        "vendors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/openItem"
+          }
+        }
+      }
+    },
+    "openItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "party",
+        "documentNo",
+        "documentDate",
+        "dueDate",
+        "amount"
+      ],
+      "properties": {
+        "party": {
+          "$ref": "#/$defs/code"
+        },
+        "documentNo": {
+          "type": "string"
+        },
+        "documentType": {
+          "enum": [
+            "INVOICE",
+            "CREDIT_MEMO",
+            "PAYMENT"
+          ]
+        },
+        "documentDate": {
+          "$ref": "#/$defs/date"
+        },
+        "dueDate": {
+          "$ref": "#/$defs/date"
+        },
+        "amount": {
+          "$ref": "#/$defs/money"
+        }
+      }
+    },
+    "drCrLine": {
+      "type": "object",
+      "required": [
+        "account"
+      ],
+      "properties": {
+        "account": {
+          "$ref": "#/$defs/accountNo"
+        },
+        "dr": {
+          "$ref": "#/$defs/money"
+        },
+        "cr": {
+          "$ref": "#/$defs/money"
+        },
+        "transaction": {
+          "$ref": "#/$defs/relTx"
+        },
+        "documentNo": {
+          "$ref": "#/$defs/documentNo"
+        },
+        "postingDate": {
+          "$ref": "#/$defs/date"
+        },
+        "isClosing": {
+          "type": "boolean"
+        },
+        "sourceCode": {
+          "$ref": "#/$defs/code"
+        },
+        "reasonCode": {
+          "$ref": "#/$defs/code"
+        },
+        "dimensions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/code"
+          }
+        },
+        "vatAmount": {
+          "$ref": "#/$defs/money"
+        },
+        "reversedEntry": {
+          "$ref": "#/$defs/relEntry"
+        },
+        "entry": {
+          "$ref": "#/$defs/relEntry"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "dr"
+          ],
+          "not": {
+            "required": [
+              "cr"
+            ]
+          }
+        },
+        {
+          "required": [
+            "cr"
+          ],
+          "not": {
+            "required": [
+              "dr"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "at",
+        "action"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/key"
+        },
+        "title": {
+          "type": "string"
+        },
+        "at": {
+          "$ref": "#/$defs/businessTime"
+        },
+        "as": {
+          "$ref": "#/$defs/key"
+        },
+        "company": {
+          "$ref": "#/$defs/key"
+        },
+        "action": {
+          "$ref": "#/$defs/action"
+        },
+        "input": {
+          "type": "object"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        },
+        "previewCheck": {
+          "type": "boolean",
+          "default": true
+        },
+        "repeat": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "faultInjection": {
+          "enum": [
+            "AFTER_NUMBER_ALLOCATION",
+            "BEFORE_COMMIT"
+          ]
+        },
+        "expectOutcome": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "OK",
+                "ERROR"
+              ]
+            },
+            "http": {
+              "type": "integer",
+              "minimum": 200,
+              "maximum": 599
+            },
+            "codes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/errorCode"
+              },
+              "uniqueItems": true
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "bodyContains": {
+              "type": "object",
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "capture": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^\\$\\..+"
+          }
+        },
+        "expect": {
+          "$ref": "#/$defs/expectations"
+        }
+      }
+    },
+    "action": {
+      "enum": [
+        "openingBalance.post",
+        "journal.post",
+        "journal.preview",
+        "standardJournal.copy",
+        "salesInvoice.post",
+        "salesInvoice.preview",
+        "salesInvoice.cancel",
+        "salesCreditMemo.post",
+        "purchaseInvoice.post",
+        "purchaseCreditMemo.post",
+        "purchaseReceipt.register",
+        "purchaseReceipt.confirm",
+        "payment.post",
+        "cashCount.post",
+        "transfer.post",
+        "ledgerEntry.apply",
+        "ledgerEntry.unapply",
+        "ledgerEntry.editDueDate",
+        "transaction.reverse",
+        "transaction.correctionProposal",
+        "register.reverse",
+        "bankStatement.import",
+        "bankReconciliation.create",
+        "bankReconciliation.autoMatch",
+        "bankReconciliation.match",
+        "bankReconciliation.post",
+        "bankAccountStatement.undo",
+        "period.close",
+        "period.reopen",
+        "period.lock",
+        "fiscalYear.close",
+        "vatReturn.close",
+        "vatReturn.submit",
+        "vatReturn.reopen",
+        "vatEntry.rejectDeduction",
+        "fx.rate.set",
+        "fx.revalue",
+        "ebarimt.dispatch",
+        "ebarimt.resolve",
+        "ebarimt.resend",
+        "ebarimt.confirmManualVoid",
+        "job.run",
+        "report.run",
+        "settings.update",
+        "clock.advance"
+      ]
+    },
+    "expectations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "noRowsWritten": {
+          "type": "boolean"
+        },
+        "glMatch": {
+          "enum": [
+            "exact",
+            "byAccount"
+          ]
+        },
+        "matchReason": {
+          "type": "string"
+        },
+        "exhaustive": {
+          "type": "boolean",
+          "default": true
+        },
+        "documents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/documentExp"
+          }
+        },
+        "glEntries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/drCrLine"
+          }
+        },
+        "vatEntries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/vatEntryExp"
+          }
+        },
+        "custLedgerEntries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/partyEntryExp"
+          }
+        },
+        "vendorLedgerEntries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/partyEntryExp"
+          }
+        },
+        "detailedEntries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/detailedExp"
+          }
+        },
+        "bankLedgerEntries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bankEntryExp"
+          }
+        },
+        "cashVouchers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "documentNo"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "RECEIPT",
+                  "PAYMENT"
+                ]
+              },
+              "documentNo": {
+                "$ref": "#/$defs/documentNo"
+              },
+              "amount": {
+                "$ref": "#/$defs/money"
+              },
+              "bankAccount": {
+                "$ref": "#/$defs/code"
+              },
+              "amountInWords": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "balances": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "account",
+              "asOf"
+            ],
+            "properties": {
+              "account": {
+                "$ref": "#/$defs/accountNo"
+              },
+              "asOf": {
+                "$ref": "#/$defs/date"
+              },
+              "includeClosing": {
+                "type": "boolean"
+              },
+              "dr": {
+                "$ref": "#/$defs/money"
+              },
+              "cr": {
+                "$ref": "#/$defs/money"
+              },
+              "zero": {
+                "const": true
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "partyBalances": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "party",
+              "asOf",
+              "balanceLcy"
+            ],
+            "properties": {
+              "party": {
+                "$ref": "#/$defs/code"
+              },
+              "asOf": {
+                "$ref": "#/$defs/date"
+              },
+              "balanceLcy": {
+                "$ref": "#/$defs/money"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "trialBalance": {
+          "$ref": "#/$defs/trialBalanceExp"
+        },
+        "reports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportExp"
+          }
+        },
+        "ebarimt": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ebarimtExp"
+          }
+        },
+        "outbox": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "topic",
+              "status"
+            ],
+            "properties": {
+              "topic": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "PENDING",
+                  "PROCESSING",
+                  "DONE",
+                  "DEAD",
+                  "CANCELLED"
+                ]
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "numbering": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "series",
+              "lastNo"
+            ],
+            "properties": {
+              "series": {
+                "$ref": "#/$defs/code"
+              },
+              "year": {
+                "type": "integer"
+              },
+              "lastNo": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "periods": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "month",
+              "status"
+            ],
+            "properties": {
+              "month": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "OPEN",
+                  "CLOSED",
+                  "LOCKED"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "notifications": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "absent": {
+                "type": "boolean"
+              },
+              "contains": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "auditEvents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "eventType"
+            ],
+            "properties": {
+              "eventType": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "posapiCalls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "post": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "delete": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "documentExp": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "SALES_INVOICE",
+            "SALES_CR_MEMO",
+            "PURCHASE_INVOICE",
+            "PURCHASE_CR_MEMO",
+            "CASH_VOUCHER",
+            "JOURNAL",
+            "PAYMENT",
+            "CLOSING",
+            "OPENING"
+          ]
+        },
+        "documentNo": {
+          "$ref": "#/$defs/documentNo"
+        },
+        "ref": {
+          "$ref": "#/$defs/varRef"
+        },
+        "status": {
+          "type": "string"
+        },
+        "remaining": {
+          "$ref": "#/$defs/money"
+        },
+        "amountIncludingVat": {
+          "$ref": "#/$defs/money"
+        },
+        "vatAmount": {
+          "$ref": "#/$defs/money"
+        },
+        "cancelledBy": {
+          "$ref": "#/$defs/varRef"
+        }
+      },
+      "additionalProperties": false
+    },
+    "vatEntryExp": {
+      "type": "object",
+      "required": [
+        "type",
+        "base",
+        "amount"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "SALE",
+            "PURCHASE",
+            "SETTLEMENT"
+          ]
+        },
+        "vatCategory": {
+          "enum": [
+            "VAT10",
+            "VAT0",
+            "EXEMPT",
+            "NOVAT"
+          ]
+        },
+        "calcType": {
+          "enum": [
+            "NORMAL",
+            "REVERSE_CHARGE",
+            "FULL_VAT"
+          ]
+        },
+        "vatPercent": {
+          "$ref": "#/$defs/percent"
+        },
+        "base": {
+          "$ref": "#/$defs/money"
+        },
+        "amount": {
+          "$ref": "#/$defs/money"
+        },
+        "nonDeductibleBase": {
+          "$ref": "#/$defs/money"
+        },
+        "nonDeductibleAmount": {
+          "$ref": "#/$defs/money"
+        },
+        "nonDeductibleReason": {
+          "enum": [
+            "PASSENGER_CAR",
+            "PERSONAL_USE",
+            "EXEMPT_RELATED",
+            "NO_EBARIMT",
+            "NON_VAT_COMPANY",
+            "SIMPLIFIED_REGIME",
+            "REJECTED"
+          ]
+        },
+        "vatDifference": {
+          "$ref": "#/$defs/money"
+        },
+        "vatDate": {
+          "$ref": "#/$defs/date"
+        },
+        "deductibleConfirmed": {
+          "type": "boolean"
+        },
+        "supplierDdtd": {
+          "type": "string",
+          "pattern": "^([0-9]{33}|\\$[a-zA-Z][a-zA-Z0-9_.]*)$"
+        },
+        "closed": {
+          "type": "boolean"
+        },
+        "ebarimtTaxType": {
+          "enum": [
+            "VAT_ABLE",
+            "VAT_ZERO",
+            "VAT_FREE",
+            "NOT_VAT"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "partyEntryExp": {
+      "type": "object",
+      "required": [
+        "party",
+        "documentType"
+      ],
+      "properties": {
+        "entry": {
+          "$ref": "#/$defs/relEntry"
+        },
+        "party": {
+          "$ref": "#/$defs/code"
+        },
+        "documentType": {
+          "enum": [
+            "INVOICE",
+            "CREDIT_MEMO",
+            "PAYMENT",
+            "REFUND"
+          ]
+        },
+        "documentNo": {
+          "$ref": "#/$defs/documentNo"
+        },
+        "dueDate": {
+          "$ref": "#/$defs/date"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "amount": {
+          "$ref": "#/$defs/fcyAmount"
+        },
+        "amountLcy": {
+          "$ref": "#/$defs/money"
+        },
+        "remaining": {
+          "$ref": "#/$defs/fcyAmount"
+        },
+        "remainingLcy": {
+          "$ref": "#/$defs/money"
+        },
+        "open": {
+          "type": "boolean"
+        },
+        "closedBy": {
+          "$ref": "#/$defs/relEntry"
+        },
+        "closedAtDate": {
+          "$ref": "#/$defs/date"
+        }
+      },
+      "additionalProperties": false
+    },
+    "detailedExp": {
+      "type": "object",
+      "required": [
+        "ledgerEntry",
+        "entryType",
+        "amountLcy"
+      ],
+      "properties": {
+        "ledgerEntry": {
+          "$ref": "#/$defs/relEntry"
+        },
+        "entryType": {
+          "enum": [
+            "INITIAL",
+            "APPLICATION",
+            "UNREALIZED_LOSS",
+            "UNREALIZED_GAIN",
+            "REALIZED_LOSS",
+            "REALIZED_GAIN",
+            "APPL_ROUNDING",
+            "CORRECTION_OF_REMAINING_AMOUNT"
+          ]
+        },
+        "amount": {
+          "$ref": "#/$defs/fcyAmount"
+        },
+        "amountLcy": {
+          "$ref": "#/$defs/money"
+        },
+        "appliedTo": {
+          "$ref": "#/$defs/relEntry"
+        },
+        "unapplied": {
+          "type": "boolean"
+        },
+        "withoutGl": {
+          "type": "boolean"
+        },
+        "postingDate": {
+          "$ref": "#/$defs/date"
+        }
+      },
+      "additionalProperties": false
+    },
+    "bankEntryExp": {
+      "type": "object",
+      "required": [
+        "bankAccount",
+        "amount"
+      ],
+      "properties": {
+        "bankAccount": {
+          "$ref": "#/$defs/code"
+        },
+        "amount": {
+          "$ref": "#/$defs/fcyAmount"
+        },
+        "amountLcy": {
+          "$ref": "#/$defs/money"
+        },
+        "documentNo": {
+          "$ref": "#/$defs/documentNo"
+        },
+        "open": {
+          "type": "boolean"
+        },
+        "statementStatus": {
+          "enum": [
+            "OPEN",
+            "BANK_ACC_ENTRY_APPLIED",
+            "CLOSED"
+          ]
+        },
+        "statementNo": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "trialBalanceExp": {
+      "type": "object",
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/date"
+        },
+        "to": {
+          "$ref": "#/$defs/date"
+        },
+        "includeClosing": {
+          "type": "boolean"
+        },
+        "exhaustive": {
+          "type": "boolean"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "account"
+            ],
+            "properties": {
+              "account": {
+                "$ref": "#/$defs/accountNo"
+              },
+              "openingDr": {
+                "$ref": "#/$defs/money"
+              },
+              "openingCr": {
+                "$ref": "#/$defs/money"
+              },
+              "periodDr": {
+                "$ref": "#/$defs/money"
+              },
+              "periodCr": {
+                "$ref": "#/$defs/money"
+              },
+              "closingDr": {
+                "$ref": "#/$defs/money"
+              },
+              "closingCr": {
+                "$ref": "#/$defs/money"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "periodDr": {
+              "$ref": "#/$defs/money"
+            },
+            "periodCr": {
+              "$ref": "#/$defs/money"
+            },
+            "closingDr": {
+              "$ref": "#/$defs/money"
+            },
+            "closingCr": {
+              "$ref": "#/$defs/money"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "reportExp": {
+      "type": "object",
+      "required": [
+        "report",
+        "rows"
+      ],
+      "properties": {
+        "report": {
+          "enum": [
+            "SBT",
+            "ODT",
+            "OOT",
+            "MGT",
+            "TB",
+            "GL",
+            "TT03A",
+            "TT03A_UNCONFIRMED",
+            "AR_AGING",
+            "AP_AGING",
+            "EBALANCE_SBT",
+            "BANK_REC",
+            "CUST_STATEMENT",
+            "PERIOD_CLOSE_CHECKLIST"
+          ]
+        },
+        "params": {
+          "type": "object"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "row"
+            ],
+            "properties": {
+              "row": {
+                "type": "string"
+              },
+              "column": {
+                "type": "string"
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "count": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ebarimtExp": {
+      "type": "object",
+      "required": [
+        "source",
+        "status"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/varRef"
+        },
+        "operation": {
+          "enum": [
+            "SAVE",
+            "DELETE"
+          ]
+        },
+        "type": {
+          "enum": [
+            "B2C_RECEIPT",
+            "B2B_RECEIPT",
+            "B2C_INVOICE",
+            "B2B_INVOICE"
+          ]
+        },
+        "status": {
+          "enum": [
+            "NONE",
+            "PENDING",
+            "SENT",
+            "SUCCESS",
+            "ERROR",
+            "UNKNOWN",
+            "CANCELLED"
+          ]
+        },
+        "errorCode": {
+          "$ref": "#/$defs/errorCode"
+        },
+        "totalAmount": {
+          "$ref": "#/$defs/money"
+        },
+        "totalVat": {
+          "$ref": "#/$defs/money"
+        },
+        "totalCityTax": {
+          "$ref": "#/$defs/money"
+        },
+        "billIdSuffix": {
+          "type": "string",
+          "pattern": "^[0-9]{9}$"
+        },
+        "customerTin": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "consumerNo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inactiveIdOf": {
+          "$ref": "#/$defs/varRef"
+        },
+        "reportMonth": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "receipts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "taxType",
+              "totalAmount",
+              "totalVat"
+            ],
+            "properties": {
+              "taxType": {
+                "enum": [
+                  "VAT_ABLE",
+                  "VAT_ZERO",
+                  "VAT_FREE",
+                  "NOT_VAT"
+                ]
+              },
+              "totalAmount": {
+                "$ref": "#/$defs/money"
+              },
+              "totalVat": {
+                "$ref": "#/$defs/money"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "qty",
+              "unitPrice",
+              "totalAmount",
+              "totalVat"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "qty": {
+                "$ref": "#/$defs/qty"
+              },
+              "unitPrice": {
+                "$ref": "#/$defs/money"
+              },
+              "totalAmount": {
+                "$ref": "#/$defs/money"
+              },
+              "totalVat": {
+                "$ref": "#/$defs/money"
+              },
+              "totalCityTax": {
+                "$ref": "#/$defs/money"
+              },
+              "taxType": {
+                "enum": [
+                  "VAT_ABLE",
+                  "VAT_ZERO",
+                  "VAT_FREE",
+                  "NOT_VAT"
+                ]
+              },
+              "taxProductCode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "payments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "paidAmount"
+            ],
+            "properties": {
+              "code": {
+                "enum": [
+                  "CASH",
+                  "PAYMENT_CARD",
+                  "BANK_TRANSFER",
+                  "BANK_TRANSFER_QPAY"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "PAID",
+                  "PAY"
+                ]
+              },
+              "paidAmount": {
+                "$ref": "#/$defs/money"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "previousStatus": {
+          "enum": [
+            "SUCCESS",
+            "CANCELLED"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

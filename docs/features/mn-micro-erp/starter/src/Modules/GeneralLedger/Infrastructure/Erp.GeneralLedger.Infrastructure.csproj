@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Posting engine (phase B, Npgsql + embedded SQL), reversal service, journal / account lookups, AddGeneralLedgerModule(). -->
+  <ItemGroup>
+    <ProjectReference Include="../Application/Erp.GeneralLedger.Application.csproj" />
+    <ProjectReference Include="../Domain/Erp.GeneralLedger.Domain.csproj" />
+    <ProjectReference Include="../Contracts/Erp.GeneralLedger.Contracts.csproj" />
+    <ProjectReference Include="../../../BuildingBlocks/Erp.BuildingBlocks.Infrastructure/Erp.BuildingBlocks.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Ledger INSERTs live only in Posting/Sql (architecture rule 5: namespace Erp.GeneralLedger.Infrastructure.Posting). -->
+    <EmbeddedResource Include="**/Sql/*.sql" />
+  </ItemGroup>
+</Project>

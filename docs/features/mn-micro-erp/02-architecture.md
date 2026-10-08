@@ -36,7 +36,7 @@
    - НББ-ийн тухай хууль: бүртгэлийг 10 жил хадгалах, цахим анхан шатны баримтад цахим гарын үсэг зурах.
    - Хувь хүний мэдээлэл хамгаалах тухай хууль (2021).
    - eBarimt PosAPI 3.0-ийн журам: `qrData`/`lottery`-г хадгалахгүй, `POST /rest/receipt`-ийг автоматаар дахин илгээхгүй.
-5. 2027-01-01-ний татварын өөрчлөлтийг **код өөрчлөхгүйгээр** параметрээр хэрэгжүүлнэ: босго 400 сая, хялбаршуулсан улирлын НӨАТ, ААНОАТ-ын шатлал.
+5. 2027 оны татварын өөрчлөлтийг (ихэнх нь 2027-01-01-нээс; НӨАТ-ын 400 сая ₮-ийн босго 2027-07-01-нээс, D-K5) **код өөрчлөхгүйгээр** параметрээр хэрэгжүүлнэ: босго 400 сая, хялбаршуулсан улирлын НӨАТ, ААНОАТ-ын шатлал.
 
 ### 1.2 Чанарын шинж (quality attributes)
 
@@ -195,29 +195,31 @@ flowchart TB
 
 ### 4.1 Тойм
 
-Модуль бүр PostgreSQL-д **өөрийн схемтэй** (schema). Хүснэгтийн бүтэн нэр нь `<schema>.<table>` хэлбэртэй. Бүх модульд нийтлэг SQL объект (domain, guard функц, helper, migration-ий журнал) `core` схемд байна. Улсын хэмжээний, тенантгүй лавлах хүснэгт `ref_` угтвартай (`tax.ref_legal_parameter`). Модуль бүр 5 project-тэй, тэдгээрийн нийтийн хэсэг нь `Erp.<M>.Contracts` (§5).
+Модуль бүр PostgreSQL-д **өөрийн схемтэй** (schema). Хүснэгтийн бүтэн нэр нь `<schema>.<table>` хэлбэртэй. **DB-ийн бүх нэрийн эх сурвалж нь [db/schema/*.sql](db/schema/)** ([DECISIONS](DECISIONS.md) D-K1). Энэ баримтад байгаа SQL нь тайлбарын хэсэгчилсэн хуулбар; зөрвөл схем зөв. Бүх модульд нийтлэг SQL объект (domain `platform.amount` г.м., контекст функц `platform.current_tenant_id()`, guard функц `platform.fn_guard_immutable()`, дугаарлалт, counter) **`platform`** схемд байна; тусдаа `core` схем байхгүй. Улсын хэмжээний, тенантгүй лавлах хүснэгт нь тухайн модулийн схемд, `tenant_id`-гүй байна (`tax.tax_parameter`, `fx.iso_currency`, `fx.official_exchange_rate`, `ebarimt.classification_code`). Модуль бүр 5 project-тэй, тэдгээрийн нийтийн хэсэг нь `Erp.<M>.Contracts` (§5).
 
-| Модуль | Схем | Товч үүрэг |
+C# модулийн нэр (project, namespace) ба PostgreSQL схемийн нэр **ялгаатай байж болно**: схем нь богино (`party`, `bank`, `fx`), модуль нь BC-ийн функциональ нэртэй (`Parties`, `CashBank`, `Currency`). Харгалзааг доорх хүснэгт ба [18-dev-setup.md](./18-dev-setup.md) §2.2 тогтооно.
+
+| Модуль (`src/Modules/<M>`) | Схем | Товч үүрэг |
 |---|---|---|
-| Platform | `platform`, `identity`, `audit`, `ops` | Тенант, компани, хэрэглэгч, эрх, дугаарын цуврал, хавсралт, гарын үсэг, аудит, платформын ops view (PII-гүй) |
-| Integration | `integration`, `quartz` | Outbox ба inbox, dispatcher, retry бодлого, Quartz store, имэйл |
-| Currency | `currency` | Валют, Монголбанкны албан ханш, компанийн гараар оруулсан ханш |
-| GeneralLedger | `gl` | Дансны төлөвлөгөө, үе, dimension, журнал, данс тодорхойлолт, **posting engine**, G/L ledger, буцаалт, жилийн хаалт, ханшийн дахин үнэлгээний run |
-| Tax | `tax` | НӨАТ ба НХАТ-ын код, хуулийн параметр, компанийн татварын профайл, татвар тооцоолол, VAT entry, НӨАТ-ын тайлан ба хаалт, худалдан авалтын баримтын бүртгэл |
-| EBarimt | `ebarimt` | PosAPI instance, мерчант бүртгэл, баримтын лог ба төлөвийн машин, лавлах кэш, хяналт |
-| Parties | `parties` | Харилцагч ба нийлүүлэгч, тэдгээрийн posting group, төлбөрийн нөхцөл, авлага/өглөгийн ledger, тулгалт (application) |
-| Inventory | `inventory` | Бараа, үйлчилгээ, нэгж, item ledger ба value entry, өртөг тооцоо, тооллого |
-| FixedAssets | `fixed_assets` | Хөрөнгийн карт, нягтлан ба татварын 2 элэгдлийн дэвтэр, FA ledger |
-| Cash&Bank | `cash_bank` | Касс, банкны данс, МХ-1/МХ-2, төлбөр, шилжүүлэг, bank ledger, хуулга импорт, тулгалт |
-| Sales | `sales` | Борлуулалтын нэхэмжлэх, буцаалтын нэхэмжлэх (credit memo), POS борлуулалт, posted баримт, цуцлах ба засах (cancel/correct) |
-| Purchases | `purchases` | Худалдан авалтын нэхэмжлэх ба credit memo, нийлүүлэгчийн баримтын дугаар, оролтын НӨАТ-ын нотолгоо |
-| Reporting | `reporting` | Маягт А, гүйлгээ баланс, бүртгэлийн дэвтэр (Order 100), насжилт, НӨАТ ба e-balance экспорт, архивын багц |
+| Platform | `platform`, `identity`, `audit` | Тенант, компани, хэрэглэгч, эрх, дугаарын цуврал ба ledger counter, хамтын domain/функц, хавсралт, гарын үсэг, аудит. Нэвтрэлтийн сан `identity` нь тенантгүй, RLS-гүй (D-K7). Ops-ийн PII-гүй нийлбэрийг `integration.fn_ops_health()` өгнө (тусдаа `ops` схем байхгүй) |
+| Integration | `integration` (+ `quartz`, Quartz.NET-ийн store) | Outbox ба inbox, idempotency, dispatcher, retry бодлого, job-ийн тодорхойлолт ба гүйлт, вэбхүүк, имэйлийн хүргэлт |
+| Currency | `fx` | Валют, ISO лавлах, Монголбанкны албан ханш, компанийн ханш, ханшийн тэгшитгэлийн бүртгэл (R2) |
+| GeneralLedger | `gl` | Дансны төлөвлөгөө, үе, dimension (`gl.dimension*`), журнал, **posting engine**, G/L ledger, буцаалт, жилийн хаалт, төсөв |
+| Tax | `tax` | НӨАТ-ын posting group ба setup, НХАТ, хуулийн параметр (`tax.tax_parameter`), компанийн татварын профайл, VAT entry, НӨАТ-ын үе ба тайлан, гаалийн мэдүүлэг |
+| EBarimt | `ebarimt` | PosAPI instance, POS ба `billIdSuffix` counter, баримтын лог ба төлөвийн машин, лавлах кэш, худалдан авалтын eBarimt баримт |
+| Parties | `party` | Харилцагч ба нийлүүлэгч, posting group (customer/vendor/gen. bus./gen. prod.), General Posting Setup, төлбөрийн нөхцөл ба хэлбэр, **авлага/өглөгийн ledger** (D-K2), тулгалт (application) |
+| Inventory | `inv` | Бараа, үйлчилгээ, нэгж, байршил, item ledger ба value entry, өртөг тооцоо (R2) |
+| FixedAssets | `fa` | Хөрөнгийн карт, нягтлан ба татварын элэгдлийн дэвтэр, FA ledger, элэгдлийн run (R2) |
+| CashBank | `bank` | Касс, банк, хэтэвч (`bank.bank_account.kind`), МХ-1/МХ-2 (`bank.posted_cash_voucher`), bank ledger, хуулга импорт, тулгалт |
+| Sales | `sales` | Борлуулалтын нэхэмжлэх, буцаалтын нэхэмжлэх (credit memo), posted баримт, цуцлах ба засах (cancel/correct) |
+| Purchases | `purchase` | Худалдан авалтын нэхэмжлэх ба credit memo, нийлүүлэгчийн баримтын дугаар, оролтын НӨАТ-ын нотолгоо |
+| Reporting | `rpt` | Маягт А-ийн мөр, МГТ-ийн ангилал, санхүүгийн тайлангийн тодорхойлолт, насжилтын бүлэг, тайлан илгээлтийн бүртгэл, snapshot |
 
 ### 4.2 Модулийн карт
 
 Карт бүрт дараах зүйлс бий: **үүрэг**, **эзэмшдэг хүснэгтүүд**, **нийтийн интерфейс** (`*.Contracts` дахь C# интерфейс ба published SQL view), **нийтлэх ба хүлээн авах event**, **зөвшөөрөгдсөн хамаарал**. Event гэдэг нь outbox-оор дамжих integration event юм (§9.1). Бүх хамаарал **зөвхөн Contracts assembly руу** чиглэнэ.
 
-#### 4.2.1 Platform (`platform`, `identity`, `audit`, `ops`)
+#### 4.2.1 Platform (`platform`, `identity`, `audit`)
 
 - **Үүрэг:**
   - тенант ба компанийн амьдралын мөчлөг;
@@ -227,56 +229,59 @@ flowchart TB
   - хавсралтын мета өгөгдөл;
   - баримтын гарын үсгийн бүртгэл;
   - тенантын нууц (шифрлэсэн);
-  - feature flag;
+  - feature flag (`Microsoft.FeatureManagement` тохиргоо; DB хүснэгтгүй);
   - аудитын лог.
-- **Хүснэгтүүд:**
-  - `platform`: `tenant`, `company`, `company_setting`, `membership`, `role`, `permission_set`, `permission_set_item`, `role_permission_set`, `member_company_role`, `no_series`, `no_series_line`, `attachment`, `document_signature`, `tenant_secret`, `feature_flag`, `support_access_grant`, `data_protection_key`, `tenant_purge_log`;
-  - `identity`: `user`, `user_login`, `user_token`, `user_session` (BFF-ийн сервер талын session/ticket store, §10.1), `oidc_application`, `oidc_authorization`, `oidc_scope`, `oidc_token`;
-  - `audit`: `row_change` (сараар хуваасан), `security_event` (сараар хуваасан), `security_incident` (хувийн мэдээллийн зөрчлийн бүртгэл, §10.6);
-  - `ops`: `consistency_issue` (шөнийн шалгалтын үр дүн, §8.8), `v_*` view (тенантын нийлбэр тоо, PII-гүй; `erp_ops_ro` уншина).
+- **Хүснэгтүүд** (эх: [010_platform.sql](db/schema/010_platform.sql), [015_identity.sql](db/schema/015_identity.sql), [140_integration_audit.sql](db/schema/140_integration_audit.sql)):
+  - `platform`: `tenant`, `company`, `company_setup`, `app_user` (глобал хэрэглэгч), `platform_operator`, `tenant_membership`, `role`, `permission_set`, `permission`, `permission_set_include`, `role_permission_set`, `user_company_role`, `user_setup`, `tenant_invitation`, `integration_client`, `tenant_key`, `tenant_secret`, `company_signatory`, `source_code`, `reason_code`, `number_series`, `number_series_line`, `number_series_counter`, `number_allocation`, `ledger_counter`, `ledger_guard`, `attachment`, `document_rendition`, `document_signature`, `archive_package`, `support_access_grant`, `onboarding_session`, `user_notification`, `user_preference`, `saved_view`, `cue_setup`, `tenant_purge_log`;
+  - `identity` (тенантгүй, RLS-гүй, D-K7): `user_credential`, `user_session` (BFF-ийн сервер талын session/ticket store, §10.1), `one_time_token`, `data_protection_key`, `oidc_application`, `oidc_authorization`, `oidc_scope`, `oidc_token`;
+  - `audit`: `row_change`, `posting_log`, `security_event`, `security_incident` (хувийн мэдээллийн зөрчлийн бүртгэл, §10.6). Хадгалах хугацааг `audit.fn_purge_expired` удирдана (partition-гүй);
+  - Ops: PII-гүй нийлбэрийг зөвхөн `integration.fn_ops_health()` (SECURITY DEFINER) өгнө; `app_ops` бизнесийн хүснэгт уншихгүй. Шөнийн шалгалтын үр дүнг `platform.fn_integrity_report()` буцаана (§8.8).
 - **Нийтийн интерфейс:**
   - `ITenantContext`, `ICompanyContext`, `ICurrentUser`, `IBusinessCalendar` (Asia/Ulaanbaatar бизнесийн огноо) ба `ITransactionalSession` (Npgsql connection + transaction + контекст)-ийн **интерфейс** нь `Erp.BuildingBlocks.Application`-д байна. Platform нь тенант ба компанийн утгыг нийлүүлнэ. `ITransactionalSession`-ийг `TenantSession` (`Erp.BuildingBlocks.Infrastructure`) хэрэгжүүлнэ;
   - `IPermissionService`;
-  - `INumberAllocator` (`AllocateAsync(seriesCode, date, ITransactionalSession)`, `PeekAsync`);
+  - `INumberAllocator` (`AllocateAsync(seriesCode, date, ITransactionalSession)` → `platform.fn_next_document_no`, `PeekAsync`) ба `IEntryNoAllocator` (→ `platform.fn_next_entry_no`, D-K3);
   - `IAttachmentStore`, `IAuditWriter`, `ISignatureService`, `ITenantSecretStore`;
   - `ICompanySeeder` (өргөтгөх цэг: модуль бүр шинэ компанийн анхны өгөгдлийг үүсгэнэ, §7.7).
 - **Нийтлэх event:** `TenantProvisioned`, `CompanyCreated`, `CompanySettingsChanged`, `MembershipChanged`, `UserInvited`.
 - **Хүлээн авах event:** байхгүй.
 - **Хамаарал:** `Erp.BuildingBlocks.*` л.
 
-#### 4.2.2 Integration (`integration`, `quartz`)
+#### 4.2.2 Integration (`integration`, + `quartz` store)
 
 - **Үүрэг:**
   - transactional outbox ба inbox (consumer-ийн давхардлаас хамгаална);
   - API-ийн idempotency key-ийн сан;
-  - dispatcher ба мессежийн төрөл тус бүрийн retry бодлого;
-  - гадаад дуудлагын оролдлогын лог (body-гүй);
+  - dispatcher ба мессежийн төрөл (`topic`) тус бүрийн retry бодлого (`max_attempts`, D-I6);
+  - гадаад дуудлагын оролдлогын мета өгөгдөл (body-гүй) — OTel span/metric ба outbox-ийн `attempts`/`last_error`-д; тусдаа хүснэгтгүй;
   - Quartz.NET-ийн ADO job store;
-  - job-ийн гүйлтийн түүх;
-  - имэйл илгээгч (MailKit, outbox-оор).
-- **Хүснэгтүүд:**
-  - `integration`: `outbox_message`, `inbox_message`, `idempotency_key`, `integration_attempt`, `job_run`;
-  - `quartz`: `qrtz_*` (Quartz-ийн стандарт хүснэгтүүд).
+  - job-ийн тодорхойлолт ба гүйлтийн түүх;
+  - имэйл ба баримт хүргэлт (MailKit, outbox-оор), вэбхүүк.
+- **Хүснэгтүүд** ([140_integration_audit.sql](db/schema/140_integration_audit.sql)):
+  - `integration`: `outbox`, `inbox`, `idempotency_key`, `job_definition`, `job_run`, `document_delivery`, `webhook_subscription`, `webhook_delivery`;
+  - `quartz`: `qrtz_*` (Quartz-ийн стандарт хүснэгтүүд). Канон схемд хараахан ороогүй — Alignment log-ийн "Схемд шаардлагатай өөрчлөлт"-ийг үз.
 - **Нийтийн интерфейс:**
   - `IOutbox.EnqueueAsync(OutboxMessageDraft, ITransactionalSession)`, `IIdempotencyStore`, `IIntegrationEventPublisher`. Эдгээрийн **интерфейс** нь `Erp.BuildingBlocks.Application`-д, хэрэгжүүлэлт нь `Erp.BuildingBlocks.Infrastructure`-д байна (§5.1). Шалтгаан: Platform мөн event нийтэлдэг, харин Platform → Integration хамаарал хориотой (§4.3). Хүснэгтийн DDL, dispatcher, retry бодлогыг Integration модуль эзэмшинэ;
   - `IMessageHandler<TMessage>` ба `RetryPolicy`-ийн бүртгэл;
   - `IJobScheduler`, `IEmailSender`;
-  - `integration.fn_claim_outbox(...)` (SECURITY DEFINER функц, §7.6) ба `integration.fn_claim_outbox_by_id(tenant_id, company_id, id)`. Сүүлийнх нь POS-ийн синхрон dispatch-д (§9.2) `next_attempt_at`-ийг үл харгалзан, зөвхөн `PENDING` мөрийг `FOR UPDATE SKIP LOCKED`-ээр авна. Мөрийг аль хэдийн өөр процесс авсан бол 0 мөр буцаана.
+  - `integration.fn_claim_outbox(p_worker, p_topics, p_limit, p_lease)` (SECURITY DEFINER, `app_rls_bypass` эзэмшинэ, зөвхөн `app_worker` EXECUTE, §7.6). POS-ийн синхрон dispatch (§9.2) нь тенантын контекст дотор (`TenantSession`) энгийн `UPDATE integration.outbox SET status = 'PROCESSING', lease_owner, lease_until … WHERE id = $1 AND status = 'PENDING' … RETURNING` (дотор нь `FOR UPDATE SKIP LOCKED`)-аар мөрийг авна: `app_user` нь өөрийн тенантын outbox-д DML эрхтэй тул SECURITY DEFINER функц хэрэггүй. Мөрийг аль хэдийн өөр процесс авсан бол 0 мөр буцаана.
 - **Event:** нийтлэхгүй. Бусад модулийн event-ийг хүргэх тээвэрлэгч л болно.
 - **Хамаарал:** Platform.
 
-#### 4.2.3 Currency (`currency`)
+#### 4.2.3 Currency (`fx`)
 
 - **Үүрэг:**
-  - валютын лавлах ба нарийвчлал (`amount_precision`, `unit_amount_precision`);
+  - валютын лавлах ба нарийвчлал (`amount_rounding_precision`, `unit_amount_rounding_precision`);
   - Монголбанкны албан ханш (глобал);
   - компанийн гараар оруулсан ба импортолсон ханш;
-  - огноогоор ханш хайх (тухайн өдөр эсвэл түүнээс өмнөх хамгийн сүүлийн ханш).
-- **Хүснэгтүүд:**
-  - `currency.ref_currency` (глобал лавлах);
-  - `currency.ref_official_rate` (глобал, `tenant_id`-гүй, append-only);
-  - `currency.company_rate` (тенант ба компани);
-  - `currency.rate_fetch_log`.
+  - огноогоор ханш хайх (тухайн өдөр эсвэл түүнээс өмнөх хамгийн сүүлийн ханш);
+  - ханшийн тэгшитгэлийн бүртгэл (R2).
+- **Хүснэгтүүд** ([050_fx.sql](db/schema/050_fx.sql)):
+  - `fx.iso_currency` (глобал ISO 4217 лавлах);
+  - `fx.official_exchange_rate` (глобал, `tenant_id`-гүй; залруулга = шинэ `revision`);
+  - `fx.currency` (компанийн валют, нарийвчлал, ханшийн зөрүүний данс);
+  - `fx.currency_exchange_rate` (компанийн ханш, тенант ба компани);
+  - `fx.exch_rate_adjmt_register`, `fx.exch_rate_adjmt_ledger_entry` (R2).
+  - Татсан эсэхийн түүх нь `integration.job_run`-д (тусдаа fetch log хүснэгтгүй).
 - **Нийтийн интерфейс:**
   - `IExchangeRateProvider.GetRateAsync(companyId, currency, date) → RateQuote(rate, source, rateId)`;
   - `ICurrencyCatalog`.
@@ -288,23 +293,23 @@ flowchart TB
 
 - **Үүрэг:**
   - дансны төлөвлөгөө (`parent_id` мод, `is_posting`, Маягт А-ийн мөрийн код, МГТ-ийн ангилал, `direct_posting`);
-  - санхүүгийн жил ба үе (OPEN / SOFT_LOCKED / CLOSED / HARD_LOCKED);
-  - posting-ийн цонх;
+  - санхүүгийн жил ба үе (`OPEN` / `CLOSED` / `LOCKED`, D-D3);
+  - posting-ийн цонх (`platform.company_setup.allow_posting_from/to`);
   - dimension ба dimension set, default dimension ([ADR-0010](./adr/ADR-0010-dimension-sets.md));
-  - ерөнхий журнал ба давтагдах журнал (SHOULD);
-  - данс тодорхойлолт (`gen_business_group`, `gen_product_group`, `gen_posting_setup`);
+  - ерөнхий журнал (template/batch/line) ба стандарт журнал;
+  - данс тодорхойлолт: General Posting Setup-ийг Parties модуль эзэмшинэ (`party.general_posting_setup`, D-F1); GL нь `IAccountDetermination`-оор уншина;
   - **posting engine**;
-  - `gl_transaction`, `gl_entry`, `gl_register`, буцаалтын холбоос;
-  - компанийн тоолуур;
-  - үеийн үлдэгдлийн проекц;
+  - `gl_transaction`, `gl_entry`, `gl_register`, буцаалтын холбоос (`reversed_by_*`, `reverses_transaction_no` багана);
+  - ledger-ийн дугаар нь `platform.ledger_counter`-оос (`platform.fn_next_entry_no`, D-K3);
+  - үеийн үлдэгдэл нь view (`gl.v_gl_account_period_balance`), тусдаа проекцын хүснэгтгүй;
   - жилийн хаалт;
-  - ханшийн дахин үнэлгээний run (contributor-уудаар).
-- **Хүснэгтүүд:**
-  - `gl_account`, `fiscal_year`, `accounting_period`;
-  - `dimension`, `dimension_value`, `dimension_set`, `dimension_set_entry`, `default_dimension`;
-  - `journal`, `journal_line`;
-  - `gen_business_group`, `gen_product_group`, `gen_posting_setup`;
-  - `gl_transaction`, `gl_entry`, `gl_register`, `gl_entry_reversal`, `company_counter`, `account_period_balance`, `reason_code`.
+  - ханшийн дахин үнэлгээний run (contributor-уудаар, R2).
+- **Хүснэгтүүд** ([020_gl.sql](db/schema/020_gl.sql), [030_dimension.sql](db/schema/030_dimension.sql)):
+  - `gl_account_category`, `gl_account`, `general_ledger_setup`, `fiscal_year`, `accounting_period`, `accounting_period_status_log`;
+  - `dimension`, `dimension_value`, `default_dimension`, `dimension_set`, `dimension_set_entry`;
+  - `journal_template`, `journal_batch`, `journal_line`, `standard_journal`, `standard_journal_line`;
+  - `gl_transaction`, `gl_entry`, `gl_register`, `gl_budget`, `gl_budget_entry`.
+  - Source code ба reason code нь `platform.source_code`, `platform.reason_code`.
 - **Нийтийн интерфейс:**
   - `IPostingService`;
   - `ILedgerWriter<TLine>`, `IPostedDocumentWriter` ба `ILedgerHashContributor` (өргөтгөх цэг, §4.5, §8.7);
@@ -312,7 +317,7 @@ flowchart TB
   - `IDimensionSetService` (`GetOrCreateSetIdAsync`, `MergeAsync`), `IDefaultDimensionService`;
   - `IAccountingPeriodGuard`, `IReversalService`;
   - `IFxRevaluationContributor` (өргөтгөх цэг), `IChartOfAccounts`;
-  - view: `gl.v_gl_entry`, `gl.v_trial_balance`, `gl.v_account_period_balance`.
+  - view/функц: `gl.v_gl_account_period_balance`, `rpt.v_trial_balance_base`, `rpt.fn_trial_balance(...)` ([920_views.sql](db/schema/920_views.sql)).
 - **Нийтлэх event:** `GlTransactionPosted`, `TransactionReversed`, `PeriodStatusChanged`, `FiscalYearClosed`.
 - **Хүлээн авах event:** байхгүй. Шинэ компанийн анхны өгөгдлийг (дансны төлөвлөгөө, үе, тоолуур) `ICompanySeeder`-ээр provisioning transaction дотор үүсгэнэ (§7.7).
 - **Хамаарал:** Platform, Integration, Currency.
@@ -320,24 +325,23 @@ flowchart TB
 #### 4.2.5 Tax (`tax`)
 
 - **Үүрэг:**
-  - татварын код (`tax_code`: NORMAL / REVERSE_CHARGE / FULL, хувь, данс, eBarimt `taxType`);
-  - `party_vat_class` × `item_vat_class` → `tax_code` харгалзаа;
-  - **огнооны хүчинтэй хуулийн параметр** (`ref_legal_parameter`, глобал, [ADR-0021](./adr/ADR-0021-effective-dated-parameters.md));
+  - VAT Posting Setup (`tax.vat_posting_setup`: `vat_bus_posting_group` × `vat_prod_posting_group`, тооцооны төрөл `NORMAL` / `REVERSE_CHARGE` / `FULL_VAT`, хувь, данс, eBarimt `taxType`; D-E1);
+  - **огнооны хүчинтэй хуулийн параметр** (`tax.tax_parameter`, глобал, [ADR-0021](./adr/ADR-0021-effective-dated-parameters.md));
   - компанийн татварын профайл (НӨАТ-ын статус ба горим, НХАТ, ААНОАТ-ын горим, бүгд огноотой);
   - баримтын татвар тооцоолох цэвэр функц;
   - `vat_entry`-г бичих writer;
   - НӨАТ-ын үеийн хаалт (settlement) ба түгжээ;
   - ТТ-03а-ийн өгөгдөл;
-  - худалдан авалтын eBarimt баримтын бүртгэл ба тулгалт;
+  - худалдан авалтын eBarimt баримтын тулгалт (баримт өөрөө `ebarimt.purchase_receipt`-д);
   - босгын хяналт.
-- **Хүснэгтүүд:** `tax_code`, `vat_posting_setup`, `ref_legal_parameter`, `company_tax_profile`, `vat_entry`, `vat_settlement`, `vat_period`, `purchase_receipt`, `threshold_snapshot`.
+- **Хүснэгтүүд** ([040_tax.sql](db/schema/040_tax.sql)): `tax_parameter` (глобал), `vat_bus_posting_group`, `vat_prod_posting_group`, `vat_posting_setup`, `vat_return_period`, `vat_statement_template`, `vat_statement_name`, `vat_statement_line`, `customs_declaration`, `vat_entry`, `gl_entry_vat_entry_link`, `city_tax_code`, `city_tax_setup`, `city_tax_entry`, `tax_setup`, `company_tax_profile`, `vat_return_snapshot`.
 - **Нийтийн интерфейс:**
   - `ITaxCalculator.ComputeDocument(lines, pricesInclVat, ctx) → TaxResult` (цэвэр функц);
   - `ITaxCodeResolver`;
   - `ILegalParameterProvider.GetAsync(code, asOf) → (value, versionId)`;
   - `ICompanyTaxProfile`;
   - `ILedgerWriter<VatLedgerLine>`;
-  - view: `tax.v_vat_entry`, `tax.v_vat_return_lines`.
+  - Reporting-д нээлттэй өгөгдөл: `tax.vat_entry`, `tax.vat_return_snapshot` (published `v_*` view R1-д байхгүй; нэмбэл [920_views.sql](db/schema/920_views.sql)-д).
 - **Нийтлэх event:** `VatPeriodSettled`, `VatPeriodLocked`, `VatThresholdReached`.
 - **Хүлээн авах event:** `PurchaseReceiptsImported` (EBarimt). Татварын код ба профайлын анхны өгөгдлийг `ICompanySeeder`-ээр үүсгэнэ.
 - **Хамаарал:** Platform, Integration, Currency, GeneralLedger, EBarimt (Contracts).
@@ -347,17 +351,17 @@ flowchart TB
 - **Үүрэг:**
   - PosAPI instance-ийн бүртгэл ба мерчантыг instance-д хуваарилах;
   - мерчант бүртгэх урсгал (`saveOprMerchants` → мерчант баталгаажуулна → `ACTIVE`);
-  - салбар, касс ба `districtCode`;
-  - `billIdSuffix` тоолуур;
+  - салбар, касс (`ebarimt.ebarimt_pos`) ба `districtCode`;
+  - `billIdSuffix` тоолуур (`ebarimt.pos_counter`, `ebarimt.fn_next_bill_seq`, D-K4);
   - баримтын лог ба төлөвийн машин;
   - засварын гинж (`inactiveId`);
   - UNKNOWN төлөвийг гараар шийдвэрлэх;
   - лавлах өгөгдлийн кэш (БҮНА, `taxProductCode`, салбар, ТТД);
   - `sendData` ба `info` хяналт;
   - `getSaleListERP` импорт.
-- **Хүснэгтүүд:** `posapi_instance`, `merchant`, `pos_terminal`, `pos_counter`, `receipt`, `receipt_event`, `ref_classification`, `ref_tax_product_code`, `ref_branch`, `taxpayer_cache`, `posapi_health`.
+- **Хүснэгтүүд** ([130_ebarimt.sql](db/schema/130_ebarimt.sql)): `posapi_instance` (глобал), `classification_code`, `tax_product_code`, `district`, `barcode_reference`, `taxpayer_info` (глобал лавлах кэш), `ebarimt_setup` (компанийн мерчантын тохиргоо), `ebarimt_pos`, `pos_counter`, `ebarimt_document`, `ebarimt_document_line`, `ebarimt_sub_receipt`, `ebarimt_document_payment`, `ebarimt_document_event`, `purchase_receipt`. View: `ebarimt.v_company_posapi_status`, `ebarimt.v_source_document_status`.
 - **Нийтийн интерфейс:**
-  - `IEbarimtReceiptQueue.EnqueueAsync(ReceiptRequest, ITransactionalSession)`: posting transaction дотор `receipt` мөр (PENDING), `billIdSuffix` ба outbox мөрийг бичнэ;
+  - `IEbarimtReceiptQueue.EnqueueAsync(ReceiptRequest, ITransactionalSession)`: posting transaction дотор `ebarimt.ebarimt_document` мөр (PENDING), `billIdSuffix` ба outbox мөрийг бичнэ;
   - `IEbarimtPrintDispatcher.DispatchNowAsync(receiptId) → PrintPayload` (санах ойд л байна);
   - `IEbarimtReceiptQuery`;
   - `IEbarimtReference` (`GetTaxpayerInfoAsync`, `GetBranchInfoAsync`, БҮНА хайлт).
@@ -365,29 +369,29 @@ flowchart TB
 - **Хүлээн авах event:** `CompanyCreated` (eBarimt-ийн тохиргооны wizard-ийг хэрэглэгчид санал болгоно).
 - **Хамаарал:** Platform, Integration. Sales ба Tax-аас **хамаарахгүй**: баримтын canonical загварыг (`ReceiptRequest`) EBarimt.Contracts тодорхойлно, Sales түүнийг бөглөнө.
 
-#### 4.2.7 Parties (`parties`)
+#### 4.2.7 Parties (`party`)
 
 - **Үүрэг:**
   - харилцагч ба нийлүүлэгч (ТТД ба регистрийн баталгаажуулалт, `getInfo` лавлах);
-  - posting group (`customer_posting_group`, `vendor_posting_group`);
-  - төлбөрийн нөхцөл;
-  - **авлага/өглөгийн ledger** (BC-ийн Cust./Vendor Ledger Entry + Detailed): `cust_ledger_entry`, `detailed_cust_ledg_entry`, `vend_ledger_entry`, `detailed_vend_ledg_entry`;
-  - нээлттэй үлдэгдлийн проекц (`cust_open_item`, `vend_open_item`);
+  - posting group (`customer_posting_group`, `vendor_posting_group`, `gen_bus_posting_group`, `gen_prod_posting_group`) ба General Posting Setup (`general_posting_setup`, D-F1);
+  - төлбөрийн нөхцөл ба төлбөрийн хэлбэр;
+  - **авлага/өглөгийн ledger** (BC-ийн Cust./Vendor Ledger Entry + Detailed, D-K2): `party.cust_ledger_entry`, `party.detailed_cust_ledger_entry`, `party.vendor_ledger_entry`, `party.detailed_vendor_ledger_entry`;
+  - нээлттэй үлдэгдэл: header entry-ийн `open`/`remaining_*` cache баганыг detailed entry-ийн trigger (`party.fn_detailed_cust_ledger_entry_after_insert`) шинэчилнэ; уншихдаа `party.v_cust_open_entry`, `party.v_vendor_open_entry`;
   - тулгалт ба тулгалтыг буцаах (apply/unapply, LIFO);
-  - насжилт.
-- **Хүснэгтүүд:** `customer`, `vendor`, `contact`, `customer_bank_account`, `vendor_bank_account`, `consent` (§10.6), `customer_posting_group`, `vendor_posting_group`, `payment_terms`, `cust_ledger_entry`, `detailed_cust_ledg_entry`, `vend_ledger_entry`, `detailed_vend_ledg_entry`, `cust_open_item`, `vend_open_item`, `application_draft`.
+  - насжилт (`party.fn_customer_aging`, `party.fn_vendor_aging`).
+- **Хүснэгтүүд** ([060_party.sql](db/schema/060_party.sql)): `payment_terms`, `payment_method`, `customer_posting_group`, `vendor_posting_group`, `gen_bus_posting_group`, `gen_prod_posting_group`, `general_posting_setup`, `customer`, `vendor`, `vendor_bank_account`, `customer_template`, `vendor_template`, `cust_ledger_entry`, `detailed_cust_ledger_entry`, `vendor_ledger_entry`, `detailed_vendor_ledger_entry`, `application_draft`. Холбоо барих мэдээлэл (утас, имэйл, хаяг) ба шифрлэсэн хувийн регистр (`personal_tin_enc`/`_hmac`) нь `customer`/`vendor` дээр; тусдаа `contact`, `consent` хүснэгт R1-д байхгүй (§10.6).
 - **Нийтийн интерфейс:**
   - `IPartyDirectory` (snapshot);
   - `IPartyLedgerQuery`, `IApplicationService`;
   - `ILedgerWriter<CustomerLedgerLine>`, `ILedgerWriter<VendorLedgerLine>`, `ILedgerWriter<ApplicationLine>`;
   - `IFxRevaluationContributor`;
-  - view: `parties.v_customer_balance`, `parties.v_aging`.
+  - view/функц: `party.v_customer_balance`, `party.v_vendor_balance`, `party.v_receivables_reconciliation`, `party.v_payables_reconciliation`, `party.fn_customer_aging`, `party.fn_vendor_aging`, `party.fn_customer_statement`.
 - **Нийтлэх event:** `CustomerChanged`, `VendorChanged`, `EntriesApplied`, `EntriesUnapplied`.
 - **Хүлээн авах event:** байхгүй. Posting group ба төлбөрийн нөхцөлийн анхны өгөгдлийг `ICompanySeeder`-ээр үүсгэнэ.
 - **Хамаарал:** Platform, Integration, Currency, GeneralLedger, Tax, EBarimt (Contracts: ТТД лавлах).
-- **Яагаад авлага/өглөгийн ledger энд байна вэ.** BC-д Cust. Ledger Entry нь Sales/Receivables-д байдаг. Гэвч манай системд Sales ба Purchases (баримт) ба Cash&Bank (төлбөр, тулгалт) гурвуулаа энэ ledger-т бичнэ. Ledger-ийг Sales-д байрлуулбал Sales → Cash&Bank ("одоо төлсөн") ба Cash&Bank → Sales (төлбөр тулгах) гэсэн мөчлөг үүснэ. Тиймээс ledger нь хоёулангийнх нь доор байгаа Parties-д байна ([ADR-0011](./adr/ADR-0011-modular-monolith.md)).
+- **Яагаад авлага/өглөгийн ledger энд байна вэ.** BC-д Cust. Ledger Entry нь Sales/Receivables-д байдаг. Гэвч манай системд Sales ба Purchases (баримт) ба CashBank (төлбөр, тулгалт) гурвуулаа энэ ledger-т бичнэ. Ledger-ийг Sales-д байрлуулбал Sales → CashBank ("одоо төлсөн") ба CashBank → Sales (төлбөр тулгах) гэсэн мөчлөг үүснэ. Тиймээс ledger нь хоёулангийнх нь доор байгаа Parties-д (`party` схем) байна ([DECISIONS](DECISIONS.md) D-K2, [ADR-0011](./adr/ADR-0011-modular-monolith.md)). Sales/Purchase модуль зөвхөн баримтаа эзэмшинэ.
 
-#### 4.2.8 Inventory (`inventory`) — хамгийн бага хувилбар
+#### 4.2.8 Inventory (`inv`) — хамгийн бага хувилбар
 
 - **Үүрэг:**
   - бараа ба үйлчилгээ (`item_kind`: STOCK / SERVICE);
@@ -397,7 +401,7 @@ flowchart TB
   - өртгийн арга: хөдөлгөөнт дундаж (default) эсвэл FIFO, жилийн заагаар л солино;
   - тохируулга ба тооллого;
   - БМ маягтууд.
-- **Хүснэгтүүд:** `item`, `unit_of_measure`, `item_ledger_entry`, `value_entry`, `item_cost_state`, `phys_count`, `phys_count_line`.
+- **Хүснэгтүүд** ([110_inv.sql](db/schema/110_inv.sql)): `unit_of_measure`, `inventory_posting_group`, `location`, `inventory_posting_setup`, `inventory_setup`, `item`, `item_unit_of_measure`, `item_ledger_entry`, `value_entry`, `item_application_entry`, `gl_item_ledger_relation`, `item_cost_state`, `item_journal`, `item_journal_line`, `posted_item_journal`, `posted_item_journal_line` (тооллогыг item journal-аар хийнэ).
 - **Нийтийн интерфейс:**
   - `IItemCatalog`;
   - `ICostCalculator` (posting transaction дотор, advisory lock-ийн дор);
@@ -406,7 +410,7 @@ flowchart TB
 - **Хүлээн авах event:** байхгүй.
 - **Хамаарал:** Platform, Integration, GeneralLedger, Tax, EBarimt (Contracts: БҮНА лавлах).
 
-#### 4.2.9 FixedAssets (`fixed_assets`)
+#### 4.2.9 FixedAssets (`fa`)
 
 - **Үүрэг:**
   - хөрөнгийн карт ба анги;
@@ -416,13 +420,13 @@ flowchart TB
   - данснаас хасалт;
   - `fa_ledger_entry`;
   - ҮХ-1/2/3 маягт.
-- **Хүснэгтүүд:** `fixed_asset`, `fa_class`, `depreciation_book`, `fa_depreciation_book`, `fa_ledger_entry`, `depreciation_run`.
+- **Хүснэгтүүд** ([100_fa.sql](db/schema/100_fa.sql)): `fa_class`, `fa_posting_group`, `depreciation_book`, `fixed_asset`, `fa_depreciation_book`, `fa_ledger_entry`, `depreciation_run`, `depreciation_run_line`.
 - **Нийтийн интерфейс:** `IFixedAssetQuery`, `ILedgerWriter<FaLedgerLine>`.
 - **Нийтлэх event:** `DepreciationPosted`, `AssetDisposed`.
 - **Хүлээн авах event:** байхгүй.
 - **Хамаарал:** Platform, Integration, GeneralLedger, Tax (татварын хугацааны параметр).
 
-#### 4.2.10 Cash&Bank (`cash_bank`)
+#### 4.2.10 CashBank (`bank`)
 
 - **Үүрэг:**
   - касс ба банкны данс (Монголын IBAN, 20 тэмдэгт, mod-97 шалгалт);
@@ -433,12 +437,12 @@ flowchart TB
   - тулгалт;
   - төлбөрийг авлага/өглөгт тулгах (Parties-ээр дамжуулан);
   - ханшийн дахин үнэлгээний contributor.
-- **Хүснэгтүүд:** `cash_desk`, `bank_account`, `payment_document`, `payment_line`, `bank_ledger_entry`, `bank_import_format`, `bank_statement`, `bank_statement_line`, `bank_reconciliation`.
+- **Хүснэгтүүд** ([090_bank.sql](db/schema/090_bank.sql)): `bank_account_posting_group`, `bank_account` (`kind` = BANK / CASH / WALLET, D-G1), `bank_ledger_entry`, `posted_cash_voucher` (МХ-1/МХ-2), `bank_statement_import_format`, `bank_statement_import_column`, `bank_statement`, `bank_statement_line`, `bank_reconciliation`, `bank_reconciliation_line`, `bank_rec_match`, `bank_rec_match_member`, `payment_application_proposal`, `text_to_account_mapping`, `bank_account_statement`, `bank_account_statement_line`, `counterparty_account_map`. Төлбөрийн ноорог нь журналын мөр (`gl.journal_line`).
 - **Нийтийн интерфейс:**
   - `IBankAccountQuery`;
   - `ILedgerWriter<BankLedgerLine>`;
   - `IFxRevaluationContributor`;
-  - view: `cash_bank.v_cash_book`, `cash_bank.v_bank_book`.
+  - view: `bank.v_bank_account_balance`, `bank.v_draft_document`.
 - **Нийтлэх event:** `PaymentPosted`, `BankStatementImported`, `BankReconciled`.
 - **Хүлээн авах event:** байхгүй.
 - **Хамаарал:** Platform, Integration, Currency, GeneralLedger, Tax, Parties.
@@ -454,16 +458,16 @@ flowchart TB
   - posting баримт угсрах;
   - eBarimt-ийн `ReceiptRequest` угсрах;
   - ТМ-1 PDF.
-- **Хүснэгтүүд:** `sales_header`, `sales_line` (ноорог); `posted_sales_invoice`, `posted_sales_invoice_line`, `posted_sales_cr_memo`, `posted_sales_cr_memo_line`, `cancelled_document`.
+- **Хүснэгтүүд** ([070_sales.sql](db/schema/070_sales.sql)): `sales_setup`, `sales_header`, `sales_line` (ноорог); `sales_invoice_header`, `sales_invoice_line`, `sales_cr_memo_header`, `sales_cr_memo_line` (posted, BC T112/T113/T114/T115), `cancelled_document`. Авлагын ledger нь Parties-д (`party.*`, D-K2).
 - **Нийтийн интерфейс:**
   - `ISalesDocumentQuery`;
   - `IPostedDocumentWriter`-ийн хэрэгжүүлэлт;
-  - view: `sales.v_sales_journal` (Order 100-ийн борлуулалтын журнал).
+  - view: `sales.v_draft_document`. Order 100-ийн борлуулалтын журналыг Reporting нь `sales.sales_invoice_header`/`sales_cr_memo_header`-оос гаргана.
 - **Нийтлэх event:** `SalesInvoicePosted`, `SalesCreditMemoPosted`, `SalesInvoiceCancelled`.
 - **Хүлээн авах event:** `EbarimtReceiptRegistered`, `EbarimtReceiptRejected`, `EbarimtReceiptUnknown` (UI мэдэгдэл ба баримтын төлөвийн badge гаргана).
-- **Хамаарал:** Platform, Integration, Currency, GeneralLedger, Tax, EBarimt, Parties, Inventory, FixedAssets (хөрөнгө борлуулах мөр), Cash&Bank ("одоо төлсөн" төлбөр).
+- **Хамаарал:** Platform, Integration, Currency, GeneralLedger, Tax, EBarimt, Parties, Inventory, FixedAssets (хөрөнгө борлуулах мөр), CashBank ("одоо төлсөн" төлбөр).
 
-#### 4.2.12 Purchases (`purchases`)
+#### 4.2.12 Purchases (`purchase`)
 
 - **Үүрэг:**
   - худалдан авалтын нэхэмжлэх ба credit memo;
@@ -472,15 +476,15 @@ flowchart TB
   - хасагдахгүй НӨАТ-ыг зардал эсвэл хөрөнгөнд хуваарилах;
   - импортын гаалийн мэдүүлгийн талбарууд;
   - posted баримт.
-- **Хүснэгтүүд:** `purchase_header`, `purchase_line`, `posted_purch_invoice`, `posted_purch_invoice_line`, `posted_purch_cr_memo`, `posted_purch_cr_memo_line`.
+- **Хүснэгтүүд** ([080_purchase.sql](db/schema/080_purchase.sql)): `purchase_setup`, `purchase_header`, `purchase_line`, `purch_inv_header`, `purch_inv_line`, `purch_cr_memo_header`, `purch_cr_memo_line` (BC T122–T125), `cancelled_document`. Өглөгийн ledger нь Parties-д (`party.*`, D-K2).
 - **Нийтийн интерфейс:**
   - `IPurchaseDocumentQuery`;
-  - view: `purchases.v_purchase_journal`.
+  - view: `purchase.v_draft_document`.
 - **Нийтлэх event:** `PurchaseInvoicePosted`, `PurchaseCreditMemoPosted`.
 - **Хүлээн авах event:** байхгүй.
-- **Хамаарал:** Platform, Integration, Currency, GeneralLedger, Tax, Parties, Inventory, FixedAssets, Cash&Bank.
+- **Хамаарал:** Platform, Integration, Currency, GeneralLedger, Tax, Parties, Inventory, FixedAssets, CashBank.
 
-#### 4.2.13 Reporting (`reporting`)
+#### 4.2.13 Reporting (`rpt`)
 
 - **Үүрэг:**
   - Маягт А (СБТ, ОДТ, ӨӨТ, МГТ). Тайлангийн загварыг хувилбартай өгөгдлөөр хадгална;
@@ -491,7 +495,7 @@ flowchart TB
   - жилийн архивын багц;
   - тайлан илгээсний бүртгэл;
   - async тайлангийн job.
-- **Хүснэгтүүд:** `statement_template`, `statement_template_line`, `account_line_mapping`, `report_job`, `filing_submission`, `archive_package`.
+- **Хүснэгтүүд** ([120_rpt.sql](db/schema/120_rpt.sql)): `statement_line` (Маягт А-ийн мөрийн код), `cash_flow_category` (МГТ), `fin_report_row_definition`, `fin_report_row`, `fin_report_column_definition`, `fin_report_column`, `financial_report`, `aging_bucket_set`, `aging_bucket`, `filing_submission`, `statement_snapshot`. Архивын багц нь `platform.archive_package`-д; async тайлангийн job нь `integration.job_run`-аар; данс → мөрийн харгалзаа нь `gl.gl_account`-ийн мөрийн кодоор.
 - **Нийтийн интерфейс:** `IReportCatalog`, `IFilingChannel` (`ITaxFilingChannel`, `IFinancialStatementChannel`; v1-д `ManualExportChannel`).
 - **Нийтлэх event:** `ArchivePackageCreated`.
 - **Хүлээн авах event:** `FiscalYearClosed` (архивын багц үүсгэх job-ийг товлоно).
@@ -512,7 +516,7 @@ flowchart TB
 | **Parties (PTY)** | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ● | — | — | — | — | — | — |
 | **Inventory (INV)** | ✔ | ✔ | — | ✔ | ✔ | ✔ | — | ● | — | — | — | — | — |
 | **FixedAssets (FA)** | ✔ | ✔ | — | ✔ | ✔ | — | — | — | ● | — | — | — | — |
-| **Cash&Bank (CB)** | ✔ | ✔ | ✔ | ✔ | ✔ | — | ✔ | — | — | ● | — | — | — |
+| **CashBank (CB)** | ✔ | ✔ | ✔ | ✔ | ✔ | — | ✔ | — | — | ● | — | — | — |
 | **Sales (SAL)** | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ● | — | — |
 | **Purchases (PUR)** | ✔ | ✔ | ✔ | ✔ | ✔ | — | ✔ | ✔ | ✔ | ✔ | — | ● | — |
 | **Reporting (RPT)** | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ● |
@@ -522,8 +526,8 @@ flowchart TB
 1. Модуль өөр модулийн **дотоод** assembly-г reference хийхгүй. Зөвхөн `Erp.X.Contracts`-ийг reference хийнэ. Үүнийг `.csproj` reference ба ArchUnitNET тест хоёулаа шалгана.
 2. Модуль өөр модулийн хүснэгтэд **SQL-ээр шууд хандахгүй**. Хоёр үл хамаарах зүйл бий:
    - Reporting бусад модулийн published view-ийг (`<schema>.v_*`) уншина;
-   - матрицын зөвшөөрсөн чиглэлд FK үүсгэж болно (жишээ нь `sales.sales_header.customer_id → parties.customer`). Эсрэг чиглэлд FK үүсгэхгүй.
-3. Доод модуль дээд модулийн логикийг дуудах шаардлагатай бол **хамаарлыг урвуулна** (dependency inversion). Доод модуль интерфейс тодорхойлж, дээд модуль хэрэгжүүлнэ. Жишээ: `ILedgerWriter<T>` ба `IFxRevaluationContributor`-ийг GL тодорхойлно, Parties ба Cash&Bank хэрэгжүүлнэ.
+   - матрицын зөвшөөрсөн чиглэлд FK үүсгэж болно (жишээ нь `sales.sales_header.customer_id → party.customer`). Эсрэг чиглэлд FK үүсгэхгүй.
+3. Доод модуль дээд модулийн логикийг дуудах шаардлагатай бол **хамаарлыг урвуулна** (dependency inversion). Доод модуль интерфейс тодорхойлж, дээд модуль хэрэгжүүлнэ. Жишээ: `ILedgerWriter<T>` ба `IFxRevaluationContributor`-ийг GL тодорхойлно, Parties ба CashBank хэрэгжүүлнэ.
 4. Транзакцийн гаднах урсгалыг **integration event** (outbox) холбоно. Нэг transaction доторх уялдааг **синхрон contract дуудлага** хангана.
 5. Шинэ хамаарал нэмэх бол энэ матрицыг ба ADR-0011-ийг шинэчилнэ. CI нь `docs/architecture/dependencies.json`-ийг тестийн өгөгдлөөр уншина.
 
@@ -549,7 +553,7 @@ public interface ILedgerWriter<in TLine> where TLine : ISubledgerLine
     Task WriteAsync(IPostingContext ctx, IReadOnlyList<TLine> lines, CancellationToken ct);
 }
 
-public interface IPostedDocumentWriter   // эх баримтын модуль (Sales, Purchases, Cash&Bank, ...) хэрэгжүүлнэ
+public interface IPostedDocumentWriter   // эх баримтын модуль (Sales, Purchases, CashBank, ...) хэрэгжүүлнэ
 {
     // Advisory lock-ийн дараа: өөрийн ноорогийг FOR UPDATE түгжиж, row_version = If-Match эсэхийг шалгана (412)
     Task LockSourceAsync(IPostingContext ctx, CancellationToken ct);
@@ -559,9 +563,9 @@ public interface IPostedDocumentWriter   // эх баримтын модуль (
 
 public interface ILedgerHashContributor  // hash chain-д өөрийн ledger мөрийг оруулна (Tax: vat_entry), §8.7
 {
-    // Posting үед: санах ойн мөрөөс. Шөнийн шалгалтад: өөрийн хүснэгтээс register_id-аар уншина
+    // Posting үед: санах ойн мөрөөс. Шөнийн шалгалтад: өөрийн хүснэгтээс gl_register_no-ийн мужаар уншина
     ReadOnlyMemory<byte> Canonicalize(IPostingContext ctx);
-    Task<ReadOnlyMemory<byte>> CanonicalizeStoredAsync(ITransactionalSession s, Guid registerId, CancellationToken ct);
+    Task<ReadOnlyMemory<byte>> CanonicalizeStoredAsync(ITransactionalSession s, long glRegisterNo, CancellationToken ct);
 }
 
 public interface IFxRevaluationContributor // GL-ийн дахин үнэлгээний run-д оролцоно
@@ -577,23 +581,23 @@ public interface IFxRevaluationContributor // GL-ийн дахин үнэлгэ�
 | BC (W1, v29) | Манай хэрэгжүүлэлт | Тайлбар |
 |---|---|---|
 | Company | `platform.company` | Тенант дотор тусдаа дансны бүртгэл (set of books) ([ADR-0005](./adr/ADR-0005-tenant-vs-company.md)) |
-| G/L Account (T15) | `gl.gl_account` | Begin/End-Total-ийн оронд `parent_id` ашиглана. `direct_posting` хадгална. |
-| G/L Entry (T17) | `gl.gl_entry` (append-only) | `amount` нь тэмдэгтэй (+ дебит). `is_correction` = BC-ийн `Correction` (улаан сторно). |
+| G/L Account (T15) | `gl.gl_account` | `account_type` = POSTING / HEADING / BEGIN_TOTAL / END_TOTAL / TOTAL, `totaling`, `indentation` (BC-тэй адил, D-D1). `direct_posting` хадгална. |
+| G/L Entry (T17) | `gl.gl_entry` (append-only) | Зөвхөн тэмдэгтэй `amount` (+ дебит, − кредит); `debit_amount`/`credit_amount` нь generated багана. BC-ийн `Correction` (storno) **хэрэглэхгүй** (D-C3): буцаалт эсрэг тэмдэгтэй тул эсрэг баганад орно. |
 | G/L Transaction (T57), Transaction No. | `gl.gl_transaction` + `transaction_no` | Тэнцсэн нэг ваучер = нэг transaction |
 | G/L Register (T45) | `gl.gl_register` + hash chain | Нэг posting run = нэг register |
 | Gen. Jnl.-Post Batch/Line (CU13/CU12) | `IPostingService` (`Erp.GeneralLedger.Infrastructure.Posting`) | Логикийг хуулна, бүтцийг нь хуулахгүй |
 | Invoice Posting Buffer (T55) | `PostingBuffer` (санах ойд) | Түлхүүр: line kind, данс, posting group-ууд, `dimension_set_id` |
 | Gen. Jnl.-Post Preview (CU19) | `PostingMode.Preview` (ижил код, ROLLBACK) | [ADR-0009](./adr/ADR-0009-synchronous-posting-advisory-lock.md) |
 | Reversal (CU179/CU17) | `IReversalService` | Зөвхөн transaction-ий хүрээнд |
-| Dimension Set Entry / Tree Node (T480/T481) | `gl.dimension_set` (UUIDv7 id, `key_hash` UNIQUE) + `gl.dimension_set_entry` | Модны оронд агуулгын hash түлхүүр. Хоосон багц = nil UUID ([ADR-0010](./adr/ADR-0010-dimension-sets.md)) |
-| No. Series / Line (T308/T309) | `platform.no_series` / `no_series_line` | Prefix + өргөн + бүхэл тоо. Цоорхойгүй ([ADR-0008](./adr/ADR-0008-gapless-numbering.md)) |
-| Source Code (T230) | `source_code` (хаалттай enum) | GENJNL, SALES, PURCHASE, CASH_RECEIPT, PAYMENT, BANK_REC, REVERSAL, FX_REVAL, VAT_SETTLEMENT, CLOSE_YEAR, OPENING, INVENTORY, DEPRECIATION |
-| Reason Code (T231) | `gl.reason_code` | Credit memo ба буцаалтад заавал |
-| Cust./Vendor Ledger Entry + Detailed (T21/T379, T25/T380) | `parties.cust_ledger_entry` + `parties.detailed_cust_ledg_entry` (ба vendor-ийн хувилбар) | Header нь append-only. Нээлттэй төлөвийг `cust_open_item` проекцод хадгална. |
-| VAT Entry (T254) + G/L–VAT link (T253) | `tax.vat_entry` (`gl_entry_id` FK-тэй) | `rate` ба `tax_code`-ийг snapshot хийнэ |
-| VAT Posting Setup (T325) | `tax.vat_posting_setup` → `tax.tax_code` | Огнооны хүчинтэй хувь |
-| General Posting Setup (T252) | `gl.gen_posting_setup` | `('*', prod)` fallback-тэй |
-| Accounting Period (T50) | `gl.accounting_period` | OPEN / SOFT_LOCKED / CLOSED / HARD_LOCKED |
+| Dimension Set Entry / Tree Node (T480/T481) | `gl.dimension_set` (`dimension_set_id bigint`, `key_hash` UNIQUE) + `gl.dimension_set_entry`, `gl.fn_get_dimension_set_id(uuid[])` | Модны оронд агуулгын hash түлхүүр. Хоосон багц = `dimension_set_id = 0` (BC-тэй адил, [ADR-0010](./adr/ADR-0010-dimension-sets.md)) |
+| No. Series / Line (T308/T309) | `platform.number_series` / `platform.number_series_line` + `platform.number_series_counter`, `platform.fn_next_document_no` | `PREFIX-YYYY-#####`, жил бүр шинэ мөр. Цоорхойгүй ([ADR-0008](./adr/ADR-0008-gapless-numbering.md), D-C7) |
+| Source Code (T230) | `platform.source_code` (глобал каталог) | GENJNL, SALES, PURCHASE, CASH_RECEIPT, PAYMENT, BANK_REC, REVERSAL, FX_REVAL, VAT_SETTLEMENT, CLOSE_YEAR, OPENING, INVENTORY, DEPRECIATION |
+| Reason Code (T231) | `platform.reason_code` | Credit memo ба буцаалтад заавал |
+| Cust./Vendor Ledger Entry + Detailed (T21/T379, T25/T380) | `party.cust_ledger_entry` + `party.detailed_cust_ledger_entry`, `party.vendor_ledger_entry` + `party.detailed_vendor_ledger_entry` (D-K2) | Append-only. Нээлттэй төлөв ба `remaining_*` нь header дээрх cache багана, зөвхөн detailed entry-ийн trigger шинэчилнэ (D-C4). |
+| VAT Entry (T254) + G/L–VAT link (T253) | `tax.vat_entry` (`gl_entry_no` FK) + `tax.gl_entry_vat_entry_link` | `vat_percent`, `vat_bus_posting_group`, `vat_prod_posting_group`-ийг snapshot хийнэ |
+| VAT Posting Setup (T325) | `tax.vat_posting_setup` (`vat_bus_posting_group` × `vat_prod_posting_group`) | Хувь нь setup дээр; хуулийн хувь `tax.tax_parameter`-д огноотой |
+| General Posting Setup (T252) | `party.general_posting_setup` | `('*', prod)` fallback-тэй (D-F1) |
+| Accounting Period (T50) | `gl.accounting_period` (+ `gl.accounting_period_status_log`) | OPEN / CLOSED / LOCKED (D-D3) |
 | Permission Set (`D365 …`) | `platform.permission_set` (`ERP …`) | §10.2 |
 | Change Log Entry (T405) | `audit.row_change` (trigger-ээр) | Master, setup ба ноорогт |
 
@@ -626,12 +630,17 @@ src/
       Infrastructure/Erp.<Module>.Infrastructure.csproj
       Api/Erp.<Module>.Api.csproj
 db/
-  migrations/                  V0001__core_schemas_roles_domains.sql …, R__<schema>__<object>.sql
-  seed/
+  init/01-roles.sql            зөвхөн локал/CI: login role ба database (superuser)
+  schema/                      baseline = канон db/schema/000…920 (өөрчлөлтгүй; 000 = group role, өргөтгөл, модулийн схем)
+  migrations/                  baseline-ийн дараах өөрчлөлт: V0001__<module>_<description>.sql …, R__<schema>__<object>.sql
+  seed/                        legal_parameters.sql, mn_*.sql (MN багц, repeatable)
+  tests/                       catalog_checks.sql, smoke.sql, seed_checks.sql
 web/                           React SPA (Vite)
 tests/
-  Unit/ Architecture/ Integration/ Golden/ e2e/
+  Unit/ Architecture/ Integration/ Golden/ E2E/
 ```
+
+Модулийн хавтас (`src/Modules/<Module>`) ↔ PostgreSQL схемийн харгалзаа: Platform → `platform`, `identity`, `audit`; Integration → `integration` (+ `quartz`); Currency → `fx`; GeneralLedger → `gl`; Tax → `tax`; EBarimt → `ebarimt`; Parties → `party`; Inventory → `inv`; FixedAssets → `fa`; CashBank → `bank`; Sales → `sales`; Purchases → `purchase`; Reporting → `rpt` (§4.1, [18-dev-setup.md](./18-dev-setup.md) §2.2). Permission-ийн угтвар ба outbox `topic`-ийн угтвар нь **схемийн нэр** (`party.customer.apply`, `bank.payment.post`, `ebarimt.receipt.send`).
 
 Модуль бүр **5 project**-тэй: Contracts, Domain, Application, Infrastructure, Api. Давхаргын хилийг project reference compile-time-д, architecture test нэмэлтээр шалгана. Contracts-аас бусад project-ийн төрлүүд `internal` байна.
 
@@ -654,7 +663,7 @@ tests/
    - Dapper/raw SQL эсвэл EF `AsNoTracking()` projection ашиглаж шууд DTO руу уншина.
    - Query handler command-ийг дуудахгүй, aggregate ачаалахгүй.
 3. **Тусдаа унших DB байхгүй.**
-   - Read model нь мөн DB дахь view эсвэл проекцын хүснэгт байна (`gl.account_period_balance`, `parties.cust_open_item`).
+   - Read model нь мөн DB дахь view эсвэл ledger дээрх cache багана байна (`gl.v_gl_account_period_balance`, `party.v_cust_open_entry`, `party.cust_ledger_entry.remaining_amount`).
    - Нягтлан бодох бүртгэлийн проекцыг **posting transaction дотор синхроноор** шинэчилнэ. Үлдэгдлийн тоо хэзээ ч "eventually consistent" байхгүй.
 4. **Олон query-тэй тайлан** `REPEATABLE READ READ ONLY` transaction-д ажиллана. Ингэснээр нэг snapshot-аас уншина.
 5. **Command handler-ийн гинж (endpoint filter-ээр):** `Authorization → Validation (built-in AddValidation) → Idempotency → TenantSession (BEGIN + set_config) → Handler → Commit → Post-commit hooks (sync dispatch, NOTIFY)`. Бизнесийн invariant-ыг Domain шалгана.
@@ -734,8 +743,8 @@ public sealed record GlPostingLine(
     GlAccountId Account,
     decimal AmountLcy,                // + дебит / − кредит, 0.01 хүртэл бөөрөнхийлсөн
     CurrencyCode? Currency, decimal? AmountFcy, decimal? FxRate,
-    DimensionSetId DimensionSetId,    // nil UUID = хоосон багц (BC-ийн 0)
-    bool IsCorrection,                // улаан сторно (буцаалт)
+    long DimensionSetId,              // gl.dimension_set.dimension_set_id; 0 = хоосон багц (BC-тэй адил)
+                                      // IsCorrection (storno) байхгүй: буцаалт эсрэг тэмдэгтэй, эсрэг баганад орно (D-C3)
     bool SystemCreated,
     string? Description);
 
@@ -770,7 +779,7 @@ Engine-д хүрэхээс өмнө Application давхарга дараах **
 2. **Idempotency.**
    - `INSERT … integration.idempotency_key … ON CONFLICT DO NOTHING` ажиллуулна.
    - Ижил түлхүүртэй өөр хүсэлт уг мөрийг бичиж байгаа бол PostgreSQL түүний transaction дуусахыг хүлээнэ. Дараа нь хадгалсан хариуг буцаана (§8.5).
-3. **Компанийн posting түгжээ:** `SELECT core.fn_lock_company_posting(tenant_id, company_id)`. Функц дотроо `pg_advisory_xact_lock(hashtextextended('post:' || tenant_id || ':' || company_id, 0))` дуудна.
+3. **Компанийн posting түгжээ:** `SELECT platform.fn_lock_company_posting(tenant_id, company_id)`. Функц дотроо `pg_advisory_xact_lock(hashtextextended('post:' || tenant_id || ':' || company_id, 0))` дуудна.
 4. **Түгжээний дор дахин шалгана.**
    - `IPostedDocumentWriter.LockSourceAsync`: эх модуль өөрийн ноорогийг `FOR UPDATE` уншиж, `row_version` = `If-Match` эсэхийг шалгана.
    - Үе ба posting-ийн цонх нээлттэй эсэхийг шалгана.
@@ -778,17 +787,16 @@ Engine-д хүрэхээс өмнө Application давхарга дараах **
    - Дугаарын цувралын мөр нээлттэй эсэхийг шалгана.
    - `ILedgerWriter.ValidateLockedAsync` дуудна. Жишээ нь тулгах entry нээлттэй хэвээр байгаа, үлдэгдэл хүрэлцэх эсэхийг шалгана.
 5. **Дугаар олгоно** (§6.6):
-   - хууль ёсны баримтын дугаар;
-   - `transaction_no`, `register_no`;
-   - `entry_no`-гийн муж (`gl.company_counter`).
+   - хууль ёсны баримтын дугаар (`platform.fn_next_document_no(series_code, posting_date)`, `platform.number_series_counter` + `platform.number_allocation`);
+   - `transaction_no`, `gl_register_no` ба ledger тус бүрийн `entry_no`-гийн муж (`platform.fn_next_entry_no(ledger, count)` → `platform.ledger_counter`, D-K3).
 6. `gl.gl_transaction`, дараа нь `gl.gl_entry`-г `NpgsqlBatch`-аар INSERT хийнэ.
-7. **Ledger writer-ууд** мөрийн төрлөөр ажиллана: `tax.vat_entry`, `parties.*_ledger_entry` + detailed, `cash_bank.bank_ledger_entry`, `inventory.item_ledger_entry` + `value_entry`, `fixed_assets.fa_ledger_entry`.
-8. `IPostedDocumentWriter.WriteAsync` (эх модуль) posted баримтыг INSERT хийж, ноорогийг DELETE хийнэ. Проекц бүрийг **эзэмшигч модуль нь** UPSERT хийнэ: `gl.account_period_balance`-ийг engine, `parties.cust_open_item`-ийг Parties-ийн writer, `inventory.item_cost_state`-ийг Inventory-ийн writer.
+7. **Ledger writer-ууд** мөрийн төрлөөр ажиллана: `tax.vat_entry` (+ `tax.gl_entry_vat_entry_link`), `party.cust_ledger_entry`/`party.vendor_ledger_entry` + detailed (D-K2), `bank.bank_ledger_entry`, `inv.item_ledger_entry` + `inv.value_entry`, `fa.fa_ledger_entry`.
+8. `IPostedDocumentWriter.WriteAsync` (эх модуль) posted баримтыг INSERT хийж, ноорогийг DELETE хийнэ. Ledger-ийн cache (`party.*_ledger_entry.remaining_*`/`open`) ба `inv.item_cost_state`-ийг DB trigger эсвэл эзэмшигч модулийн writer шинэчилнэ; үеийн үлдэгдэл нь view (`gl.v_gl_account_period_balance`) тул тусдаа UPSERT хэрэггүй.
 9. **Outbox.**
-   - eBarimt шаардлагатай баримтад Sales-ийн `IPostedDocumentWriter` нь `IEbarimtReceiptQueue.EnqueueAsync`-ийг дуудна. EBarimt модуль `billIdSuffix` олгож, `ebarimt.receipt`-д PENDING мөр ба `ebarimt.receipt.create` outbox мөрийг бичнэ.
-   - Engine `PostingDocument.Outbox`-ийн мөрүүдийг (`SalesInvoicePosted` гэх мэт integration event, имэйл) `integration.outbox_message`-д бичнэ.
+   - eBarimt шаардлагатай баримтад Sales-ийн `IPostedDocumentWriter` нь `IEbarimtReceiptQueue.EnqueueAsync`-ийг дуудна. EBarimt модуль `billIdSuffix`-ийг `ebarimt.fn_next_bill_seq(pos_id)`-ээр олгож (D-K4), `ebarimt.ebarimt_document`-д PENDING мөр ба `ebarimt.receipt.send` topic-той outbox мөрийг бичнэ.
+   - Engine `PostingDocument.Outbox`-ийн мөрүүдийг (`SalesInvoicePosted` гэх мэт integration event, имэйл) `integration.outbox`-д бичнэ.
    - `NOTIFY outbox` дуудна. Мэдэгдэл commit хийгдсэний дараа л хүрнэ.
-10. `gl.gl_register`-ийг INSERT хийнэ: entry-ийн муж, source code, хэрэглэгч, `prev_hash`, `hash` (§8.7). Hash бүх мөрөөс тооцогддог тул register-ийг төгсгөлд бичнэ. `gl_transaction.register_id → gl_register` FK нь `DEFERRABLE INITIALLY DEFERRED` байна.
+10. `gl.gl_register`-ийг INSERT хийнэ: entry-ийн муж, source code, хэрэглэгч, `prev_hash`, `hash` (§8.7). Hash бүх мөрөөс тооцогддог тул register-ийг төгсгөлд бичнэ. `(company_id, gl_register_no) → gl.gl_register (company_id, no)` FK нь `DEFERRABLE INITIALLY DEFERRED` байна.
 11. `integration.idempotency_key`-ийг COMPLETED болгож, хариуг хадгална.
 12. Горимоос хамаарна:
     - **Post:** `COMMIT`. Энэ үед deferred constraint trigger-ууд ажиллана (§8.2). Advisory lock автоматаар чөлөөлөгдөнө.
@@ -827,18 +835,18 @@ sequenceDiagram
     APP->>PE: PostAsync(request, Post)
     PE->>DB: BEGIN, set_config(app.*, true), SET LOCAL lock_timeout
     PE->>DB: INSERT idempotency_key ON CONFLICT DO NOTHING
-    PE->>DB: core.fn_lock_company_posting (pg_advisory_xact_lock)
+    PE->>DB: platform.fn_lock_company_posting (pg_advisory_xact_lock)
     PE->>APP: IPostedDocumentWriter.LockSourceAsync (ноорог FOR UPDATE, If-Match)
     PE->>DB: Үе нээлттэй, блок шалгах
     PE->>LW: ValidateLockedAsync
-    PE->>DB: Цоорхойгүй дугаар, company_counter UPDATE … RETURNING
+    PE->>DB: fn_next_document_no, fn_next_entry_no (platform.ledger_counter)
     PE->>DB: INSERT gl_transaction, gl_entry (batch)
-    PE->>LW: WriteAsync → vat_entry, cust_ledger_entry + detailed, item/bank ledger, проекц UPSERT
+    PE->>LW: WriteAsync → tax.vat_entry, party.cust_ledger_entry + detailed, bank/inv ledger
     PE->>APP: IPostedDocumentWriter.WriteAsync (posted баримт INSERT, ноорог DELETE)
     APP->>EB: IEbarimtReceiptQueue.EnqueueAsync (ижил transaction)
-    EB->>DB: INSERT ebarimt.receipt (PENDING, billIdSuffix) + outbox ebarimt.receipt.create
+    EB->>DB: INSERT ebarimt.ebarimt_document (PENDING, fn_next_bill_seq) + outbox ebarimt.receipt.send
     PE->>OB: Enqueue SalesInvoicePosted
-    OB->>DB: INSERT outbox_message, NOTIFY
+    OB->>DB: INSERT integration.outbox, NOTIFY
     PE->>DB: INSERT gl_register (prev_hash, hash)
     PE->>DB: idempotency_key → COMPLETED
     PE->>DB: COMMIT (deferred trigger: Σ amount = 0)
@@ -846,11 +854,11 @@ sequenceDiagram
     PE-->>APP: PostingResult
     alt POS баримт (sync-first)
         APP->>D: DispatchNowAsync(receiptId)
-        D->>DB: fn_claim_outbox_by_id → SENDING (тусдаа commit)
+        D->>DB: UPDATE integration.outbox … WHERE id AND PENDING → PROCESSING (тенантын контекст, тусдаа commit)
         D->>EB: CreateReceipt
         EB->>P: POST /rest/receipt (timeout 20 s, retry хийхгүй)
         P-->>EB: 200 {id: ДДТД, qrData, lottery}
-        EB->>DB: receipt → SENT (ДДТД), outbox → DONE (qrData/lottery хадгалахгүй)
+        EB->>DB: ebarimt_document → SUCCESS (ДДТД), outbox → DONE (qrData/lottery хадгалахгүй)
         EB-->>APP: PrintPayload (зөвхөн санах ойд)
     else Нэхэмжлэх / асинхрон
         D->>EB: Worker NOTIFY эсвэл 2 сек polling-оор авч илгээнэ
@@ -861,54 +869,51 @@ sequenceDiagram
 
 ### 6.5 Transaction-ий SQL араг
 
+Функцүүдийн яг тодорхойлолт: [010_platform.sql](db/schema/010_platform.sql) (`platform.fn_set_context`, `platform.fn_lock_company_posting`, `platform.fn_next_document_no`, `platform.fn_next_entry_no`), [130_ebarimt.sql](db/schema/130_ebarimt.sql) (`ebarimt.fn_next_bill_seq`).
+
 ```sql
 BEGIN;                                                    -- READ COMMITTED
-SELECT set_config('app.tenant_id',  $1, true), set_config('app.company_id', $2, true),
-       set_config('app.user_id',    $3, true), set_config('app.request_id', $4, true);
+SELECT platform.fn_set_context($1::uuid, $2::uuid, $3::uuid, $4);   -- app.tenant_id / company_id / user_id / request_id (transaction-local)
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 
-INSERT INTO integration.idempotency_key (tenant_id, key, user_id, request_hash, status, created_at, expires_at)
-VALUES ($1, $5, $3, $6, 'IN_PROGRESS', now(), now() + interval '7 days')
+INSERT INTO integration.idempotency_key (tenant_id, company_id, key, user_id, http_method, request_path, request_hash, status)
+VALUES ($1, $2, $5, $3, 'POST', $15, $6, 'IN_PROGRESS')
 ON CONFLICT (tenant_id, key) DO NOTHING;                  -- 0 мөр → хадгалсан хариу эсвэл 409/422
 
-SELECT core.fn_lock_company_posting($1::uuid, $2::uuid);
+SELECT platform.fn_lock_company_posting($1::uuid, $2::uuid);   -- pg_advisory_xact_lock (D-C6)
 
 -- IPostedDocumentWriter.LockSourceAsync (Sales-ийн SQL; GL энэ хүснэгтэд хандахгүй)
-SELECT xmin FROM sales.sales_header
+SELECT row_version FROM sales.sales_header
  WHERE tenant_id = $1 AND company_id = $2 AND id = $7 FOR UPDATE;   -- If-Match-тэй харьцуулна
 
--- Цоорхойгүй дугаар (INumberAllocator, Platform)
-SELECT id, last_no, start_no, end_no FROM platform.no_series_line
- WHERE tenant_id = $1 AND company_id = $2 AND series_id = $8 AND starting_date <= $9 AND is_open
- ORDER BY starting_date DESC, line_no LIMIT 1
- FOR UPDATE;
-UPDATE platform.no_series_line SET last_no = $10, last_date_used = $9, is_open = $11
- WHERE tenant_id = $1 AND company_id = $2 AND id = $12;
+-- Цоорхойгүй хууль ёсны дугаар (INumberAllocator, Platform): мөрийг түгжиж, number_allocation-д нотолгоо бичнэ
+SELECT platform.fn_next_document_no($8, $9::date);         -- жишээ: 'БН-2026-00042' (D-C7)
 
-UPDATE gl.company_counter
-   SET last_transaction_no = last_transaction_no + 1,
-       last_entry_no       = last_entry_no + $13,          -- энэ posting-ийн G/L entry-ийн тоо
-       last_register_no    = last_register_no + 1
- WHERE tenant_id = $1 AND company_id = $2
-RETURNING last_transaction_no, last_entry_no, last_register_no;
+-- Ledger-ийн дугаар (D-K3): компани × ledger тус бүрийн counter, IDENTITY/SEQUENCE биш
+SELECT platform.fn_next_entry_no('GL_TRANSACTION', 1);     -- transaction_no
+SELECT platform.fn_next_entry_no('GL_REGISTER', 1);        -- gl_register_no
+SELECT platform.fn_next_entry_no('GL_ENTRY', $13);         -- энэ posting-ийн G/L entry-ийн тоо → мужийн эхний дугаар
 
 INSERT INTO gl.gl_transaction (...) VALUES (...);
-INSERT INTO gl.gl_entry (...) VALUES (...), (...);         -- NpgsqlBatch
--- ledger writers (эзэмшигч модуль бүр) → tax.vat_entry, parties.*, cash_bank.*, inventory.*, fixed_assets.* + проекц UPSERT
--- IPostedDocumentWriter.WriteAsync (Sales) → posted баримт, DELETE ноорог, IEbarimtReceiptQueue → ebarimt.receipt
--- engine → integration.outbox_message
+INSERT INTO gl.gl_entry (...) VALUES (...), (...);         -- NpgsqlBatch; id = UUIDv7 (апп), entry_no = муж
+-- ledger writers (эзэмшигч модуль бүр) → tax.vat_entry, party.*_ledger_entry + detailed, bank.bank_ledger_entry, inv.*, fa.*
+-- IPostedDocumentWriter.WriteAsync (Sales) → sales.sales_invoice_header/line, DELETE ноорог,
+--   IEbarimtReceiptQueue → ebarimt.fn_next_bill_seq(pos_id) + ebarimt.ebarimt_document (PENDING)
+-- engine → integration.outbox (topic, payload, idempotency_key)
 SELECT pg_notify('outbox', '');
-INSERT INTO gl.gl_register (...) VALUES (...);
+INSERT INTO gl.gl_register (...) VALUES (...);             -- prev_hash, hash (§8.7)
 UPDATE integration.idempotency_key SET status = 'COMPLETED', response_code = 201, response_body = $14
  WHERE tenant_id = $1 AND key = $5;
 COMMIT;                                                    -- Preview: SET CONSTRAINTS ALL IMMEDIATE; ROLLBACK;
 ```
 
 ```sql
-CREATE FUNCTION core.fn_lock_company_posting(p_tenant uuid, p_company uuid) RETURNS void
-LANGUAGE sql AS
-$$ SELECT pg_advisory_xact_lock(hashtextextended('post:' || p_tenant::text || ':' || p_company::text, 0)) $$;
+-- db/schema/010_platform.sql (канон)
+CREATE FUNCTION platform.fn_lock_company_posting(p_tenant_id uuid, p_company_id uuid) RETURNS void
+LANGUAGE sql VOLATILE AS $$
+    SELECT pg_advisory_xact_lock(hashtextextended('post:' || p_tenant_id::text || ':' || p_company_id::text, 0))
+$$;
 ```
 
 Hash давхцах (collision) нь хоёр компанийг хооронд нь хүлээлгэх л үр дагавартай. Буруу үр дүн гаргахгүй.
@@ -917,11 +922,11 @@ Hash давхцах (collision) нь хоёр компанийг хооронд 
 
 | Дугаар | Хүрээ | Цоорхой | Хаана олгоно |
 |---|---|---|---|
-| Хууль ёсны баримтын дугаар: posted нэхэмжлэх, credit memo, МХ-1/МХ-2, ерөнхий журналын ваучер, банкны ваучер, БМ/ҮХ баримт | компани × цуврал × огнооны мөр (жил бүрийн prefix, жишээ нь `БН26-00042`) | **Цоорхойгүй** | Posting transaction, advisory lock-ийн дор ([ADR-0008](./adr/ADR-0008-gapless-numbering.md)) |
-| `transaction_no`, `entry_no`, `register_no` | компани | Цоорхойгүй (дагалдах үр дүн). Цоорхой гарвал хөндлөнгийн оролцооны шинж гэж үзнэ | Posting transaction (`gl.company_counter`) |
+| Хууль ёсны баримтын дугаар: posted нэхэмжлэх, credit memo, МХ-1/МХ-2, ерөнхий журналын ваучер, банкны ваучер, БМ/ҮХ баримт | компани × цуврал × огнооны мөр (`PREFIX-YYYY-#####`, жил бүр шинээр, D-C7) | **Цоорхойгүй** | Posting transaction, advisory lock-ийн дор: `platform.fn_next_document_no` → `platform.number_series_counter`, нотолгоо `platform.number_allocation` ([ADR-0008](./adr/ADR-0008-gapless-numbering.md)) |
+| `transaction_no`, `gl_register_no`, ledger бүрийн `entry_no` | компани × ledger | Цоорхойгүй (D-K3). Цоорхой гарвал хөндлөнгийн оролцооны шинж гэж үзнэ | Posting transaction: `platform.fn_next_entry_no(ledger, n)` → `platform.ledger_counter`. IDENTITY/SEQUENCE хэрэглэхгүй |
 | Ноорогийн дугаар (`draft_no`) | компани × баримтын төрөл | Цоорхой гарч болно | Ноорог үүсгэхэд, тусдаа counter-оор |
-| `billIdSuffix` | мерчант × касс | Өдөр бүр давхардахгүй | Posting transaction (`ebarimt.pos_counter`), §9.2 |
-| Техникийн `id` | глобал | — | Application: `Guid.CreateVersion7()`. DB-ийн default нь `core.fn_uuid_v7()` |
+| `billIdSuffix` | компани × POS (`ebarimt_pos`) | Хэзээ ч reset хийгддэггүй counter (D-K4); өдөр дотор давхардахгүй (`UNIQUE (company_id, ebarimt_pos_id, bill_date, bill_id_suffix)`) | Posting transaction: `ebarimt.fn_next_bill_seq` → `ebarimt.pos_counter`, `bill_id_suffix = bill_seq % 1000000`, §9.2 |
+| Техникийн `id` | глобал | — | Application: `Guid.CreateVersion7()` (D-C8). DB-ийн `DEFAULT gen_random_uuid()` нь зөвхөн гараар/seed-ээр оруулахад ашиглагдах нөөц (v4) |
 
 ### 6.7 Урьдчилан харах (preview)
 
@@ -937,29 +942,29 @@ Hash давхцах (collision) нь хоёр компанийг хооронд 
 
 | Эх баримт | Залруулах арга | Нөхцөл |
 |---|---|---|
-| Ерөнхий журналын ваучер, тулгагдаагүй касс/банкны ваучер | `IReversalService.ReverseTransaction(transactionId, reasonCode)`: шинэ transaction ба register үүсгэж, толин тусгал entry бичнэ (`is_correction = true`, улаан сторно). VAT ба дэд ledger-ийг мөн толин тусгалаар бичнэ. `gl_entry_reversal`-д холбоос нэмнэ. | BC-ийн R-GL-POSTING-39/40: өмнө нь буцаагдаагүй, тулгагдаагүй, VAT хаагдаагүй байна |
-| Posted борлуулалт/худалдан авалтын нэхэмжлэх | **Cancel**: эх нэхэмжлэхийн дүнгээр бүрэн credit memo үүсгэж тулгана. `sales.cancelled_document`-д холбоос бичнэ. **Correct** = Cancel + ноорог хуулах. eBarimt: баталгаажаагүй B2C_RECEIPT бол `DELETE /rest/receipt`, бусад тохиолдолд `inactiveId` = гинжний сүүлийн ДДТД. | Төлөгдөөгүй, өмнө нь цуцлагдаагүй, үе нээлттэй ([bc-sales-documents.md](./research/bc-sales-documents.md) F6) |
-| Тулгагдсан төлбөр | Эхлээд unapply (LIFO, detailed мөрийн толин тусгал), дараа нь reverse | [bc-subledgers-application.md](./research/bc-subledgers-application.md) §4.3 |
-| НӨАТ-ын хаалт | Reverse | НӨАТ-ын үе түгжигдээгүй байна |
+| Ерөнхий журналын ваучер, тулгагдаагүй касс/банкны ваучер | `IReversalService.ReverseTransaction(transactionNo, reasonCode)`: шинэ transaction ба register үүсгэж, эх entry бүрийн **эсрэг тэмдэгтэй** entry бичнэ (D-C3: storno биш — дебит байсан дүн кредит баганад орно). VAT ба дэд ledger-ийг мөн эсрэг тэмдгээр бичнэ. Холбоос: шинэ мөрийн `reversed_entry_no` / `gl.gl_transaction.reverses_transaction_no`; эх мөрийн `reversed`, `reversed_by_entry_no`, `reversed_by_transaction_no` нь `platform.fn_ledger_update`-ээр (whitelist, D-C4) шинэчлэгдэнэ. | BC-ийн R-GL-POSTING-39/40: өмнө нь буцаагдаагүй, тулгагдаагүй, VAT хаагдаагүй байна. Зөвхөн журналаас үүссэн гүйлгээ ба бүхэл register (D-D5) |
+| Posted борлуулалт/худалдан авалтын нэхэмжлэх | **Cancel**: эх нэхэмжлэхийн дүнгээр бүрэн credit memo үүсгэж тулгана. `sales.cancelled_document` (`purchase.cancelled_document`)-д холбоос бичнэ. **Correct** = Cancel + ноорог хуулах. eBarimt: баталгаажаагүй B2C_RECEIPT бол `DELETE /rest/receipt`, бусад тохиолдолд `inactiveId` = гинжний сүүлийн ДДТД. | Төлөгдөөгүй, өмнө нь цуцлагдаагүй, үе нээлттэй ([bc-sales-documents.md](./research/bc-sales-documents.md) F6) |
+| Тулгагдсан төлбөр | Эхлээд unapply (LIFO, detailed мөрийн эсрэг тэмдэгтэй мөр), дараа нь reverse | [bc-subledgers-application.md](./research/bc-subledgers-application.md) §4.3 |
+| НӨАТ-ын хаалт | Reverse | НӨАТ-ын үе (`tax.vat_return_period`) `SUBMITTED` биш байна |
 | Элэгдлийн run, ханшийн дахин үнэлгээ | Run-ийн transaction-ийг reverse | Дараагийн run хийгдээгүй, үе нээлттэй байна |
-| Жилийн хаалт (`is_closing`) | Reverse | Санхүүгийн жил HARD_LOCKED биш байна |
+| Жилийн хаалт (`is_closing`) | Reverse | Санхүүгийн жил `LOCKED` биш байна |
 
-- **Буцаалтын огноо.**
-  - Эх үе OPEN бол эх `posting_date`-ээр буцаана. SOFT_LOCKED бол `gl.period.post_soft_locked` эрхтэй хэрэглэгч эх огноогоор буцааж болно.
-  - Эх үе хаагдсан бол хэрэглэгч нээлттэй цонхноос огноо сонгоно. `reverses_transaction_id` ба шалтгааны код заавал байна. Энэ нь Монголын "тухайн үед залруулах" практикт нийцнэ.
-- **Харуулалт.** Буцаалт нь улаан сторно байдлаар бичигдэнэ: тэмдэг эсрэг, багана ижил. Credit memo нь энгийн эсрэг бичилт байна. Тайлан хоёуланг нь `is_correction`-аар ялгаж харуулна.
+- **Буцаалтын огноо (D-D5).**
+  - Буцаалт нь **эх `posting_date`-ээр**, тухайн үе `OPEN` үед л хийгдэнэ.
+  - Эх үе `CLOSED`/`LOCKED` бол буцаалт хийхгүй: хэрэглэгч одоогийн нээлттэй үед **залруулах баримт** хийнэ (`gl.gl_transaction.corrects_transaction_no`, шалтгааны код заавал). Энэ нь Монголын "тухайн үед залруулах" практикт нийцнэ.
+- **Харуулалт.** Буцаалт ба credit memo хоёулаа энгийн эсрэг бичилт (эсрэг тэмдэг, эсрэг багана) байна; тусдаа "улаан сторно" горим байхгүй (D-C3). Тайлан буцаалтын мөрийг `reversed`/`reversed_entry_no`-оор ялгаж (шүүж) харуулж болно.
 
 ### 6.9 Үе хаах ба түгжээний харилцаа
 
-- Үеийн төлөв: `OPEN → SOFT_LOCKED → CLOSED → HARD_LOCKED`.
-  - SOFT_LOCKED үед зөвхөн `gl.period.post_soft_locked` эрхтэй хэрэглэгч бичилт хийнэ.
-  - CLOSED үеийг ерөнхий нягтлан шалтгаан бичиж дахин нээж болно. Энэ үйлдэл аудитын логт бичигдэнэ.
-  - HARD_LOCKED нь буцаагдахгүй.
-- **HARD_LOCKED тавигдах үе:**
-  - НӨАТ-ын үе: ТТ-03а "илгээсэн" гэж тэмдэглэхэд;
-  - санхүүгийн жил: e-balance илгээсэн нотолгоог хадгалахад.
+- Үеийн төлөв (`gl.accounting_period.status`, `gl.fiscal_year.status`): `OPEN → CLOSED → LOCKED` (D-D3). Шилжилт бүр `gl.accounting_period_status_log`-д бичигдэнэ; шилжилтийн дүрмийг trigger (`gl.fn_accounting_period_status`, `gl.fn_fiscal_year_status`) хамгаална.
+  - `OPEN` үед л posting хийнэ. Мөн компанийн `allow_posting_from/to`-оос гадуур posting-ийг **бүх эрхэд** хориглоно (`gl.fn_assert_posting_date_allowed`).
+  - `CLOSED` үеийг зөвхөн Owner (`gl.period.reopen` эрх) шалтгаантай дахин нээнэ. Энэ үйлдэл аудитын логт бичигдэнэ.
+  - `LOCKED` нь буцаагдахгүй (`gl.period.lock`).
+- **LOCKED тавигдах үе:**
+  - НӨАТ-ын үе: ТТ-03а "илгээсэн" гэж тэмдэглэхэд (`tax.vat_return_period.status = 'SUBMITTED'`);
+  - санхүүгийн жил: e-balance илгээсэн нотолгоог хадгалахад (`rpt.filing_submission`).
 - **Ижил advisory lock авдаг үйлдлүүд:** үе хаах, жилийн хаалт, НӨАТ-ын хаалт, ханшийн дахин үнэлгээ, элэгдлийн run, барааны өртгийн дахин тооцоо. Эдгээр нь posting-той давхцаж ажиллахгүй.
-- **DB-ийн хамгаалалт:** `gl.gl_transaction` дээрх `BEFORE INSERT` trigger нь `CLOSED` ба `HARD_LOCKED` үед бичилтийг хориглоно (§8.2).
+- **DB-ийн хамгаалалт:** `gl.gl_transaction` дээрх `BEFORE INSERT` trigger (`trg_gl_transaction_period` → `gl.fn_gl_transaction_before_insert`) нь `OPEN` биш үе ба цонхноос гадуурх огноог хориглоно (`ERP01`, §8.2).
 
 ### 6.10 Алдааны горим
 
@@ -982,12 +987,12 @@ Hash давхцах (collision) нь хоёр компанийг хооронд 
 
 ```mermaid
 erDiagram
-    IDENTITY_USER ||--o{ MEMBERSHIP : "олон тенантад"
-    TENANT ||--o{ MEMBERSHIP : ""
+    APP_USER ||--o{ TENANT_MEMBERSHIP : "олон тенантад"
+    TENANT ||--o{ TENANT_MEMBERSHIP : ""
     TENANT ||--o{ COMPANY : "1..N (багцаас хамаарна)"
-    COMPANY ||--o{ MEMBER_COMPANY_ROLE : ""
-    MEMBERSHIP ||--o{ MEMBER_COMPANY_ROLE : ""
-    ROLE ||--o{ MEMBER_COMPANY_ROLE : ""
+    COMPANY ||--o{ USER_COMPANY_ROLE : ""
+    APP_USER ||--o{ USER_COMPANY_ROLE : ""
+    ROLE ||--o{ USER_COMPANY_ROLE : ""
     ROLE }o--o{ PERMISSION_SET : "role_permission_set"
     COMPANY ||--o{ BUSINESS_ROWS : "tenant_id + company_id"
 ```
@@ -1002,19 +1007,19 @@ erDiagram
   - eBarimt-ийн мерчант.
 
   Тенант дотор хэд хэдэн компани байж болно. Жишээ нь эзэмшигч 2 ХХК-тай, эсвэл "Туршилтын компани"-тай.
-- **Хэрэглэгч (`identity.user`) глобал.** Нэг хэрэглэгч олон тенантын гишүүн байж болно. Гэрээт нягтлан 10–30 бичил бизнесэд үйлчилдэг тул энэ нь чухал. Нэвтэрсний дараа идэвхтэй тенантаа сонгоно. Тенант солиход cookie-ийн claim шинэчлэгдэнэ.
+- **Хэрэглэгч (`platform.app_user`, нэвтрэх мэдээлэл нь `identity.user_credential`) глобал.** Нэг хэрэглэгч олон тенантын гишүүн байж болно. Гэрээт нягтлан 10–30 бичил бизнесэд үйлчилдэг тул энэ нь чухал. Нэвтэрсний дараа идэвхтэй тенантаа сонгоно. Тенант солиход cookie-ийн claim шинэчлэгдэнэ.
 - **Эрх** нь (хэрэглэгч, компани) хос бүрд олгогдоно. BC мөн permission set-ийг компаниар оноодог (§10.2).
 
 ### 7.2 Түлхүүр ба баганын дүрэм
 
 | Хүснэгтийн ангилал | Заавал багана | PK | FK | RLS |
 |---|---|---|---|---|
-| Компанийн түвшний (бүх бизнесийн мөр, ledger) | `tenant_id uuid NOT NULL`, `company_id uuid NOT NULL` | `(tenant_id, company_id, id)` | `(tenant_id, company_id) → platform.company(tenant_id, id)`. Бусад хүснэгт рүү `(tenant_id, company_id, x_id)` хэлбэрээр | FORCE, `tenant_id` |
-| Тенантын түвшний (`platform.company`, `platform.membership`, `platform.member_company_role`, `platform.tenant_secret`, `integration.idempotency_key`) | `tenant_id uuid NOT NULL` | `(tenant_id, id)` | `tenant_id → platform.tenant` | FORCE, `tenant_id` |
-| Глобал лавлах (`platform.tenant`, `identity.*`, `currency.ref_currency`, `currency.ref_official_rate`, `tax.ref_legal_parameter`, `ebarimt.ref_*`, `ebarimt.posapi_instance`) | — | `id` эсвэл бизнесийн түлхүүр | — | Байхгүй. `erp_app` зөвхөн SELECT эрхтэй. Бичих эрхийг `erp_worker` (ханш, eBarimt лавлах) ба migration-д л олгоно (§7.5) |
+| Компанийн түвшний (бүх бизнесийн мөр, ledger) | `tenant_id uuid NOT NULL`, `company_id uuid NOT NULL` | `id uuid PRIMARY KEY` (UUIDv7) + `UNIQUE (company_id, id)`; ledger-т нэмэлтээр `UNIQUE (company_id, entry_no)` (D-K3) | `(tenant_id, company_id) → platform.company (tenant_id, id)`. Бусад хүснэгт рүү `(company_id, x_id) → x (company_id, id)` хэлбэрээр | FORCE: `tenant_isolation` + RESTRICTIVE `company_isolation` |
+| Тенантын түвшний (`platform.company`, `platform.tenant_membership`, `platform.user_company_role`, `platform.tenant_secret`, `integration.idempotency_key`, `integration.outbox`) | `tenant_id uuid NOT NULL` | `id uuid PRIMARY KEY` | `tenant_id → platform.tenant` | FORCE: `tenant_isolation` |
+| Глобал лавлах (`fx.iso_currency`, `fx.official_exchange_rate`, `tax.tax_parameter`, `ebarimt.classification_code`, `ebarimt.tax_product_code`, `ebarimt.district`, `ebarimt.taxpayer_info`, `ebarimt.posapi_instance`, `rpt.statement_line`, `platform.source_code`) | — | `id` эсвэл бизнесийн түлхүүр | — | Байхгүй. `app_user` зөвхөн SELECT эрхтэй. Бичих эрхийг `app_worker` (ханш, eBarimt лавлах) ба migration-д л олгоно (§7.5). `platform.tenant` ба `platform.app_user` нь тусгай бодлоготой (`tenant_self`, `app_user_visible`, [900_rls.sql](db/schema/900_rls.sql)); `identity.*` нь тенантгүй, RLS-гүй, зөвхөн `app_user` DML (D-K7) |
 
 - **Индекс.** Бизнесийн хүснэгтийн бүх индекс `(tenant_id, company_id, …)`-аар эхэлнэ.
-- **Id.** `id` нь UUIDv7. Application `Guid.CreateVersion7()`-оор үүсгэнэ. DB-ийн default нь `core.fn_uuid_v7()`. Энэ функц PG18+-д `uuidv7()`-г дууддаг, PG16/17-д ижил үр дүнтэй plpgsql хэрэгжүүлэлт ашиглана.
+- **Id.** `id` нь UUIDv7. Application `Guid.CreateVersion7()`-оор үүсгэнэ (D-C8). Канон DDL-ийн `DEFAULT gen_random_uuid()` нь зөвхөн гараар/seed-ээр оруулах мөрийн нөөц; PG18-ийн `uuidv7()`-г DDL-д шууд хэрэглэхгүй (16+ нийцэл).
 - **Enum.** Текст + `CHECK (x IN (...))` хэлбэрээр хадгална. PostgreSQL-ийн `ENUM` төрөл ашиглахгүй, учир нь утга нэмэх нь migration-ийг хүндрүүлдэг.
 - **Цаг ба огноо.**
   - Timestamp нь `timestamptz`. Серверийн цагийн бүс UTC.
@@ -1030,17 +1035,15 @@ erDiagram
      - `ACTIVE` бол хэвийн;
      - `READ_ONLY` бол бүх command 403 `platform.tenant_read_only` буцаана;
      - `SUSPENDED` бол 403.
-3. **Компани.** Замын `{companyId}`-д `member_company_role` байгаа эсэхийг шалгана. `ICompanyContext` ба эрхийн цуглуулгыг тохируулна. Компанийн гишүүнчлэлгүй бол 404 буцаана: компани байгаа эсэхийг илчлэхгүй.
+3. **Компани.** Замын `{companyId}`-д `platform.user_company_role` (эсвэл `company_id IS NULL` = бүх компани) байгаа эсэхийг шалгана. `ICompanyContext` ба эрхийн цуглуулгыг тохируулна. Компанийн гишүүнчлэлгүй бол 404 буцаана: компани байгаа эсэхийг илчлэхгүй.
 4. **`TenantSession`** (scoped).
    - `NpgsqlDataSource`-оос холболт авна.
    - `BEGIN` хийнэ. Command бол `READ COMMITTED`, query бол `REPEATABLE READ READ ONLY`.
    - Дараах SQL-ийг ажиллуулна:
 
      ```sql
-     SELECT set_config('app.tenant_id', @tenant, true),
-            set_config('app.company_id', @company, true),
-            set_config('app.user_id', @user, true),
-            set_config('app.request_id', @request, true);
+     SELECT platform.fn_set_context(@tenant, @company, @user, @request);
+     -- = set_config('app.tenant_id'|'app.company_id'|'app.user_id'|'app.request_id', …, true)  (db/schema/010_platform.sql)
      ```
    - `set_config(name, value, true)` нь `SET LOCAL app.tenant_id = …`-тэй ижил үр дүнтэй. Ялгаа нь утгыг параметрээр (bind) дамжуулж болдогт оршино. SQL-д утгыг string-ээр залгахгүй.
    - EF Core-ийн `DbContext`-ууд `UseTransaction` ашиглаж ижил холболт ба transaction-ийг хуваалцана. Dapper SQL мөн ижил холболтоор ажиллана.
@@ -1050,75 +1053,90 @@ erDiagram
 
 ### 7.4 RLS бодлого
 
+Канон тодорхойлолт: [900_rls.sql](db/schema/900_rls.sql) (`tenant_id` баганатай бүх хүснэгтэд нэг loop-оор) ба контекст функц [010_platform.sql](db/schema/010_platform.sql).
+
 ```sql
--- Компанийн/тенантын түвшний хүснэгт бүрд (core.fn_apply_tenant_rls helper үүсгэнэ)
+-- Контекст функц: FAIL-CLOSED (D-K6). app.tenant_id тохируулаагүй бол current_setting() алдаа өгнө,
+-- хоосон бол ''::uuid хөрвүүлэлт бүтэлгүйтнэ.
+CREATE FUNCTION platform.current_tenant_id()  RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT current_setting('app.tenant_id')::uuid $$;
+CREATE FUNCTION platform.current_company_id() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT current_setting('app.company_id')::uuid $$;
+
+-- tenant_id-тай хүснэгт бүрд (900_rls.sql-ийн loop үүсгэнэ)
 ALTER TABLE sales.sales_header ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sales.sales_header FORCE ROW LEVEL SECURITY;      -- эзэмшигчид ч үйлчилнэ
-CREATE POLICY rls_sales_header__tenant ON sales.sales_header
-    USING      (tenant_id = current_setting('app.tenant_id')::uuid)   -- тохируулаагүй бол алдаа (fail-closed)
-    WITH CHECK (tenant_id = current_setting('app.tenant_id')::uuid);
+ALTER TABLE sales.sales_header FORCE ROW LEVEL SECURITY;      -- эзэмшигч app_owner-т ч үйлчилнэ
+CREATE POLICY tenant_isolation ON sales.sales_header
+    USING      (tenant_id = platform.current_tenant_id())
+    WITH CHECK (tenant_id = platform.current_tenant_id());
+-- company_id NOT NULL бол нэмэлтээр RESTRICTIVE бодлого
+CREATE POLICY company_isolation ON sales.sales_header AS RESTRICTIVE
+    USING      (company_id = platform.current_company_id())
+    WITH CHECK (company_id = platform.current_company_id());
 ```
 
-- `app.tenant_id` тохируулаагүй (эсвэл хоосон) бол `current_setting` алдаа өгнө, эсвэл `''::uuid` хөрвүүлэлт бүтэлгүйтнэ. Query ямагт **алдаагаар зогсоно** (fail-closed). Ингэснээр контекстгүй query-г чимээгүй 0 мөр биш, тод алдаагаар илрүүлнэ.
+- **Бодлогын нэр** (канон): `tenant_isolation` (бүх тенантын хүснэгт), `company_isolation` (RESTRICTIVE, `company_id NOT NULL` хүснэгт), `tenant_read_system` (`tenant_id` NULL = системийн мөрийг уншуулах, жишээ нь shipped permission set), `tenant_self` (`platform.tenant`), `app_user_visible` / `app_user_self_write` / `app_user_self_update` (`platform.app_user`). Өөр нэр (`rls_<table>__tenant`, `p_tenant_isolation`) хэрэглэхгүй.
+- `app.tenant_id` тохируулаагүй (эсвэл хоосон) бол query ямагт **алдаагаар зогсоно** (fail-closed, D-K6). Ингэснээр контекстгүй query-г чимээгүй 0 мөр биш, тод алдаагаар илрүүлнэ.
 - RLS бол хоёр дахь хамгаалалт. Query бүр `WHERE tenant_id = @tenantId AND company_id = @companyId`-ийг өөрөө бичнэ (индекс ашиглахад ч хэрэгтэй).
-- **Компанийн тусгаарлалт** RLS биш, дараах 4 давхаргаар хамгаалагдана:
-  1. EF Core 10-ийн нэрлэсэн query filter-ууд: `"Tenant"`, `"Company"`. `"SoftDelete"` filter-ээс тусдаа байна.
-  2. Composite FK `(tenant_id, company_id, x_id)`. Энэ нь өөр компанийн мөр рүү заахыг боломжгүй болгоно.
-  3. Ledger хүснэгт бүр дээрх `BEFORE INSERT` trigger нь `NEW.company_id = current_setting('app.company_id')::uuid` эсэхийг шалгана.
-  4. Integration test: query handler бүрийг нэг тенантын 2 компанитай ажиллуулж, хөндлөн мөр гарахгүйг шалгана.
+- **Компанийн тусгаарлалт** дараах давхаргаар хамгаалагдана:
+  1. RESTRICTIVE `company_isolation` бодлого (`app.company_id`);
+  2. EF Core 10-ийн нэрлэсэн query filter-ууд: `"Tenant"`, `"Company"`. `"SoftDelete"` filter-ээс тусдаа байна;
+  3. Composite FK `(company_id, x_id) → x (company_id, id)`. Энэ нь өөр компанийн мөр рүү заахыг боломжгүй болгоно;
+  4. Ledger хүснэгт бүр дээрх `BEFORE INSERT` trigger (`trg_<table>_before_insert` → `platform.fn_ledger_before_insert()`) нь `NEW.company_id = platform.current_company_id()` эсэхийг шалгана (`ERT01`);
+  5. Integration test: query handler бүрийг нэг тенантын 2 компанитай ажиллуулж, хөндлөн мөр гарахгүйг шалгана.
 
 ### 7.5 DB role
 
-| Role | Нэвтрэх | BYPASSRLS | Эрх | Ашиглагч |
-|---|---|---|---|---|
-| `erp_owner` | NOLOGIN | **Үгүй** | Бүх схем ба объектыг эзэмшинэ. FORCE RLS эзэмшигчид ч үйлчилнэ | Зөвхөн `erp_migrator`-оос `SET ROLE` хийж хүрнэ |
-| `erp_migrator` | LOGIN | Үгүй (`erp_owner`-ийн гишүүн) | DDL, migration, seed. Тенантын өгөгдөлд хүрэх seed ба backfill нь тенант бүрд `set_config('app.tenant_id', …)` хийнэ | `Erp.Migrator`, CI/CD-ийн migration алхам |
-| `erp_app` | LOGIN | **Үгүй** | Бизнесийн хүснэгтэд SELECT/INSERT/UPDATE/DELETE. Ledger-д зөвхөн SELECT/INSERT. Глобал лавлахад зөвхөн SELECT | `erp-api` |
-| `erp_worker` | LOGIN | **Үгүй** | `erp_app`-ийн эрх + `currency.ref_official_rate`, `ebarimt.ref_*`-д INSERT, `quartz.*`-д бүрэн эрх, `core.fn_rotate_partitions()`-ийг EXECUTE (§8.1) | `erp-worker` |
-| `erp_dispatch_definer` | NOLOGIN | Тийм (цорын ганц) | Зөвхөн `integration.outbox_message`-д SELECT/UPDATE, `platform.company` ба `platform.tenant`-д SELECT | SECURITY DEFINER функцүүдийн эзэмшигч (§7.6). Нэвтрэх боломжгүй |
-| `erp_ops_ro` | LOGIN | Үгүй | Зөвхөн `ops.*` view (тенантын нийлбэр тоо, PII-гүй). Бизнесийн хүснэгтэд эрхгүй | Support/DevOps |
-| `erp_backup` | LOGIN | — | pgBackRest-ийн шаардах backup control эрх (`pg_backup_start/stop`, `pg_switch_wal`, `pg_create_restore_point`). pgBackRest replication протокол ашигладаггүй, PGDATA-г OS-ийн `postgres` хэрэглэгчээр уншина. `pg_hba`-д зөвхөн DB host-ын local socket. Шаардах эрхийн яг жагсаалтыг суулгах pgBackRest хувилбарын баримтаар тогтооно | pgBackRest |
+Канон: [000_extensions_roles.sql](db/schema/000_extensions_roles.sql). **Group role** (NOLOGIN) нь эрхийг агуулна; **login role** нь зөвхөн group role-ийн гишүүн. Production-ийн login role-ыг ops нууцын сангаас үүсгэнэ; локал/CI-д [starter/db/init/01-roles.sql](./starter/db/init/01-roles.sql).
 
-`postgres` superuser-ээр application холбогдохгүй. Түүний нууц үг хоёр хүний хяналттай сейфэнд хадгалагдана.
+| Group role | BYPASSRLS | Эрх | Login role (гишүүн) |
+|---|---|---|---|
+| `app_owner` | **Үгүй** (D-K6) | Бүх схем ба объектыг эзэмшинэ. FORCE RLS эзэмшигчид ч үйлчилнэ. Схемийн файл бүр `SET ROLE app_owner` | `erp_migrator` (`Erp.Migrator`, CI/CD-ийн migration алхам), `erp_owner` (NOLOGIN, DB эзэмшигч) |
+| `app_user` | **Үгүй** | Бизнесийн хүснэгтэд SELECT/INSERT/UPDATE/DELETE. Ledger ба posted баримтад зөвхөн SELECT/INSERT (910). Counter-т бичих эрхгүй (зөвхөн SECURITY DEFINER allocator). Глобал лавлахад зөвхөн SELECT. `identity.*`-д DML | `erp_app` (`erp-api`) |
+| `app_worker` | **Үгүй** | `app_user`-ийн гишүүн + `fx.official_exchange_rate`, `ebarimt.classification_code` г.м. глобал лавлахад INSERT/UPDATE, `integration.job_run`, `integration.fn_claim_outbox`, `platform.fn_list_active_companies`, `integration.fn_purge_expired`-ийг EXECUTE | `erp_worker` (`erp-worker`) |
+| `app_readonly` | Үгүй | Зөвхөн SELECT (BI, тайлангийн replica), RLS-тэй | (сонголттой) |
+| `app_ops` | Үгүй | Бизнесийн хүснэгтэд **эрхгүй**; зөвхөн `integration.fn_ops_health()` (PII-гүй нийлбэр) | `erp_ops_ro` (Support/DevOps) |
+| `app_rls_bypass` | **Тийм (цорын ганц)** | Хэн ч нэвтрэхгүй. Зөвхөн тенант хоорондын SECURITY DEFINER функцүүдийг эзэмшинэ: `integration.fn_claim_outbox`, `platform.fn_list_active_companies`, `platform.fn_list_user_tenants`, `platform.fn_find_invitation`, `platform.fn_accept_invitation`, `audit.fn_row_change`, `integration.fn_ops_health`, `integration.fn_purge_expired` г.м. (140, 910) | — |
+| (`erp_backup`) | — | pgBackRest-ийн backup control эрх (`pg_backup_start/stop`, `pg_switch_wal`, `pg_create_restore_point`). PGDATA-г OS-ийн `postgres` хэрэглэгчээр уншина. `pg_hba`-д зөвхөн DB host-ын local socket | pgBackRest (staging/production-д л) |
 
-`erp_owner`-т `BYPASSRLS` **хэзээ ч өгөхгүй**. Өгвөл FORCE RLS эзэмшигчид үйлчлэхээ болиод, migration ба purge-ийн тенантын хамгаалалт алдагдана. Catalog тест (§7.8) үүнийг шалгана.
+`postgres` superuser-ээр application холбогдохгүй. Superuser зөвхөн `000_extensions_roles.sql` (role, өргөтгөл, схем)-ийг ажиллуулна. Түүний нууц үг хоёр хүний хяналттай сейфэнд хадгалагдана.
+
+`app_owner` ба түүний гишүүдэд (`erp_owner`, `erp_migrator`) `BYPASSRLS` **хэзээ ч өгөхгүй** (D-K6). Өгвөл FORCE RLS эзэмшигчид үйлчлэхээ болиод, migration ба purge-ийн тенантын хамгаалалт алдагдана. 900_rls.sql-ийн self-check ба catalog тест (§7.8) үүнийг шалгана.
 
 ### 7.6 Background job ба тенант хоорондын боловсруулалт
 
-- Worker нь `erp_worker` role-оор, **RLS-тэй** ажиллана.
-- **Тенантын жагсаалт** нь SECURITY DEFINER функцээр л гарна. Функц зөвхөн id буцаана:
+- Worker нь `erp_worker` (→ `app_worker`) role-оор, **RLS-тэй** ажиллана.
+- **Тенантын жагсаалт** нь SECURITY DEFINER функцээр л гарна (`app_rls_bypass` эзэмшинэ, зөвхөн `app_worker` EXECUTE). Функц зөвхөн id буцаана ([140_integration_audit.sql](db/schema/140_integration_audit.sql)):
 
   ```sql
-  CREATE FUNCTION platform.fn_list_active_companies(p_after_tenant uuid, p_after_company uuid, p_limit int)
+  CREATE FUNCTION platform.fn_list_active_companies(p_after_tenant uuid, p_after_company uuid, p_limit integer)
   RETURNS TABLE (tenant_id uuid, company_id uuid)
-  LANGUAGE sql SECURITY DEFINER SET search_path = platform, pg_temp AS $$
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
     SELECT c.tenant_id, c.id FROM platform.company c JOIN platform.tenant t ON t.id = c.tenant_id
-     WHERE t.status = 'ACTIVE' AND c.status = 'ACTIVE' AND (c.tenant_id, c.id) > (p_after_tenant, p_after_company)
+     WHERE t.status = 'ACTIVE' AND c.status = 'ACTIVE'
+       AND (c.tenant_id, c.id) > (coalesce(p_after_tenant, '00000000-0000-0000-0000-000000000000'::uuid),
+                                  coalesce(p_after_company, '00000000-0000-0000-0000-000000000000'::uuid))
      ORDER BY c.tenant_id, c.id LIMIT p_limit $$;
   ```
-- **Outbox-ийг авах (claim)** мөн SECURITY DEFINER функцээр явагдана. Функц нь мөрийн түлхүүр ба төрлийг л буцаана. Payload-ийг дараа нь тенантын контекст дотор уншина:
+- **Outbox-ийг авах (claim)** мөн SECURITY DEFINER функцээр явагдана. Функц нь мөрийн түлхүүр ба `topic`-ийг л буцаана. Payload-ийг дараа нь тенантын контекст дотор уншина:
 
   ```sql
-  CREATE FUNCTION integration.fn_claim_outbox(p_worker text, p_types text[], p_limit int, p_lease interval)
-  RETURNS TABLE (tenant_id uuid, company_id uuid, id uuid, message_type text)
-  LANGUAGE sql SECURITY DEFINER SET search_path = integration, pg_temp AS $$
-    UPDATE integration.outbox_message m
-       SET status = CASE WHEN m.retry_policy = 'NONE' THEN 'SENDING' ELSE 'DISPATCHING' END,
-           lease_owner = p_worker, lease_until = now() + p_lease,
-           attempt_count = m.attempt_count + 1, last_attempt_at = now()
-     WHERE (m.tenant_id, m.company_id, m.id) IN (
-           SELECT o.tenant_id, o.company_id, o.id FROM integration.outbox_message o
-            WHERE o.status = 'PENDING' AND o.next_attempt_at <= now()
-              AND o.message_type = ANY (p_types)
-              AND (o.depends_on_id IS NULL OR EXISTS (SELECT 1 FROM integration.outbox_message d
-                     WHERE d.tenant_id = o.tenant_id AND d.company_id = o.company_id
-                       AND d.id = o.depends_on_id AND d.status = 'DONE'))
-            ORDER BY o.next_attempt_at
+  CREATE FUNCTION integration.fn_claim_outbox(p_worker text, p_topics text[], p_limit integer, p_lease interval)
+  RETURNS TABLE (tenant_id uuid, company_id uuid, id uuid, topic text)
+  LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+    UPDATE integration.outbox m
+       SET status = 'PROCESSING', lease_owner = p_worker, lease_until = now() + p_lease,
+           attempts = m.attempts + 1
+     WHERE m.id IN (
+           SELECT o.id FROM integration.outbox o
+            WHERE o.status = 'PENDING' AND o.available_at <= now() AND o.topic = ANY (p_topics)
+              AND o.attempts < o.max_attempts
+              AND (o.depends_on_id IS NULL OR EXISTS (SELECT 1 FROM integration.outbox d
+                                                       WHERE d.id = o.depends_on_id AND d.status = 'DONE'))
+            ORDER BY o.available_at
             LIMIT p_limit
             FOR UPDATE SKIP LOCKED)
-    RETURNING m.tenant_id, m.company_id, m.id, m.message_type $$;
+    RETURNING m.tenant_id, m.company_id, m.id, m.topic $$;
   ```
-- **Боловсруулалт.** Авсан мөр бүрийг `TenantScope.RunAsync(tenantId, companyId, systemActor, …)` боловсруулна. Энэ нь `TenantSession`-ийг ижил `set_config`-оор нээнэ. Аудитын `changed_by` = `system:<job>`, `app.request_id` = `job_run_id`.
+- **Боловсруулалт.** Авсан мөр бүрийг `TenantScope.RunAsync(tenantId, companyId, systemActor, …)` боловсруулна. Энэ нь `TenantSession`-ийг ижил `platform.fn_set_context`-оор нээнэ. Аудитын `changed_by` = `system:<job>`, `app.request_id` = `job_run_id`.
 - **Quartz-ийн глобал хуваарь** (fan-out) нь компани бүрд outbox мессеж үүсгэдэг. Жишээ нь `fa.depreciation_reminder` ба `tax.vat_threshold.check` (`integration.job_definition`-ийн код, [db/schema/140_integration_audit.sql](db/schema/140_integration_audit.sql)). Ингэснээр компани тус бүрд retry ба харагдах байдал тусдаа байна.
 - **Урт job.** Нэг transaction ≤ 30 s байна. Илүү урт ажлыг хэсэгчилж хуваана (chunk).
 
@@ -1127,13 +1145,14 @@ CREATE POLICY rls_sales_header__tenant ON sales.sales_header
 `PROVISIONING → ACTIVE → READ_ONLY → SUSPENDED → PURGE_APPROVED → PURGED`
 
 - **Provisioning (нэг transaction).**
-  - Дараах зүйлсийг үүсгэнэ: `tenant`, эзэмшигчийн `membership`, анхны `company`.
+  - Дараах зүйлсийг үүсгэнэ: `platform.tenant`, эзэмшигчийн `platform.tenant_membership`, анхны `platform.company`.
   - Модуль бүрийн `ICompanySeeder`-ийг (Platform.Contracts-д тодорхойлсон, модулиуд хэрэгжүүлнэ) тогтсон дарааллаар дуудна:
-    1. GL: дансны төлөвлөгөө, санхүүгийн жил, үе, компанийн тоолуур;
-    2. Platform: дугаарын цуврал;
-    3. Tax: татварын код, профайл;
-    4. Parties: posting group, төлбөрийн нөхцөл;
-    5. Cash: касс.
+    1. GL: дансны төлөвлөгөө, санхүүгийн жил, үе (`gl.fn_initialize_company`, `gl.fn_create_fiscal_year`); ledger counter-ийн мөрийг `platform.fn_next_entry_no` анх дуудагдахад үүсгэнэ;
+    2. Platform: дугаарын цуврал (`platform.number_series`, `number_series_line`);
+    3. Tax: VAT posting group ба setup, профайл (`tax.company_tax_profile`);
+    4. Parties: posting group, General Posting Setup, төлбөрийн нөхцөл;
+    5. CashBank: касс (`bank.bank_account`, `kind = 'CASH'`).
+  - MN-ийн анхдагч багцыг SQL-ээр нэг дуудлагаар суулгах хувилбар: `platform.fn_provision_company_mn(tenant_id, company_id)` ([db/seed](db/seed/README.md)).
   - Үүний дараа `TenantProvisioned` ба `CompanyCreated` event-ийг нийтэлнэ.
 - **Хэрэглэгч ба гэрээ.** Хэрэглэгчтэй өгөгдөл боловсруулах гэрээ (DPA) байгуулна. Тенант бол өгөгдлийг хянагч (controller), бид боловсруулагч (processor).
 - **Гэрээ цуцлагдвал.**
@@ -1141,22 +1160,24 @@ CREATE POLICY rls_sales_header__tenant ON sales.sales_header
   - Бүтэн экспортын багц олгоно (§12.8).
   - Тенант бичгээр хүсэлт гаргаж, экспорт хүлээн авснаа баталгаажуулсны дараа `PURGE_APPROVED` төлөвт шилжинэ.
 - **Purge.**
-  - `platform.fn_purge_tenant(tenant_id)` процедурыг `erp_migrator` (`SET ROLE erp_owner`) ажиллуулна. FORCE RLS эзэмшигчид ч үйлчилдэг тул эхлээд `set_config('app.tenant_id', <тенант>, true)` хийнэ. Ингэснээр өөр тенантын мөрд хүрэх боломжгүй.
-  - Append-only guard trigger-ууд нь зөвхөн `current_setting('erp.purge_tenant')` = тухайн тенант бөгөөд тенант `PURGE_APPROVED` төлөвтэй үед DELETE-ийг зөвшөөрнө (§8.1).
+  - Purge-ийг `Erp.Migrator`-ийн purge журмаар `erp_migrator` (`SET ROLE app_owner`) ажиллуулна (тусдаа DB функц байхгүй). FORCE RLS эзэмшигчид ч үйлчилдэг тул эхлээд `platform.fn_set_context(<тенант>, …)` хийнэ. Ингэснээр өөр тенантын мөрд хүрэх боломжгүй.
+  - Append-only guard (`platform.fn_guard_immutable`) нь зөвхөн `platform.fn_purge_in_progress(tenant_id)` үнэн үед DELETE-ийг зөвшөөрнө: session-ийн `erp.purge_tenant` = тухайн тенант, session user нь `app_owner`-ийн гишүүн, тенант `PURGE_APPROVED` төлөвтэй (§8.1).
   - Үйлдэл бүр `platform.tenant_purge_log`-д бичигдэнэ.
   - Нөөц хуулбарт тенантын өгөгдөл retention дуустал үлдэнэ: pgBackRest repo1 ≈ 35–42 хоног, repo2-ийн сарын full 12 сар (§12.5). Нөөцөөс сэргээх бүрд purge хийгдсэн тенантуудын жагсаалтаар (`platform.tenant_purge_log`) purge-ийг дахин ажиллуулна. Энэ хугацааг DPA-д бичнэ.
 
 ### 7.8 Олон тенантын тест (CI-д заавал)
 
+Суурь нь [db/tests/catalog_checks.sql](db/tests/catalog_checks.sql), [db/tests/smoke.sql](db/tests/smoke.sql) ба 900_rls.sql-ийн self-check; `Erp.Migrator verify` ижил шалгалтыг ажиллуулна.
+
 1. Catalog-оос `tenant_id`-тэй бүх хүснэгтийг жагсаана. Тус бүрд дараахыг шалгана:
    - RLS ENABLED ба FORCED;
-   - `rls_<table>__tenant` бодлого байгаа;
-   - `tenant_id NOT NULL`. Цорын ганц allow-list: `audit.security_event`. Тенант сонгохоос өмнөх үйл явдалд (нэвтрэлт амжилтгүй болох) `tenant_id` NULL байна. Ийм мөрийг RLS-ийн бодлого хэнд ч харуулахгүй. Тэдгээрийг платформын аудитын SECURITY DEFINER view л уншина.
+   - `tenant_isolation` бодлого байгаа (`company_id NOT NULL` бол `company_isolation` RESTRICTIVE мөн);
+   - `tenant_id NOT NULL`. Allow-list (системийн мөртэй): `tenant_read_system` бодлоготой хүснэгтүүд, `integration.job_run`, `audit.security_event`. Тенант сонгохоос өмнөх үйл явдалд (нэвтрэлт амжилтгүй болох) `audit.security_event.tenant_id` NULL байна. Ийм мөрийг RLS-ийн бодлого хэнд ч харуулахгүй; зөвхөн `audit.fn_log_security_event` (SECURITY DEFINER) бичнэ.
 2. `erp_app`-аар А тенантын контекстод Б тенантын мөр 0 байна. Хэрэглэгчийн мэдээгүй id-аар хандсан ч 0 байна.
-3. `app.tenant_id` тохируулаагүй үед SELECT ба INSERT алдаа өгнө (fail-closed).
+3. `app.tenant_id` тохируулаагүй үед SELECT ба INSERT **алдаа** өгнө (fail-closed, D-K6).
 4. Нэг тенантын 2 компанитай ажиллахад query handler бүр хөндлөн мөр гаргахгүй.
 5. SECURITY DEFINER функцүүд payload, нэр, PII буцаахгүй. Буцаах баганыг catalog-оос шалгана.
-6. `pg_roles`-оос: `BYPASSRLS` зөвхөн `erp_dispatch_definer`-д байна. `erp_owner`, `erp_migrator`, `erp_app`, `erp_worker`, `erp_ops_ro` нь `rolbypassrls = false`.
+6. `pg_roles`-оос: `BYPASSRLS` зөвхөн `app_rls_bypass`-д байна. `app_owner`, `app_user`, `app_readonly`, `app_worker`, `app_ops` ба login role-ууд (`erp_owner`, `erp_migrator`, `erp_app`, `erp_worker`, `erp_ops_ro`) нь `rolbypassrls = false`.
 
 ---
 
@@ -1164,110 +1185,83 @@ CREATE POLICY rls_sales_header__tenant ON sales.sales_header
 
 ### 8.1 Append-only хүснэгт ([ADR-0007](./adr/ADR-0007-append-only-ledger-reversal.md))
 
-| Модуль | Append-only (UPDATE/DELETE/TRUNCATE хориотой) | Өөрчлөгдөх проекц/төлөв (тусдаа хүснэгт) |
+Каталог: `platform.ledger_guard` ([910_ledger_guards.sql](db/schema/910_ledger_guards.sql)) — хамгаалагдсан хүснэгт бүр ба `platform.fn_ledger_update`-ээр л өөрчлөгдөх whitelisted багана (`mutable_columns`), зөвхөн дотоод trigger өөрчлөх cache багана (`trigger_columns`).
+
+| Модуль (схем) | Append-only (UPDATE/DELETE/TRUNCATE хориотой) | Өөрчлөгдөх төлөв/cache |
 |---|---|---|
-| GL | `gl_transaction`, `gl_entry`, `gl_register`, `gl_entry_reversal` | `account_period_balance`, `company_counter` |
-| Tax | `vat_entry`, `vat_settlement` | `vat_period` (төлөв) |
-| Parties | `cust_ledger_entry`, `detailed_cust_ledg_entry`, `vend_ledger_entry`, `detailed_vend_ledg_entry` | `cust_open_item`, `vend_open_item` |
-| Cash&Bank | `bank_ledger_entry`, posted `payment_document` | `bank_statement_line` (тулгалтын төлөв) |
-| Inventory | `item_ledger_entry`, `value_entry` | `item_cost_state` |
-| FixedAssets | `fa_ledger_entry` | `fa_depreciation_book` (тооцоолсон үлдэгдэл) |
-| Sales/Purchases | `posted_*` header ба мөр, `cancelled_document` | — |
-| EBarimt | `receipt_event` | `receipt` (төлөв, ДДТД) |
-| Platform/Audit | `audit.row_change`, `audit.security_event`, `document_signature` | — |
-| Currency | `currency.ref_official_rate` | — |
-| Integration | `integration_attempt` | `outbox_message`, `inbox_message` |
+| GeneralLedger (`gl`) | `gl_transaction`, `gl_entry`, `gl_register`, `accounting_period_status_log`, `dimension_set`, `dimension_set_entry` | Whitelist: `reversed`, `reversed_by_entry_no`, `reversed_by_transaction_no`. Үлдэгдэл нь view |
+| Tax (`tax`) | `vat_entry`, `gl_entry_vat_entry_link`, `city_tax_entry`, `vat_return_snapshot` | Whitelist: `closed`, `closed_by_entry_no`, `deductible_confirmed*`, `reversed*`; `vat_return_period` (төлөв) |
+| Parties (`party`) | `cust_ledger_entry`, `detailed_cust_ledger_entry`, `vendor_ledger_entry`, `detailed_vendor_ledger_entry` | Trigger cache: `remaining_amount`, `remaining_amount_lcy`, `open` |
+| CashBank (`bank`) | `bank_ledger_entry`, `posted_cash_voucher`, `bank_account_statement`, `bank_account_statement_line` | `bank_statement_line` (тулгалтын төлөв) |
+| Inventory (`inv`) | `item_ledger_entry`, `value_entry`, `item_application_entry`, `gl_item_ledger_relation`, `posted_item_journal`, `posted_item_journal_line` | `item_cost_state` |
+| FixedAssets (`fa`) | `fa_ledger_entry` | `fa_depreciation_book` (тооцоолсон үлдэгдэл) |
+| Currency (`fx`) | `exch_rate_adjmt_register`, `exch_rate_adjmt_ledger_entry` | — |
+| Sales / Purchases (`sales`, `purchase`) | `sales_invoice_header/line`, `sales_cr_memo_header/line`, `purch_inv_header/line`, `purch_cr_memo_header/line`, `cancelled_document` | — |
+| EBarimt (`ebarimt`) | `ebarimt_document_line`, `ebarimt_document_payment`, `ebarimt_document_event` | `ebarimt_document` (төлөв, ДДТД; шилжилтийн whitelist-ийг `ebarimt.fn_ebarimt_document_guard`) |
+| Reporting (`rpt`) | `filing_submission`, `statement_snapshot` | — |
+| Platform / Audit | `platform.number_allocation`, `platform.document_rendition`, `platform.archive_package`, `platform.document_signature`, `platform.tenant_purge_log`, `audit.row_change`, `audit.posting_log`, `audit.security_event` | — |
+| Integration (`integration`) | — | `outbox`, `inbox`, `job_run` (төлөв) |
 
 ```sql
-CREATE FUNCTION core.fn_block_ledger_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE v_tenant text;
-BEGIN
-  IF TG_OP = 'DELETE' AND current_user = 'erp_owner' THEN
-    -- to_jsonb: tenant_id-гүй глобал хүснэгтэд (currency.ref_official_rate) ч функц ажиллана (NULL болно)
-    v_tenant := to_jsonb(OLD) ->> 'tenant_id';
-    IF v_tenant IS NOT NULL
-       AND current_setting('erp.purge_tenant', true) = v_tenant
-       AND EXISTS (SELECT 1 FROM platform.tenant t WHERE t.id = v_tenant::uuid AND t.status = 'PURGE_APPROVED')
-    THEN RETURN OLD;                                -- зөвхөн батлагдсан тенантын purge (§7.7)
-    END IF;
-  END IF;
-  RAISE EXCEPTION 'append-only table %.%: % is not allowed', TG_TABLE_SCHEMA, TG_TABLE_NAME, TG_OP
-        USING ERRCODE = 'ERA01';
-END $$;
-
-CREATE TRIGGER trg_gl_entry__block_update_delete BEFORE UPDATE OR DELETE ON gl.gl_entry
-    FOR EACH ROW EXECUTE FUNCTION core.fn_block_ledger_mutation();
-CREATE TRIGGER trg_gl_entry__block_truncate BEFORE TRUNCATE ON gl.gl_entry
-    FOR EACH STATEMENT EXECUTE FUNCTION core.fn_block_ledger_mutation();
-REVOKE UPDATE, DELETE, TRUNCATE ON gl.gl_entry FROM erp_app, erp_worker, erp_ops_ro;
-GRANT SELECT, INSERT ON gl.gl_entry TO erp_app, erp_worker;
+-- db/schema/910_ledger_guards.sql (хураангуй): platform.ledger_guard-ийн мөр бүрд loop-оор
+CREATE TRIGGER trg_gl_entry_immutable   BEFORE UPDATE OR DELETE ON gl.gl_entry
+    FOR EACH ROW       EXECUTE FUNCTION platform.fn_guard_immutable();   -- whitelist-ээс бусад өөрчлөлт → ERL01
+CREATE TRIGGER trg_gl_entry_no_truncate BEFORE TRUNCATE ON gl.gl_entry
+    FOR EACH STATEMENT EXECUTE FUNCTION platform.fn_guard_immutable();
+CREATE TRIGGER trg_gl_entry_before_insert BEFORE INSERT ON gl.gl_entry   -- company_id NOT NULL хүснэгтэд
+    FOR EACH ROW       EXECUTE FUNCTION platform.fn_ledger_before_insert(); -- NEW.company_id = current_company_id() (ERT01)
+REVOKE UPDATE, DELETE, TRUNCATE ON gl.gl_entry FROM app_user, app_worker, app_readonly;
+-- Whitelisted системийн баганыг зөвхөн SECURITY DEFINER функцээр өөрчилнө (D-C4):
+--   SELECT platform.fn_ledger_update('gl.gl_entry', <entry_no>, '{"reversed": true, "reversed_by_entry_no": 123}');
 ```
 
 **Тэмдэглэл.**
-- TRUNCATE-ийн trigger statement-level байна. Тиймээс `TG_OP = 'TRUNCATE'` үед purge-ийн салаа ажиллахгүй. TRUNCATE ямагт хориотой.
-- **Хадгалах хугацаатай append-only хүснэгт** (`audit.row_change`, `audit.security_event` 10 жил; `integration.integration_attempt` 2 жил, §11.6) сараар `PARTITION BY RANGE (created_at)` хуваагдана. PostgreSQL-ийн шаардлагаар эдгээрийн PK нь partition түлхүүрийг агуулна. Жишээ нь `audit.row_change` бол `(tenant_id, created_at, id)`. Тенантгүй үйл явдалтай (нэвтрэлт амжилтгүй болох) `audit.security_event` бол `(created_at, id)`. Хугацаа дууссан мөрийг DELETE-ээр биш, partition-ийг `DETACH` + `DROP` хийж устгана. Row trigger үүнийг барихгүй, харин DDL-ийн эрх зөвхөн `erp_owner`-т бий. `core.fn_rotate_partitions()` (SECURITY DEFINER, `erp_owner` эзэмшинэ, хүснэгт ба хугацааны allow-list-тэй) дараагийн 3 сарын partition-ийг урьдчилан үүсгэж, хугацаа дууссаныг устгана. Worker-ийн `PartitionMaintenanceJob` сар бүр дуудна. Default partition үүсгэхгүй: partition дутвал INSERT алдаа өгч alert гарна.
+- TRUNCATE-ийн trigger statement-level байна. Тиймээс TRUNCATE ямагт хориотой (purge-ийн салаа ажиллахгүй).
+- Тенантын purge-ийн DELETE-ийг `platform.fn_guard_immutable` нь зөвхөн `platform.fn_purge_in_progress(OLD.tenant_id)` үнэн үед зөвшөөрнө (§7.7).
+- **Хадгалах хугацаатай append-only хүснэгт** (`audit.row_change`, `audit.security_event`, `audit.posting_log`, `ebarimt.ebarimt_document_event` — 10 жил эсвэл тенантын `retention_years_override`; legal hold үед устгахгүй) нь partition-гүй. Хугацаа дууссан мөрийг тенантын контекст дотор `audit.fn_purge_expired(table, cutoff, limit)` batch-аар устгана (`platform.ledger_guard.allow_delete_after` цонхтой); тенантгүй мөрийг `audit.fn_purge_platform_rows`, integration-ийн түр хүснэгтүүдийг (`idempotency_key` 7 хоног, `outbox`/`inbox` 30 хоног, `job_run` 90 хоног) `integration.fn_purge_expired` устгана. Worker-ийн `integration.cleanup` job (Quartz) дуудна. Ачаалал өсвөл сарын partition-д шилжих нь ирээдүйн migration (Alignment log).
 
 ### 8.2 DB-ийн invariant ба constraint trigger
 
-| Invariant | Хэрэгжүүлэлт |
+| Invariant | Хэрэгжүүлэлт ([910_ledger_guards.sql](db/schema/910_ledger_guards.sql)) |
 |---|---|
-| Transaction бүрд Σ `gl_entry.amount` = 0, ≥ 2 entry | `DEFERRABLE INITIALLY DEFERRED` constraint trigger-ууд (доор): `gl_transaction` дээрх нь entry-гүй transaction-ийг, `gl_entry` дээрх нь хожим нэмсэн entry-г барина |
-| Нэг transaction-ий бүх entry ижил `posting_date` ба `is_closing`-той | Composite FK `(tenant_id, company_id, transaction_id, posting_date, is_closing) → gl_transaction`-ийн UNIQUE |
-| Хаагдсан үед бичилт хийх боломжгүй | `gl_transaction` дээрх `BEFORE INSERT` trigger `gl.accounting_period`-ийг шалгана (`ERP01`) |
-| Зөвхөн posting данс | `gl_entry` дээрх `BEFORE INSERT` trigger `gl_account.is_posting`-ийг шалгана. Блоклогдсон эсэхийг engine шалгана |
-| LCY дүн 0.01 хүртэл бөөрөнхийлөгдсөн | Domain `core.amount_lcy` (§8.3) |
-| VAT entry ↔ G/L entry холбоос | `tax.vat_entry (tenant_id, company_id, gl_entry_id) → gl.gl_entry` FK |
-| Ledger-ийн мөр зөв компанид бичигдэнэ | `BEFORE INSERT` trigger: `NEW.company_id = app.company_id` |
-| `billIdSuffix` давхардахгүй | `UNIQUE (tenant_id, company_id, merchant_id, pos_no, business_date, bill_id_suffix)` |
-| Нийлүүлэгчийн баримтын дугаар давхардахгүй | `UNIQUE (tenant_id, company_id, vendor_id, document_type, vendor_doc_no)` (буцаагдаагүй мөрүүдэд partial index) |
-| Хуулийн параметрийн хүчинтэй хугацаа давхцахгүй | `EXCLUDE USING gist (param_code WITH =, valid_during WITH &&)` (`btree_gist`). PG18-ийн `WITHOUT OVERLAPS`-тэй ижил, 16+-д ажиллана |
+| Transaction бүрд Σ `gl_entry.amount` = 0, ≥ 2 entry (D-C5) | `DEFERRABLE INITIALLY DEFERRED` constraint trigger-ууд: `trg_gl_entry_balanced` (→ `gl.fn_check_transaction_balanced`) ба `trg_gl_transaction_has_entries` (→ `gl.fn_check_transaction_has_entries`), хоёулаа `gl.fn_sum_transaction`-ийг дуудна (`ERB01`). Функцүүд `app_rls_bypass`-ийн эзэмшилд тул COMMIT үеийн RLS контекстоос хамаарахгүй |
+| Нэг transaction-ий бүх entry ижил `posting_date` ба `is_closing`-той; дэд ledger ба posted баримтын мөр ижил DB transaction-д үүссэн ваучерийн огноотой | `trg_gl_entry_rules` (→ `gl.fn_gl_entry_before_insert`), `trg_<table>_transaction_check` (→ `gl.fn_ledger_transaction_check`, `ERB02`) |
+| Хаагдсан үе эсвэл цонхноос гадуур бичилт хийх боломжгүй (D-D3) | `trg_gl_transaction_period` (→ `gl.fn_gl_transaction_before_insert`, `gl.fn_assert_posting_date_allowed`, `ERP01`); НӨАТ-ын үе: `trg_vat_entry_period` (`ERV01`) |
+| Зөвхөн posting данс | `trg_gl_entry_rules`: `gl_account.account_type = 'POSTING'`, блоклогдоогүй (`ERG01`) |
+| LCY дүн валютын нарийвчлалаар бөөрөнхийлөгдсөн | Engine/writer бичихээс өмнө бөөрөнхийлнэ (`MoneyMath.Round`); integration тест `AssertNoHiddenRounding` (§8.3). Domain `platform.amount` нь `numeric(19,4)` |
+| VAT entry ↔ G/L entry холбоос | `tax.vat_entry (company_id, gl_entry_no) → gl.gl_entry (company_id, entry_no)` FK + `tax.gl_entry_vat_entry_link` |
+| Ledger-ийн мөр зөв компанид бичигдэнэ | `trg_<table>_before_insert` → `platform.fn_ledger_before_insert()`: `NEW.company_id = platform.current_company_id()` (`ERT01`) |
+| Кассын үлдэгдэл сөрөг болохгүй (D-G1) | `trg_bank_ledger_entry_non_negative` (→ `bank.fn_check_non_negative_cash`, deferred, `ERC01`) |
+| `billIdSuffix` давхардахгүй (D-K4) | `UNIQUE (company_id, ebarimt_pos_id, bill_seq)` ба `UNIQUE (company_id, ebarimt_pos_id, bill_date, bill_id_suffix)` (`ebarimt.ebarimt_document`) |
+| Нийлүүлэгчийн баримтын дугаар давхардахгүй | `party.vendor_ledger_entry`-ийн буцаагдаагүй мөрүүдэд `(company_id, vendor_id, document_type, platform.fn_normalize_ext_doc_no(external_document_no))` partial UNIQUE индекс ([060_party.sql](db/schema/060_party.sql)) |
+| Хуулийн параметрийн хүчинтэй хугацаа давхцахгүй | `tax.tax_parameter`: `EXCLUDE USING gist (param_code WITH =, daterange(effective_from, effective_to, '[]') WITH &&)` (`btree_gist`). PG18-ийн `WITHOUT OVERLAPS`-тэй ижил, 16+-д ажиллана |
 
 ```sql
--- TG_ARGV[0] = transaction id-г агуулах багана: gl_transaction дээр 'id', gl_entry дээр 'transaction_id'
-CREATE FUNCTION gl.fn_assert_transaction_balanced() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE v_tx uuid; v_sum numeric; v_cnt int;
-BEGIN
-  v_tx := (to_jsonb(NEW) ->> TG_ARGV[0])::uuid;
-  SELECT coalesce(sum(amount), 0), count(*) INTO v_sum, v_cnt
-    FROM gl.gl_entry
-   WHERE tenant_id = NEW.tenant_id AND company_id = NEW.company_id AND transaction_id = v_tx;
-  IF v_cnt < 2 OR v_sum <> 0 THEN
-    RAISE EXCEPTION 'unbalanced gl transaction %: sum=%, entries=%', v_tx, v_sum, v_cnt
-          USING ERRCODE = 'ERB01';
-  END IF;
-  RETURN NULL;
-END $$;
-
--- Entry-гүй (эсвэл 1 entry-тэй) transaction-ийг барина: gl_entry дээрх trigger огт ажиллахгүй тохиолдол
-CREATE CONSTRAINT TRIGGER trg_gl_transaction__assert_balanced
-    AFTER INSERT ON gl.gl_transaction
-    DEFERRABLE INITIALLY DEFERRED
-    FOR EACH ROW EXECUTE FUNCTION gl.fn_assert_transaction_balanced('id');
-
--- Commit хийгдсэн transaction-д хожим entry нэмэх оролдлогыг барина
-CREATE CONSTRAINT TRIGGER trg_gl_entry__assert_balanced
-    AFTER INSERT ON gl.gl_entry
-    DEFERRABLE INITIALLY DEFERRED
-    FOR EACH ROW EXECUTE FUNCTION gl.fn_assert_transaction_balanced('transaction_id');
+-- db/schema/910_ledger_guards.sql (хураангуй)
+CREATE CONSTRAINT TRIGGER trg_gl_entry_balanced AFTER INSERT ON gl.gl_entry
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION gl.fn_check_transaction_balanced();
+CREATE CONSTRAINT TRIGGER trg_gl_transaction_has_entries AFTER INSERT ON gl.gl_transaction
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION gl.fn_check_transaction_has_entries();
+-- хоёулаа gl.fn_sum_transaction(company_id, transaction_no)-г дуудна: Σ amount <> 0 эсвэл < 2 entry бол ERB01
 ```
 
-`gl_entry` дээрх trigger мөр бүрд ажиллана. Тиймээс N entry-тэй transaction-д шалгалт N удаа гүйнэ. Posting buffer нэгтгэсний дараа N нь ихэвчлэн < 50 тул зардал бага. Үүнийг `(tenant_id, company_id, transaction_id)` индекс хангана.
+`gl_entry` дээрх trigger нь transaction-ий сүүлийн entry-д л нийлбэрийг тооцно (өмнөх entry-үүд `RETURN NULL`). Үүнийг `UNIQUE (company_id, entry_no)` ба `(company_id, transaction_no)` индекс хангана.
 
 Энэ trigger BC-ийн `IsTransactionConsistent` шалгалтыг ([bc-gl-posting.md](./research/bc-gl-posting.md) R-GL-POSTING-35) DB-ийн түвшинд орлоно. Engine мөн commit-оос өмнө ижил шалгалтыг кодоор хийнэ. Trigger бол хоёр дахь хамгаалалт.
 
 ### 8.3 Тоон төрлийн дүрэм ([ADR-0006](./adr/ADR-0006-money-and-rounding.md))
 
 ```sql
-CREATE DOMAIN core.amount     AS numeric(19,4)  CHECK (VALUE <> 'NaN');                          -- FCY ба баримтын дүн
-CREATE DOMAIN core.amount_lcy AS numeric(19,4)  CHECK (VALUE <> 'NaN' AND VALUE = round(VALUE, 2)); -- MNT (ledger)
-CREATE DOMAIN core.unit_price AS numeric(19,6)  CHECK (VALUE <> 'NaN');
-CREATE DOMAIN core.qty        AS numeric(19,4)  CHECK (VALUE <> 'NaN');
-CREATE DOMAIN core.pct        AS numeric(9,6)   CHECK (VALUE <> 'NaN' AND VALUE BETWEEN 0 AND 100);
-CREATE DOMAIN core.fx_rate    AS numeric(38,18) CHECK (VALUE <> 'NaN' AND VALUE > 0 AND VALUE < 1e10);
+-- db/schema/010_platform.sql (канон, D-C1)
+CREATE DOMAIN platform.amount       AS numeric(19,4);   -- мөнгөн дүн (баримт, FCY, LCY); валютын нарийвчлалаар бөөрөнхийлж хадгална
+CREATE DOMAIN platform.unit_amount  AS numeric(19,6);   -- нэгжийн үнэ / өртөг
+CREATE DOMAIN platform.quantity     AS numeric(19,5);   -- тоо хэмжээ
+CREATE DOMAIN platform.exch_rate    AS numeric(38,18);  -- ханш ба валютын коэффициент
+CREATE DOMAIN platform.percent      AS numeric(9,5) CHECK (VALUE BETWEEN 0 AND 100);
 ```
 
-- **Дүн** нь `numeric(19,4)` төрөлд хадгалагдана. Бичихээс өмнө валютын нарийвчлалаар **заавал** бөөрөнхийлнэ. MNT-ийн нарийвчлал 0.01, eBarimt ч 2 оронтой ажилладаг. PostgreSQL scale-ээс илүү оронг алдаа заалгүй чимээгүй бөөрөнхийлдөг. Тиймээс тест нь "DB-д бөөрөнхийлөгдөөгүй утга очдоггүй"-г шалгана.
-- **Ханш** нь `numeric(38,18)` бөгөөд **1 нэгж валютад ногдох MNT**-ээр хадгалагдана (Монголбанкны хэлбэр, `LCY = FCY × rate`). BC-ийн "currency factor" (1 LCY-д ногдох FCY)-ийг ашиглахгүй. `< 1e10` хязгаар нь утгыг `System.Decimal`-ийн 28–29 оронд багтаана: 10 бүхэл + 18 бутархай орон.
+- **Дүн** нь `platform.amount` (`numeric(19,4)`) төрөлд хадгалагдана. Бичихээс өмнө валютын нарийвчлалаар (`fx.currency.amount_rounding_precision`; MNT 0.01, D-C2) **заавал** бөөрөнхийлнэ. PostgreSQL scale-ээс илүү оронг алдаа заалгүй чимээгүй бөөрөнхийлдөг. Тиймээс тест нь "DB-д бөөрөнхийлөгдөөгүй утга очдоггүй"-г шалгана. (LCY-д тусдаа `amount_lcy` domain байхгүй.)
+- **Ханш** нь `platform.exch_rate` (`numeric(38,18)`) бөгөөд **1 нэгж валютад ногдох MNT**-ээр хадгалагдана (Монголбанкны хэлбэр, `LCY = FCY × rate`, `fx.official_exchange_rate.rate_mnt`). Апп талд ханшийг `0 < rate < 1e10` хязгаарт шалгана: утга `System.Decimal`-ийн 28–29 оронд багтана.
 - **C#-д** `System.Decimal` ашиглана. `Money` value object нь (дүн, валют) хосыг агуулна. Бөөрөнхийлөлтийг зөвхөн `MoneyMath.Round(value, decimals)` хийнэ (`MidpointRounding.AwayFromZero`).
 - **JSON-д** мөнгийг string хэлбэрээр дамжуулна. Тоон төрлөөр дамжуулахгүй.
 
@@ -1278,7 +1272,7 @@ CREATE DOMAIN core.fx_rate    AS numeric(38,18) CHECK (VALUE <> 'NaN' AND VALUE 
 | Midpoint | `AwayFromZero`. PostgreSQL-ийн `round()`-тэй ижил. .NET-ийн default `ToEven`-ийг хориглоно | [tech-architecture.md](./research/tech-architecture.md) §3 |
 | Мөрийн дүн | `round(qty × unit_price, p) − line_discount_amount` | Sales Line |
 | Нэхэмжлэхийн хөнгөлөлт | Мөрүүдэд running remainder аргаар хуваарилна | [bc-sales-documents.md](./research/bc-sales-documents.md) §5 |
-| НӨАТ (үнэ НӨАТ-гүй) | `tax_code` бүлэг бүрд `round(Σ base × r/100, p)`. Мөрт running remainder-ээр хуваарилна | [bc-vat.md](./research/bc-vat.md) §5 |
+| НӨАТ (үнэ НӨАТ-гүй) | VAT identifier (`vat_prod_posting_group`) бүлэг бүрд `round(Σ base × r/100, p)` (D-E3). Мөрт running remainder-ээр хуваарилна | [bc-vat.md](./research/bc-vat.md) §5 |
 | НӨАТ (үнэ НӨАТ-тэй) | Бүлэг бүрд `VAT = round(gross × r/(100+r), p)`, `base = gross − VAT` | [bc-vat.md](./research/bc-vat.md) |
 | НХАТ | Суурь нь НӨАТ-гүй цэвэр дүн. Арга нь НӨАТ-тэй ижил (бүлгээр) | [mn-tax.md](./research/mn-tax.md) R14 |
 | НӨАТ-ын бөөрөнхийлөлтийн төрөл | `NEAREST` (default) / `UP` / `DOWN`. Абсолют утгаар нь тооцно | G/L Setup `VAT Rounding Type` |
@@ -1296,9 +1290,9 @@ CREATE DOMAIN core.fx_rate    AS numeric(38,18) CHECK (VALUE <> 'NaN' AND VALUE 
 | API | Бүх command-д `Idempotency-Key` header заавал байна. SPA товч дарах бүрд UUID үүсгэж, дахин оролдохдоо ижлийг ашиглана. `integration.idempotency_key (tenant_id, key) UNIQUE` хүснэгтэд `request_hash` (SHA-256: method + path + company + canonical body), `status`, `response_code`, `response_body` хадгална. Бизнесийн өөрчлөлттэй **ижил transaction**-д бичнэ. |
 | Дахин илгээх үеийн үр дүн | Ижил түлхүүр + ижил hash → хадгалсан хариу (`Idempotent-Replayed: true`). Ижил түлхүүр + өөр hash → 422 `integration.idempotency_key_reused`. Зэрэг ирсэн давхар хүсэлт → unique индекс дээр хүлээгээд хадгалсан хариуг авна. Бизнесийн алдаа (422) гарвал transaction rollback болж түлхүүр хадгалагдахгүй. Тиймээс засаад дахин илгээж болно. |
 | Баримт | Ноорог posting transaction дотор устгагдана. Хоёр дахь post оролдлого 404/409 буцаана. |
-| Outbox | `outbox_message.idempotency_key` UNIQUE. Consumer тал `inbox_message (consumer, message_id)`-ийг handler-ийн transaction дотор бичнэ. |
-| eBarimt | `billIdSuffix`-ийг posting transaction-д олгоно. `POST /rest/receipt`-ийг автоматаар давтахгүй (§9.2). |
-| Банкны хуулга | `bank_statement_line`-д `UNIQUE (tenant_id, company_id, bank_account_id, dedupe_key)` (§7.2-ын индексийн дүрэм). Түлхүүр нь банкны `record`/`journal` id, байхгүй бол `hash(date, amount, description, balance)`. |
+| Outbox | `integration.outbox (tenant_id, idempotency_key)` UNIQUE. Consumer тал `integration.inbox (tenant_id, source, message_id)`-ийг handler-ийн transaction дотор бичнэ. |
+| eBarimt | `billIdSuffix`-ийг posting transaction-д `ebarimt.fn_next_bill_seq`-ээр олгоно (D-K4). `POST /rest/receipt`-ийг автоматаар давтахгүй (§9.2). |
+| Банкны хуулга | `bank.bank_statement_line`-д `ux_bank_statement_line__dedupe (company_id, bank_account_id, dedupe_key) WHERE status <> 'IGNORED'`. Түлхүүр нь банкны `record`/`journal` id, байхгүй бол `hash(date, amount, description, balance)`. |
 | Хадгалах хугацаа | `idempotency_key` 7 хоног хадгалагдана. Шөнийн job устгана. Энэ хүснэгт ledger биш тул устгаж болно. |
 
 ### 8.6 Ноорогийн optimistic concurrency
@@ -1314,7 +1308,7 @@ CREATE DOMAIN core.fx_rate    AS numeric(38,18) CHECK (VALUE <> 'NaN' AND VALUE 
   - Компани бүрийн анхны `prev_hash` нь 32 тэг байт байна.
 - Каноник сериалчлалыг GL-ийн тодорхойлолтод тогтооно: UTF-8, талбарын тогтсон дараалал, дүнг `0.0000` хэлбэрээр, огноог ISO форматаар.
 - Hash-ийг advisory lock-ийн дор тооцно. Тиймээс гинж компани бүрд шугаман байна.
-- **Модулийн хил.** GL нь `tax.vat_entry`-г SQL-ээр уншихгүй. VAT мөрийн каноник байтыг Tax модулийн `ILedgerHashContributor` (§4.5) өгнө: posting үед санах ойн мөрөөс, шөнийн шалгалтад өөрийн хүснэгтээс `register_id`-аар уншина (`vat_entry` нь `transaction_id` ба `register_id`-г `IPostingContext`-оос авч хадгална). Contributor-ийн дараалал (модулийн нэрээр эрэмбэлсэн) ба формат `hash_version`-ийн нэг хэсэг. Contributor нэмэх нь `hash_version`-ийг өсгөнө.
+- **Модулийн хил.** GL нь `tax.vat_entry`-г SQL-ээр уншихгүй. VAT мөрийн каноник байтыг Tax модулийн `ILedgerHashContributor` (§4.5) өгнө: posting үед санах ойн мөрөөс, шөнийн шалгалтад өөрийн хүснэгтээс уншина (`tax.vat_entry.transaction_no` ба `gl.gl_register.from_vat_entry_no … to_vat_entry_no` муж). Contributor-ийн дараалал (модулийн нэрээр эрэмбэлсэн) ба формат `hash_version`-ийн нэг хэсэг. Contributor нэмэх нь `hash_version`-ийг өсгөнө.
 - **Шалгалт:**
   - шөнийн job компани бүрийн гинжийг шалгана;
   - "Бүртгэлийн бүрэн бүтэн байдлын тайлан"-г аудиторт гаргаж өгнө;
@@ -1323,15 +1317,17 @@ CREATE DOMAIN core.fx_rate    AS numeric(38,18) CHECK (VALUE <> 'NaN' AND VALUE 
 
 ### 8.8 Шөнийн тууштай байдлын шалгалт
 
+Шалгалтыг `platform.fn_integrity_report(company_id)` ([920_views.sql](db/schema/920_views.sql), `check_code` I-01…I-08) ба reconciliation view-ууд гүйцэтгэнэ; worker компани бүрд (`platform.fn_list_active_companies`) дуудаж, `FAIL` мөрийг `integration.job_run`-ийн үр дүн ба alert болгоно (тусдаа `ops` хүснэгт байхгүй).
+
 | Шалгалт | Алдаа гарвал |
 |---|---|
-| Posting group бүрд Σ detailed cust/vend entry = авлага/өглөгийн хяналтын дансны үлдэгдэл | P2 alert, `ops.consistency_issue` |
-| Банкны данс бүрд Σ `bank_ledger_entry` = банкны G/L дансны үлдэгдэл | P2 |
-| `account_period_balance` = Σ `gl_entry` (санамсаргүй 1% компани, сар бүр бүгд) | Проекцыг дахин тооцоолж P3 бүртгэнэ |
-| `cust_open_item` = Σ detailed | Дахин тооцоолно, P3 |
-| `entry_no` ба `transaction_no`-д цоорхой байхгүй | P1 (хөндлөнгийн оролцооны шинж) |
+| Ваучер бүр тэнцсэн, гүйлгээ баланс Дт = Кт (I-01, I-02) | P1 |
+| Posting group бүрд Σ detailed cust/vend entry = авлага/өглөгийн хяналтын дансны үлдэгдэл (I-04, `party.v_receivables_reconciliation`, `party.v_payables_reconciliation`) | P2 alert |
+| Банкны данс бүрд Σ `bank.bank_ledger_entry` = банкны G/L дансны үлдэгдэл (I-05) | P2 |
+| Ledger-ийн cache (`remaining_*`, `open`) = Σ detailed (I-03, `party.v_cust_ledger_entry_check`, `party.v_vendor_ledger_entry_check`) | P3 |
+| `entry_no`, `transaction_no` ба хууль ёсны дугаарт цоорхой байхгүй (I-06, I-07, `platform.v_number_series_gap`) | P1 (хөндлөнгийн оролцооны шинж) |
 | Hash chain | P1 |
-| Posted борлуулалтын баримт бүр ДДТД-тэй эсвэл зөвшөөрөгдсөн төлөвтэй (> 48 цаг SENT биш бол) | Тенантад мэдэгдэл, P3 |
+| Posted борлуулалтын баримт бүр ДДТД-тэй эсвэл зөвшөөрөгдсөн төлөвтэй (> 48 цаг `SUCCESS` биш бол, `ebarimt.v_source_document_status`) | Тенантад мэдэгдэл, P3 |
 
 ---
 
@@ -1339,44 +1335,46 @@ CREATE DOMAIN core.fx_rate    AS numeric(38,18) CHECK (VALUE <> 'NaN' AND VALUE 
 
 ### 9.1 Transactional outbox ба inbox ([ADR-0012](./adr/ADR-0012-outbox-idempotency-ebarimt.md))
 
-**`integration.outbox_message`** хүснэгтийн гол баганууд:
+**`integration.outbox`** хүснэгтийн гол баганууд ([140_integration_audit.sql](db/schema/140_integration_audit.sql)):
 
 | Багана | Төрөл | Тайлбар |
 |---|---|---|
-| `tenant_id`, `company_id`, `id` | uuid | PK. `id` нь UUIDv7 |
-| `message_type` | text | `ebarimt.receipt.create`, `email.send`, `event.SalesInvoicePosted`, … |
-| `payload` | jsonb | **`qrData`/`lottery` агуулахгүй.** PII-г хамгийн бага хэмжээгээр оруулна |
-| `idempotency_key` | text UNIQUE | Жишээ: `ebarimt:<receipt_id>`, `event:<event_id>` |
-| `retry_policy` | text | `NONE` / `STANDARD` / `EXTENDED` |
-| `dispatch_mode` | text | `ASYNC` / `SYNC_FIRST` (POS) |
-| `status` | text | `PENDING`, `DISPATCHING`, `SENDING`, `DONE`, `FAILED`, `DEAD`, `UNKNOWN` |
-| `depends_on_id` | uuid NULL | Дарааллыг баталгаажуулна. Жишээ нь засварын баримт эх баримт SENT болсны дараа л илгээгдэнэ |
-| `attempt_count`, `next_attempt_at`, `last_attempt_at`, `lease_owner`, `lease_until` | — | Dispatcher-ийн төлөв |
-| `last_error_code`, `last_error_message` | text | Body-гүй, PII-гүй |
-| `correlation_id`, `created_at`, `done_at` | — | Trace-тэй холбох |
+| `id` | uuid | PK (UUIDv7). `tenant_id NOT NULL`, `company_id` NULL байж болно (тенантын түвшний мессеж) |
+| `topic` | text | `^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$`: `ebarimt.receipt.send`, `email.send`, `event.sales_invoice_posted`, `job.<code>`, … |
+| `aggregate_type`, `aggregate_id` | text, uuid | Эх aggregate (жишээ нь `ebarimt_document`) |
+| `payload` | jsonb | **`qrData`/`lottery` агуулахгүй** (`CHECK (NOT integration.fn_has_forbidden_ebarimt_keys(payload))`, ямар ч гүнд). PII-г хамгийн бага хэмжээгээр оруулна |
+| `idempotency_key` | text | `UNIQUE (tenant_id, idempotency_key)`. Жишээ: `ebarimt:<document_id>`, `event:<event_id>` |
+| `status` | text | `PENDING`, `PROCESSING`, `DONE`, `DEAD`, `CANCELLED` |
+| `available_at` | timestamptz | Дараагийн оролдлогын цаг (backoff, POS-ийн 30 s саатал) |
+| `attempts`, `max_attempts` | integer | `CHECK (attempts <= max_attempts)`; eBarimt POST-д `max_attempts = 1` (D-I6) |
+| `depends_on_id` | uuid NULL | Дарааллыг баталгаажуулна. Жишээ нь засварын баримт эх баримт `DONE` болсны дараа л илгээгдэнэ |
+| `lease_owner`, `lease_until` | — | Dispatcher-ийн lease (`PROCESSING` үед заавал) |
+| `last_error` | text | Body-гүй, PII-гүй |
+| `request_id`, `created_at`, `processed_at` | — | Trace-тэй холбох |
+
+Retry бодлого ба dispatch горимыг (`ASYNC` / `SYNC_FIRST`) нь `topic`-оор кодонд (`RetryPolicy` бүртгэл) ба `integration.job_definition` (`max_attempts`, timeout)-д тодорхойлно; outbox мөрөнд тусдаа `retry_policy` багана байхгүй.
 
 **Dispatcher (`erp-worker`, `BackgroundService`):**
 
 1. `LISTEN outbox` хийнэ. Мэдэгдэл ирэхгүй бол 2 s тутамд polling хийнэ. `LISTEN` нь урт насалдаг тусдаа холболтоор (PgBouncer-ийг тойрч, `Keepalive` асаалттай) явна. Холболт тасарвал дахин холбогдоод polling-оор нөхнө.
-2. `integration.fn_claim_outbox(...)`-ээр төрөл тус бүрээс 20 хүртэл мөрийг `FOR UPDATE SKIP LOCKED`-ээр авна. Claim хийх transaction нь богино бөгөөд тусдаа commit хийгдэнэ.
+2. `integration.fn_claim_outbox(worker, topics, 20, lease)`-ээр topic тус бүрээс 20 хүртэл мөрийг `FOR UPDATE SKIP LOCKED`-ээр авна (`PENDING → PROCESSING`, `attempts + 1`). Claim хийх transaction нь богино бөгөөд тусдаа commit хийгдэнэ.
 3. Мөр бүрийг `TenantScope`-д ачаалж, handler-ийг дуудна.
-4. Гадаад дуудлага бүрийг `integration.integration_attempt`-д бичнэ: endpoint, HTTP статус, хугацаа, алдааны код. **Body бичихгүй.**
-5. Үр дүнгийн төлөвийг тенантын transaction-д бичнэ: `DONE`, `PENDING` (backoff-той), `DEAD`, `UNKNOWN`.
-6. **Reaper** 30 s тутам ажиллана. Хугацаа нь дууссан lease-ийг дараах байдлаар шийднэ:
-   - `DISPATCHING` → `PENDING` (retry хийж болох төрөл);
-   - `SENDING` → **`UNKNOWN`** (`NONE` бодлоготой төрөл).
-7. **Inbox.** Integration event-ийн consumer `inbox_message (consumer, message_id)`-ийг handler-ийн transaction-д бичнэ. Ингэснээр давхар хүргэлт (at-least-once) нэг удаагийн нөлөө болно.
+4. Гадаад дуудлага бүрийн мета өгөгдлийг (endpoint, HTTP статус, хугацаа, алдааны код) OTel span/metric-д бичнэ. **Body бичихгүй.** Тусдаа `integration_attempt` хүснэгт байхгүй; eBarimt-ийн оролдлого `ebarimt.ebarimt_document` (`attempt_count`, `last_attempt_at`, `error_code`) ба `ebarimt.ebarimt_document_event`-д үлдэнэ.
+5. Үр дүнгийн төлөвийг тенантын transaction-д бичнэ: `DONE`, `PENDING` (`available_at` backoff-той), `DEAD`.
+6. **Reaper** (`ebarimt.lease_reaper` ба outbox dispatcher) хугацаа нь дууссан lease-ийг дараах байдлаар шийднэ:
+   - retry хийж болох topic → `PENDING`;
+   - `ebarimt.receipt.send` (`max_attempts = 1`) → outbox `DEAD`, `ebarimt.ebarimt_document` → **`UNKNOWN`**.
+7. **Inbox.** Гадаас ирсэн мессежийн consumer `integration.inbox (tenant_id, source, message_id)`-ийг handler-ийн transaction-д бичнэ. Ингэснээр давхар хүргэлт (at-least-once) нэг удаагийн нөлөө болно.
 
-| `message_type` | Retry | Дээд тоо | Backoff | Эцсийн төлөв |
+| `topic` | Retry | Дээд тоо (`max_attempts`) | Backoff | Эцсийн төлөв |
 |---|---|---|---|---|
-| `ebarimt.receipt.create` (`POST /rest/receipt`) | **NONE**. Сүлжээнд гарсан POST-ийг хэзээ ч дахин илгээхгүй. TCP холболт тогтоогдоогүй бол хүсэлт сүлжээнд гараагүй нь баттай. Тэр үед мөр `PENDING` руу буцаж дахин dispatch хийгдэнэ (§9.2, дүрэм 1) | 1 илгээлт (+ connect алдаанд 3 dispatch) | 5 s, 30 s, 2 мин | `SENT` / `REJECTED` / `UNKNOWN` |
-| `ebarimt.receipt.void` (`DELETE /rest/receipt`) | **NONE** | 1 | — | `VOIDED` / `VOID_REJECTED` / `VOID_UNKNOWN` |
+| `ebarimt.receipt.send` (`POST`/`DELETE /rest/receipt`, `operation` = SAVE/DELETE) | **Байхгүй**. Сүлжээнд гарсан хүсэлтийг хэзээ ч дахин илгээхгүй. TCP холболт тогтоогдоогүй бол баримт `ERROR` болж, хэрэглэгч шинэ баримт (шинэ `billIdSuffix`) үүсгэнэ ([12-ebarimt-integration.md](./12-ebarimt-integration.md) §9) | 1 | — | баримт `SUCCESS` / `ERROR` / `UNKNOWN` |
 | `ebarimt.merchant.register` (`saveOprMerchants`) | Хязгаартай. Дахин оролдохоос өмнө `/rest/info`-оор шалгана | 3 | 1, 5, 30 мин | `DEAD` + alert |
-| `ebarimt.send_data`, `ebarimt.info.poll` (GET) | Тийм | 3 | 10 s, 1 мин, 5 мин | `FAILED` + alert |
+| `ebarimt.send_data`, `ebarimt.info_poll`, `ebarimt.health_probe` (GET) | Тийм | 3 | 10 s, 1 мин, 5 мин | `DEAD` + alert |
 | `email.send` | Тийм | 5 | 1 мин, 5 мин, 30 мин, 2 цаг, 12 цаг | `DEAD` |
 | `event.*` (in-process integration event) | Тийм | 10 | Exponential, дээд тал нь 1 цаг | `DEAD` + alert |
-| `job.*` (компанийн job) | Тийм | 3 | 5 мин | `DEAD` + тенантад мэдэгдэл |
-| `bank.statement.pull` (v2, GET) | Тийм | 3 | 1, 5, 15 мин | `FAILED` |
+| `job.*` (компанийн job, `integration.job_definition.code`) | Тийм | 3 | 5 мин | `DEAD` + тенантад мэдэгдэл |
+| `bank.statement.pull` (R3, GET) | Тийм | 3 | 1, 5, 15 мин | `DEAD` |
 
 ### 9.2 eBarimt adapter ([ADR-0012](./adr/ADR-0012-outbox-idempotency-ebarimt.md))
 
@@ -1388,40 +1386,41 @@ CREATE DOMAIN core.fx_rate    AS numeric(38,18) CHECK (VALUE <> 'NaN' AND VALUE 
 | `EbarimtReferenceClient` | `api.ebarimt.mn/api/info/check/*`, `getProductTaxCode`, `barcode/*` | Токенгүй | Retry 3, кэш (лавлах өгөгдлийг өдөр бүр delta-аар шинэчилнэ) |
 | `EbarimtTpiClient` | `saveOprMerchants`, `getSaleListERP`, `getSalesTotalData` | OIDC password grant (`client_id=vatps`) + `X-API-KEY`. Токены кэш `expires_in`-ээс 30 s өмнө шинэчлэгдэнэ | Retry-г зөвхөн GET ба идемпотент үйлдэлд хийнэ. `getSalesTotalData`-г 01:00–07:00-д л дуудна |
 
-**Баримтын төлөвийн машин** (`ebarimt.receipt.status`, шилжилт бүр `receipt_event`-д бичигдэнэ):
+**Баримтын төлөвийн машин** (`ebarimt.ebarimt_document.status`, шилжилт бүр `ebarimt.ebarimt_document_event`-д бичигдэнэ; шилжилтийн whitelist-ийг `ebarimt.fn_ebarimt_document_guard` хамгаална; дэлгэрэнгүй [12-ebarimt-integration.md](./12-ebarimt-integration.md) §9):
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PENDING : posting commit
-    PENDING --> SENDING : claim (attempt_started_at commit хийгдсэн)
-    SENDING --> SENT : SUCCESS (ДДТД)
-    SENDING --> REJECTED : PosAPI баталгаажуулалтын алдаа (баримт үүсээгүй нь тодорхой)
-    SENDING --> PENDING : TCP connect амжилтгүй (хүсэлт явуулаагүй)
-    SENDING --> UNKNOWN : timeout / холболт тасарсан / 5xx / lease дууссан
-    UNKNOWN --> RESOLVED_SENT : оператор порталаас олсон ДДТД-г оруулсан
-    UNKNOWN --> RESOLVED_NOT_SENT : оператор бүртгэгдээгүйг баталсан
-    RESOLVED_NOT_SENT --> [*] : шинэ PENDING (шинэ billIdSuffix)
-    REJECTED --> [*] : баримтыг засаж шинэ хүсэлт үүсгэнэ
-    SENT --> VOID_PENDING : бүтэн буцаалт (баталгаажаагүй B2C_RECEIPT)
-    VOID_PENDING --> VOIDED
-    VOID_PENDING --> VOID_UNKNOWN
+    [*] --> PENDING : posting commit (bill_seq, мөрүүд, outbox)
+    PENDING --> SENT : dispatcher — attempt_count+1 commit (сүлжээнээс ӨМНӨ)
+    PENDING --> ERROR : илгээхийн өмнөх шалгалт (сүлжээгүй)
+    PENDING --> CANCELLED : кредит нот орлуулсан / гараар цуцлах
+    SENT --> SUCCESS : PosAPI SUCCESS (ДДТД)
+    SENT --> ERROR : PosAPI татгалзсан / TCP холболт тогтоогдоогүй (баримт үүсээгүй нь тодорхой)
+    SENT --> UNKNOWN : timeout / холболт тасарсан / 5xx / lease дууссан
+    UNKNOWN --> SUCCESS : оператор порталаас олсон ДДТД-г оруулсан (resolved_*)
+    UNKNOWN --> CANCELLED : оператор бүртгэгдээгүйг баталсан → шинэ баримт (шинэ billIdSuffix)
+    ERROR --> CANCELLED : засаад шинэ баримт / цуцлах
+    SUCCESS --> CANCELLED : залгамжлагч (inactiveId эсвэл DELETE) SUCCESS
+    CANCELLED --> [*]
 ```
+
+Бүтэн буцаалт (`DELETE /rest/receipt`) нь `operation = 'DELETE'` бүхий **тусдаа** `ebarimt_document` мөр бөгөөд ижил төлөвийн машинаар явна (`replaces_document_id`, `inactive_ddtd`).
 
 **Хатуу дүрэм (PosAPI v3.2.48):**
 
 1. **`POST /rest/receipt`-ийг автоматаар дахин илгээхгүй.** Timeout болсон бол баримт аль хэдийн үүссэн байж магадгүй.
-   - Илгээхээс өмнө `ebarimt.receipt` (`SENDING`, `attempt_started_at`) ба outbox мөрийг (`SENDING`) тусдаа transaction-д commit хийнэ.
-   - Процесс унасан бол Integration-ий reaper outbox мөрийг `UNKNOWN` болгоно. EBarimt-ийн `ReceiptLeaseReaper` (`PosApiInfoPollJob`-той хамт 5 мин тутам) `SENDING` төлөвтэй, `attempt_started_at < now() − 2 мин` баримтыг `UNKNOWN` болгоно. Integration нь `ebarimt` схемд хандахгүй (§4.3).
-   - **Дахин dispatch хийх цорын ганц тохиолдол:** `SocketsHttpHandler.ConnectCallback`-ийн wrapper TCP холболт тогтоогдоогүйг тэмдэглэсэн бол хүсэлт сүлжээнд гараагүй нь баттай. Тэр үед мөр `PENDING` болно. Энэ нь гарсан POST-ийг давтах биш.
+   - Илгээхээс өмнө `ebarimt.ebarimt_document` (`SENT`, `attempt_count = 1`, `last_attempt_at`) ба outbox мөрийг (`PROCESSING`) тусдаа transaction-д commit хийнэ.
+   - Процесс унасан бол `ebarimt.lease_reaper` job (1 мин тутам) lease нь дууссан outbox мөрийг `DEAD`, `SENT` төлөвтэй баримтыг `UNKNOWN` болгоно. Integration нь `ebarimt` схемд хандахгүй (§4.3).
+   - **TCP холболт тогтоогдоогүй** (`SocketsHttpHandler.ConnectCallback`-ийн wrapper тэмдэглэсэн) бол хүсэлт сүлжээнд гараагүй нь баттай: баримт `ERROR` болж, хэрэглэгч/систем **шинэ** баримт (шинэ `billIdSuffix`) үүсгэнэ. Гарсан POST-ийг хэзээ ч давтахгүй (`attempt_count <= max_attempts = 1` CHECK).
    - **Далд retry-аас хамгаалах.** `SocketsHttpHandler` нь pool-оос авсан (reuse хийсэн) холболт хариу ирэхээс өмнө тасарвал хүсэлтийг шинэ холболтоор дотооддоо дахин илгээж болзошгүй. Тиймээс receipt-ийн client холболтыг дахин ашиглахгүй (дээрх `PooledConnectionLifetime = TimeSpan.Zero`, `ConnectionClose`). Integration test: stub PosAPI хүсэлтийг хүлээн аваад холболтыг хариугүй хаана. Үр дүн нь `UNKNOWN`, stub-ийн дуудлагын тоо = 1.
 2. **`qrData` ба `lottery`-г хаана ч хадгалахгүй.**
-   - Хадгалахгүй газрууд: DB, outbox, лог, trace, кэш, browser storage, алдааны тайлан.
+   - Хадгалахгүй газрууд: DB (`integration.fn_has_forbidden_ebarimt_keys` CHECK), outbox, лог, trace, кэш, browser storage, алдааны тайлан.
    - Хариуны DTO-д эдгээр нь `PrintOnly<string>` төрөлтэй. Энэ төрлийн `ToString()` нь `"[print-only]"` буцаана. JSON-оор бичих гэвэл exception шиднэ. Утгыг зөвхөн `PrintPayload` mapper `Reveal()`-ээр уншина.
    - `PrintPayload` нь зөвхөн синхрон HTTP хариунд байна.
    - SPA хэвлэх загварыг санах ойд л зурна.
 3. **`billIdSuffix`.**
-   - `ebarimt.pos_counter (tenant_id, company_id, pos_terminal_id, last_seq bigint)` нь posting transaction-д олгогдоно. Тоолуур **өдөр бүр тэглэгдэхгүй, байнга өснө**.
-   - Утга = `pos_no` (3 орон) + `last_seq mod 1 000 000`-ийг 6 оронтой болгосон тоо. Жишээ: `001000123`.
+   - `ebarimt.pos_counter (tenant_id, company_id, ebarimt_pos_id, last_seq bigint)`-оос `ebarimt.fn_next_bill_seq(ebarimt_pos_id)` posting transaction-д олгоно. Тоолуур **хэзээ ч reset хийгдэхгүй, байнга өснө** (D-K4).
+   - `ebarimt_document.bill_seq` = тоолуурын утга, `bill_id_suffix = bill_seq % 1000000`; илгээх утга = `pos_no` (3 орон) + `bill_id_suffix`-ийг 6 оронтой болгосон тоо. Жишээ: `001000123`. `UNIQUE (company_id, ebarimt_pos_id, bill_date, bill_id_suffix)`.
    - Тоолуур өдөр бүр тэглэгддэггүй тул шөнө дунд дамнасан баримт давхардахгүй. Нэг касс өдөрт 1 сая баримт гаргахгүй тул эргэлт давхардал үүсгэхгүй.
 4. **Илгээхийн өмнөх шалгалт** (сүлжээгээр алдаатай баримт илгээхгүй):
    - нийлбэрийн гинж: мөр → дэд баримт → баримт → төлбөр, НӨАТ ба НХАТ-д мөн адил;
@@ -1433,29 +1432,29 @@ stateDiagram-v2
    - `stockQR`-ийн тоо = `qty`.
 5. **Засварын урсгал:**
    - бүтэн буцаалт, баталгаажаагүй B2C_RECEIPT → `DELETE /rest/receipt {id, date}`;
-   - хэсэгчилсэн буцаалт эсвэл дүн засах → шинэ `POST`, `inactiveId` = гинжний **сүүлийн** ДДТД (`ebarimt.receipt.parent_receipt_id`-ээр гинж хадгална);
+   - хэсэгчилсэн буцаалт эсвэл дүн засах → шинэ `POST`, `inactiveId` = гинжний **сүүлийн** ДДТД (`ebarimt.ebarimt_document.replaces_document_id` ба `inactive_ddtd`-ээр гинж хадгална);
    - өмнөх сарын B2B баримт эсвэл нэхэмжлэх → `reportMonth`, **сарын 1–7-нд л** зөвшөөрнө, бусад үед UI тайлбартай хориглоно;
-   - нэхэмжлэхийн төлөлт → `invoiceId`;
+   - нэхэмжлэхийн төлөлт → `invoiceId` (`parent_ddtd`, R2);
    - сугалаатай баримтын буцаалт → `setReturnReceipt`.
 6. **Нэг борлуулалтад нэг eBarimt.** Компанийн тохиргоо `ebarimt_issuer ∈ {ERP, QPAY}` байна. QPAY бол ERP баримт илгээхгүй, QPay-ийн баримтын id-г лог руу бичнэ (v2).
 7. **Цаг.** Бүх host NTP-ээр синк хийгдэнэ. Зөрүү 1 s-ээс их бол alert гарна. Баримтын огноо татварын серверийн цагаар бүртгэгдэнэ.
 
 **POS-ийн синхрон урсгал (`SYNC_FIRST`).**
-- Posting transaction outbox мөрийг `next_attempt_at = now() + 30 s`-тэй бичнэ.
-- Commit хийсний дараа API процесс тухайн мөрийг `integration.fn_claim_outbox_by_id` функцээр шууд авч илгээнэ.
+- Posting transaction outbox мөрийг `available_at = now() + 30 s`-тэй бичнэ.
+- Commit хийсний дараа API процесс тухайн мөрийг тенантын контекст дотор id-аар шууд авч (`UPDATE integration.outbox SET status = 'PROCESSING' … WHERE id = $1 AND status = 'PENDING'`, §4.2.2) илгээнэ.
 - API унасан, эсвэл мөрийг аваагүй бол worker 30 s-ийн дараа `PENDING` мөрийг авна. Энэ тохиолдолд QR хэвлэх боломжгүй, кассчинд "баримт хүлээгдэж байна" гэж харагдана.
 - **Дахин хэвлэх.** QR болон сугалааг дахин хэвлэх боломжгүй. Эдгээрийг хадгалдаггүй. Хуулбарыг "ХУУЛБАР" тэмдэгтэй, ДДТД-тэй, QR-гүй хэвлэнэ. Журмын тодруулгыг ITC-ээс авна (Хавсралт Б).
 
 **UNKNOWN-ийг шийдвэрлэх.**
-- "eBarimt хяналт" дэлгэц нь `ebarimt.ops` эрхтэй хэрэглэгчид харагдана.
+- "eBarimt хяналт" дэлгэц нь `ebarimt.unknown.resolve` эрхтэй хэрэглэгчид харагдана.
 - Оператор баримтыг ebarimt портал эсвэл мерчантын e-invoice-оос хайгаад сонголтоо хийнэ:
   - **"Бүртгэгдсэн"**: ДДТД оруулна, эсвэл
   - **"Бүртгэгдээгүй"**: шинэ `billIdSuffix`-тэй шинэ хүсэлт үүснэ.
 - Шийдвэр бүр аудитын логт бичигдэнэ.
 - `UNKNOWN` > 0 бол ажлын цагаар alert гарна.
 
-**Лог хүснэгт `ebarimt.receipt`.**
-- Багана: `source_document_type`, `source_document_id`, `document_no`, `bill_id_suffix`, `ddtd`, `sub_ddtd[]`, `parent_receipt_id`, `invoice_ddtd`, `type`, `merchant_tin`, `customer_tin`, `consumer_no` (маскласан харуулалттай), `total_amount`, `total_vat`, `total_city_tax`, `ebarimt_date`, `report_month`, `easy`, `status`, `error_code`, `error_message`, `posapi_instance_id`.
+**Лог хүснэгт `ebarimt.ebarimt_document`** ([130_ebarimt.sql](db/schema/130_ebarimt.sql)).
+- Гол багана: `source_type`, `source_id`, `source_document_no`, `operation` (SAVE/DELETE/MANUAL_VOID), `ebarimt_type`, `status`, `ddtd`, `parent_ddtd`, `inactive_ddtd`, `report_month`, `ebarimt_pos_id`, `branch_no`, `pos_no`, `district_code`, `posapi_instance_id`, `bill_date`, `bill_seq`, `bill_id_suffix`, `merchant_tin`, `customer_tin`, `consumer_no` (маскласан харуулалттай), `total_amount`, `total_vat`, `total_city_tax`, `request_sha256`, `ebarimt_date`, `error_code`, `error_message`, `attempt_count`, `max_attempts`, `resolved_*`, `replaces_document_id`, `outbox_id`. Дэд баримт `ebarimt.ebarimt_sub_receipt`, мөр `ebarimt.ebarimt_document_line`, төлбөр `ebarimt.ebarimt_document_payment`.
 - **`qr_data` ба `lottery` багана байхгүй.**
 
 ### 9.3 PosAPI operator-ийн топологи ([ADR-0013](./adr/ADR-0013-hosting-in-mongolia-posapi-operator.md))
@@ -1480,7 +1479,7 @@ flowchart LR
 
 - **Бид ITC-д operator-оор бүртгүүлнэ.** Шаардлага ба зардал нь нээлттэй асуулт. Мерчант бүр нэг компани (нэг ТТД)-тэй тэнцүү. Тиймээс 1 000 мерчантын хязгаар тенантад бус **компанид** үйлчилнэ.
 - **Instance ба хуваарилалт.**
-  - `ebarimt.posapi_instance (id, code, base_url, status, merchant_soft_limit = 800, merchant_hard_limit = 1000, receipts_per_day_soft_limit = 70000)`.
+  - `ebarimt.posapi_instance (id, code, environment, base_url, status, max_merchants = 1000, merchant_soft_limit = 800, receipts_per_day_soft_limit = 70000, health_status)`; ачааллыг `ebarimt.fn_instance_merchant_counts()` өгнө.
   - Мерчант бүртгэх үед ачаалал хамгийн бага instance-ийг сонгоно.
   - Өдөрт 300-аас олон баримт гаргахаар хүлээгдэж буй POS мерчантуудыг instance-уудад тэнцүү тараана.
   - Хуваарилалт тогтвортой (sticky). Мерчантыг instance хооронд шилжүүлэх журам UNVERIFIED.
@@ -1507,7 +1506,7 @@ flowchart LR
     - `leftLotteries < 100`;
     - сүүлийн илгээлтээс хойш > 12 цаг өнгөрсөн (72 цагийн хязгаараас өмнө анхааруулна);
     - instance хариу өгөхгүй > 2 мин.
-- **Мерчант бүртгэх урсгал** (`ebarimt.merchant.status`):
+- **Мерчант бүртгэх урсгал** (`ebarimt.ebarimt_setup.registration_status`):
   1. `DRAFT`: wizard ТТД-ийг `getInfo`-оор баталгаажуулж, `branchNo` (3 орон), `districtCode` (`getBranchInfo`-оос, 4 орон), `posNo`-г цуглуулна.
   2. `REQUESTED`: outbox `saveOprMerchants` дуудлагыг хийнэ (operator-ийн `X-API-KEY`).
   3. `AWAITING_CONFIRMATION`: мерчант e-invoice эсвэл Ebarimt-Mobile дээр баталгаажуулна. Систем `/rest/info`-г 15 мин тутам шалгана.
@@ -1522,26 +1521,26 @@ flowchart LR
 
 - **MVP: файл импорт.**
   1. Хэрэглэгч Excel/CSV хуулгаа upload хийнэ. Файлыг object storage-д хадгална.
-  2. Банк тус бүрийн `cash_bank.bank_import_format` тодорхойлолтоор задлана. Энэ нь BC-ийн Data Exchange Definition-тэй ижил санаа. Тодорхойлолтод дараах зүйлс багтана: баганын харгалзаа, огнооны формат, аравтын тусгаарлагч, тэмдгийн дүрэм, толгой мөрийн тоо.
-  3. Задалсан мөрийг `cash_bank.bank_statement_line`-д хадгална. Дахин импортлоход давхардахгүй (§8.5).
+  2. Банк тус бүрийн `bank.bank_statement_import_format` (+ `bank.bank_statement_import_column`) тодорхойлолтоор задлана. Энэ нь BC-ийн Data Exchange Definition-тэй ижил санаа. Тодорхойлолтод дараах зүйлс багтана: баганын харгалзаа, огнооны формат, аравтын тусгаарлагч, тэмдгийн дүрэм, толгой мөрийн тоо.
+  3. Задалсан мөрийг `bank.bank_statement_line`-д хадгална. Дахин импортлоход давхардахгүй (§8.5).
   4. Тулгах санал гаргана: дүн + огноо + харилцагчийн дансны дугаар, гүйлгээний утга дахь нэхэмжлэхийн дугаар.
   5. Хэрэглэгч төлбөрийн баримтыг батална (posting).
 - **Анхны загварууд:** Хаан, Голомт, ХХБ, Хас, Төрийн банк. Пилот харилцагчийн бодит файлаас гаргана. Формат одоогоор UNVERIFIED.
 - **IBAN:** `MN` + 2 шалгах орон + 4 банкны код + 12 дансны орон = 20 тэмдэгт, mod-97 шалгалттай. Багана нь 34 тэмдэгт хүртэл урттай.
 - **v2: API connector.** Хаан (`api.khanbank.com/v1`, client credentials), Голомт (checksum header), ХХБ.
   - Тенант бүрийн банкны нууц мэдээллийг `platform.tenant_secret`-д хадгална (§10.4).
-  - `bank.statement.pull` job нь ижил staging хүснэгт рүү бичнэ.
+  - `bank.statement.pull` job нь ижил `bank.bank_statement_line` хүснэгт рүү бичнэ.
 
 ### 9.5 Монголбанкны ханш
 
-- **Хуваарь.** Quartz job `MongolbankRateFetchJob` ажлын өдөр 11:00, 13:00, 16:00 цагт (Asia/Ulaanbaatar) ажиллана. Ханш нийтлэгдэх цаг UNVERIFIED, ойролцоогоор 10:00–13:00.
+- **Хуваарь.** Quartz job `MongolbankRateFetchJob` (`integration.job_definition.code = 'fx.mongolbank_rates'`) ажлын өдөр 11:00, 13:00, 16:00 цагт (Asia/Ulaanbaatar) ажиллана. Ханш нийтлэгдэх цаг UNVERIFIED, ойролцоогоор 10:00–13:00.
 - **Хүсэлт.** `POST https://www.mongolbank.mn/mn/currency-rates/data?startDate=…&endDate=…` (хоосон body).
 - **Боловсруулалт.**
   - Хариуны string-ийг таслалгүй болгож `decimal`-д хөрвүүлнэ. Ханш 1 нэгж валютынх байна.
-  - `currency.ref_official_rate (rate_date, currency, rate, source = 'MONGOLBANK_AUTO', fetched_at, fetch_id)`-д append-only байдлаар бичнэ.
-  - Залруулга ирвэл шинэ мөр нэмэгдэнэ. Хүчинтэй утга нь хамгийн сүүлд татсан мөр байна.
+  - `fx.official_exchange_rate (currency_code, rate_date, rate_mnt, source = 'MONGOLBANK', fetched_at, source_reference, revision)`-д бичнэ (`app_worker`).
+  - Залруулга ирвэл шинэ `revision` мөр нэмэгдэж, өмнөхийн `superseded_at` тавигдана. Хүчинтэй утга нь `superseded_at IS NULL` мөр байна.
 - **Хайлт.** Тухайн өдрийн, эсвэл түүнээс өмнөх хамгийн сүүлийн ханшийг авна. Амралтын өдөр өмнөх ханш үйлчилнэ.
-  - Компанийн `currency.company_rate` (`MANUAL`/`IMPORT`) нь тухайн өдрийн албан ханшийг давж үйлчилнэ.
+  - Компанийн `fx.currency_exchange_rate` (гараар/импорт) нь тухайн өдрийн албан ханшийг давж үйлчилнэ.
   - Ханш бүрийн эх сурвалжийг аудитад хадгална.
 - **Алдаа.** Захиалгат хэрэглэгчийн ханш 13:00 гэхэд татагдаагүй бол платформын операторт alert гарна. Нягтлан UI-аас гараар оруулж болно.
 - **Эрсдэл.** Endpoint албан ёсны биш. reCAPTCHA нэмэгдэж магадгүй. Адаптерийг `IOfficialRateSource` интерфейсийн ард байрлуулна.
@@ -1551,7 +1550,7 @@ flowchart LR
 - **Сувгийн интерфейс.** `ITaxFilingChannel` ба `IFinancialStatementChannel`. v1-д зөвхөн `ManualExportChannel` хэрэгжинэ.
 - **НӨАТ.** ТТ-03а ба хавсралтуудыг (ТТ-03а-5 худалдан авалт, ТТ-03а-6 борлуулалт) маягтын мөрийн дарааллаар XLSX болгоно (ClosedXML). Хэрэглэгч etax.mta.mn-д гараар оруулна.
 - **Санхүүгийн тайлан.** Маягт А-ийн (СБТ, ОДТ, ӨӨТ, МГТ) XLSX-ийг үүсгэнэ. Мөн e-balance-ийн дэлгэцийн дарааллаар "keying sheet" PDF гаргана.
-- **Илгээлтийн бүртгэл.** `reporting.filing_submission (type, period, status, export_object_key, submitted_at, evidence_object_key)`. Илгээснийг тэмдэглэхэд (нотолгоо upload хийхэд) үе HARD_LOCKED болно.
+- **Илгээлтийн бүртгэл.** `rpt.filing_submission` (append-only; төрөл, үе, экспорт ба нотолгооны файл, илгээсэн огноо). Илгээснийг тэмдэглэхэд (нотолгоо upload хийхэд) үе `LOCKED` болно (НӨАТ: `tax.vat_return_period.status = 'SUBMITTED'`).
 - **ETAX API** (v1.1, зөвхөн Монголын IP) албан ёсоор нээлттэй болбол шинэ channel нэмнэ. Энэ үед архитектур өөрчлөгдөхгүй.
 
 ### 9.7 Имэйл
@@ -1608,8 +1607,8 @@ flowchart LR
 | Permission set | BC-ийн харгалзах | Гол эрх |
 |---|---|---|
 | `ERP BASIC` | `D365 BASIC` | Нэвтрэх, профайл, компанийн тохиргоо унших, лавлах жагсаалт |
-| `ERP CUSTOMER, VIEW` / `EDIT` | `D365 CUSTOMER, VIEW` / `EDIT` | `parties.customer.*` |
-| `ERP VENDOR, VIEW` / `EDIT` | `D365 VENDOR, VIEW` / `EDIT` | `parties.vendor.*` |
+| `ERP CUSTOMER, VIEW` / `EDIT` | `D365 CUSTOMER, VIEW` / `EDIT` | `party.customer.*` |
+| `ERP VENDOR, VIEW` / `EDIT` | `D365 VENDOR, VIEW` / `EDIT` | `party.vendor.*` |
 | `ERP SALES DOC, EDIT` | `D365 SALES DOC, EDIT` | Ноорог үүсгэх ба засах, preview |
 | `ERP SALES DOC, POST` | `D365 SALES DOC, POST` | `sales.invoice.post`, `sales.creditmemo.post`, `sales.pos.post` |
 | `ERP PURCH DOC, EDIT` / `POST` | `D365 PURCH DOC, EDIT` / `POST` | Худалдан авалт |
@@ -1670,7 +1669,7 @@ flowchart LR
   - `platform.tenant_secret`-д AES-256-GCM-ээр шифрлэнэ (envelope);
   - KEK нь runtime secret-ээс ирнэ;
   - `key_id` баганаар түлхүүрийг солих боломжтой.
-- **Data Protection.** Түлхүүрийн цагираг `platform.data_protection_key`-д X.509-ээр шифрлэгдэнэ.
+- **Data Protection.** Түлхүүрийн цагираг `identity.data_protection_key`-д (D-K7) X.509-ээр шифрлэгдэнэ.
 - **Солих хугацаа:** DB нууц үг 180 хоног, OIDC түлхүүр 90 хоног, KEK жилд. Нууц алдагдсан гэж сэжиглэвэл даруй солино.
 
 ### 10.5 Шифрлэлт
@@ -1689,14 +1688,14 @@ flowchart LR
 
 | Өгөгдөл | Хаана | Ангилал | Хамгаалалт |
 |---|---|---|---|
-| Хувь хүний регистрийн дугаар, `civil_id` | `parties.customer`, `parties.vendor`, `parties.contact` | Эмзэг | Шифрлэх + HMAC. Жагсаалтад маскалж харуулна (`УБ******12`). Задлах эрх `ERP PII UNMASK`, логтой. **Түлхүүр эсвэл ТТД хайлтад ашиглахгүй** |
-| Утас, имэйл, хаяг | `parties.contact`, `identity.user` | Хувийн | Эрхгүй role-д маскална. Экспорт хийхэд логт бичигдэнэ |
-| `consumerNo` (8 орон) | `ebarimt.receipt` | Хувийн | Маскална. Лог ба trace-д бичихгүй |
-| Хувь хүний банкны данс | `parties.*_bank_account` | Хувийн | Маскална |
+| Хувь хүний регистрийн дугаар, `civil_id` | `party.customer`, `party.vendor` (`personal_tin_enc` + `personal_tin_hmac` + `personal_tin_hint`) | Эмзэг | Шифрлэх + HMAC. Жагсаалтад маскалж харуулна (`УБ******12`). Задлах эрх `ERP PII UNMASK`, логтой. **Түлхүүр эсвэл ТТД хайлтад ашиглахгүй** |
+| Утас, имэйл, хаяг | `party.customer`, `party.vendor`, `platform.app_user` | Хувийн | Эрхгүй role-д маскална. Экспорт хийхэд логт бичигдэнэ |
+| `consumerNo` (8 орон) | `ebarimt.ebarimt_document.consumer_no` | Хувийн | Маскална. Лог ба trace-д бичихгүй |
+| Хувь хүний банкны данс | `party.vendor_bank_account` | Хувийн | Маскална |
 | ДДТД, хуулийн этгээдийн ТТД | Олон газар | PII биш (бизнесийн өгөгдөл) | Ердийн |
 | `qrData`, `lottery` | — | Журмаар хадгалахыг хориглосон | Хадгалахгүй (§9.2) |
 
-- **Зорилго ба зөвшөөрөл.** Татвар ба НББ-ийн зорилгоор боловсруулах нь хуульд үндэслэнэ. Маркетинг зэрэг бусад зорилгод `parties.consent (purpose, granted_at, channel, withdrawn_at)` бүртгэнэ.
+- **Зорилго ба зөвшөөрөл.** Татвар ба НББ-ийн зорилгоор боловсруулах нь хуульд үндэслэнэ. Маркетинг зэрэг бусад зорилгод зөвшөөрлийн бүртгэл (`purpose, granted_at, channel, withdrawn_at`) шаардлагатай; R1-д ийм боловсруулалт байхгүй тул канон схемд хүснэгт ороогүй (Alignment log: схемд шаардлагатай өөрчлөлт).
 - **Субъектын эрх.** Хандах ба хуулбар авах (экспорт), засах эрхийг хангана. Устгах хүсэлт ирвэл 10 жилийн хадгалах үүрэг давамгайлна. Хугацаа дууссаны дараа өгөгдлийг нэргүй болгоно.
 - **Хилийн чанадад дамжуулахгүй.** Production өгөгдөл, нөөц хуулбар, лог, trace, имэйлийн relay бүгд Монголд байна. Гадаадын CDN ба фонт ашиглахгүй: фонтыг өөрсдөө host хийнэ.
 - **Зөрчил гарвал.**
@@ -1763,8 +1762,8 @@ postgres_exporter, node_exporter, nginx exporter → Prometheus
 | `erp_posting_failures_total` | counter | `document_type`, `reason` |
 | `erp_posting_lock_wait_seconds` | histogram | — |
 | `erp_posting_lock_timeouts_total` | counter | — |
-| `erp_outbox_pending` / `erp_outbox_oldest_pending_age_seconds` | gauge | `message_type` |
-| `erp_outbox_dead_total` | counter | `message_type` |
+| `erp_outbox_pending` / `erp_outbox_oldest_pending_age_seconds` | gauge | `topic` |
+| `erp_outbox_dead_total` | counter | `topic` |
 | `erp_ebarimt_receipts_total` | counter | `status`, `type` |
 | `erp_ebarimt_unknown_open` | gauge | `posapi_instance` |
 | `erp_posapi_left_lotteries_min` | gauge | `posapi_instance` |
@@ -1776,7 +1775,7 @@ postgres_exporter, node_exporter, nginx exporter → Prometheus
 | `erp_rls_denied_total` (SQLSTATE `42501`) | counter | `module` |
 | `http.server.request.duration` (OTel стандарт) | histogram | `http.route`, `http.response.status_code` |
 
-- **Label-д тенантын id оруулахгүй.** Cardinality хэт өснө. Тенант тус бүрийн статистикийг DB-ийн `ops.*` view-ээс авна.
+- **Label-д тенантын id оруулахгүй.** Cardinality хэт өснө. Тенант тус бүрийн статистикийг DB-ийн `integration.fn_ops_health()` (PII-гүй нийлбэр, `app_ops`)-ээс авна.
 
 ### 11.4 Trace
 
@@ -1796,10 +1795,11 @@ postgres_exporter, node_exporter, nginx exporter → Prometheus
 | Эх сурвалж | Агуулга | Хадгалах хугацаа |
 |---|---|---|
 | `gl.gl_register` | Posting run: хэрэглэгч, цаг, source code, entry-ийн муж, hash | 10 жил (ledger-тэй хамт) |
-| `audit.row_change` (trigger) | Master, setup ба ноорогийн хүснэгтийн INSERT/UPDATE/DELETE: хуучин ба шинэ утга (jsonb), `changed_by`, `txid`, `request_id`. Шифрлэсэн PII-г шифрлэсэн хэвээр хадгална | 10 жил. Сараар хуваасан (partition) |
+| `audit.row_change` (trigger `trg_<table>_audit` → `audit.fn_row_change`) | Master, setup ба ноорогийн хүснэгтийн INSERT/UPDATE/DELETE: хуучин ба шинэ утга (jsonb), `changed_by`, `txid`, `request_id`. Шифрлэсэн PII-г шифрлэсэн хэвээр хадгална | 10 жил (`audit.fn_purge_expired`) |
 | `audit.security_event` | Нэвтрэлт, MFA, эрхийн өөрчлөлт, PII задлах, экспорт, support хандалт, үе нээх | 10 жил |
-| `ebarimt.receipt_event` | Баримтын төлөвийн шилжилт, UNKNOWN-ийн шийдвэр | 10 жил |
-| `integration.integration_attempt` | Гадаад дуудлагын мета өгөгдөл | 2 жил |
+| `audit.posting_log` | Posting/preview оролдлого (амжилтгүй нь орно) | 10 жил |
+| `ebarimt.ebarimt_document_event` | Баримтын төлөвийн шилжилт, UNKNOWN-ийн шийдвэр | 10 жил |
+| OTel trace/metric (гадаад дуудлагын мета өгөгдөл) | Endpoint, статус, хугацаа (body-гүй) | Trace 7 хоног, метрик 13 сар (§3) |
 
 ### 11.7 Alert
 
@@ -2059,19 +2059,20 @@ DR-ийн бүрэн дасгалыг жилд 2 удаа staging-тэй ижи�
 
 ### 14.3 Event ба outbox payload
 
-- `message_type` + `schema_version`. Зөвхөн нэмэх өөрчлөлт хийнэ.
+- Outbox `topic` + payload доторх `schema_version`. Зөвхөн нэмэх өөрчлөлт хийнэ.
 - Handler N ба N-1 хувилбарыг хоёуланг нь хүлээн авна. Deploy-ийн үеэр дараалалд байгаа хуучин мессеж алдагдахгүй.
 - Хуучин хувилбарын мессеж дараалалд үлдээгүй болсны дараа л handler-ийн дэмжлэгийг хасна.
 
 ### 14.4 DB схемийн migration ([ADR-0014](./adr/ADR-0014-sql-first-migrations.md))
 
-- **Runner.** Өөрсдийн `Erp.Migrator` (console). Командууд: `migrate`, `verify`, `seed --set <name>`, `info`. Дэлгэрэнгүйг [18-dev-setup.md](./18-dev-setup.md) §3.3-аас үзнэ үү.
-- **Файл.** `db/migrations/V<NNNN>__<module>_<description>.sql` (жишээ: `V0012__gl_create_gl_entry.sql`). View ба функц нь `R__<schema>__<object>.sql` (repeatable).
-  - Журнал `core.schema_migration`-д (version, checksum SHA-256, applied_at, applied_by) хадгалагдана.
+- **Runner.** Өөрсдийн `Erp.Migrator` (console, `src/Erp.Migrator`; [ADR-0014](./adr/ADR-0014-sql-first-migrations.md) ба [18-dev-setup.md](./18-dev-setup.md) §3.3-тай ижил нэр). Командууд: `migrate`, `verify`, `seed --set <name>`, `info`. Гадаад runner (DbUp, Flyway, `Erp.Migrations`) хэрэглэхгүй.
+- **Baseline.** Канон `db/schema/*.sql` (000…920) нь репод **өөрчлөлтгүй** (`db/schema/`) байж, `Erp.Migrator`-т embedded resource болно; migrator тэдгээрийг нэрийн дарааллаар, нэг бүрийг нэг transaction-д ажиллуулна (psql-ийн `\set …` мөрийг алгасна). `000_extensions_roles.sql` нь cluster role ба өргөтгөл үүсгэдэг тул **эхний `migrate`** нь bootstrap superuser холболтоор (локал/CI: `postgres`; production: DBA, 2 хүн) явна; дараагийн бүх ажиллагаа `erp_migrator`-оор. Seed (`db/seed/legal_parameters.sql`, `mn_*.sql`) нь `seed` командаар repeatable (checksum өөрчлөгдвөл дахин).
+- **Файл.** Baseline-ийн дараах өөрчлөлт `db/migrations/V<NNNN>__<module>_<description>.sql` (`V0001`-ээс; жишээ: `V0012__gl_add_gl_register_hash.sql`), baseline-ийн дараа ажиллана. View ба функц нь `R__<schema>__<object>.sql` (repeatable).
+  - Журнал `platform.schema_migration (script, kind, checksum SHA-256, applied_at, applied_by, execution_ms)`. Хүснэгтийг migrator 000-ийн дараа шууд (`SET ROLE app_owner`) үүсгэнэ; канон схемд нэмэх нь Alignment log-ийн "Схемд шаардлагатай өөрчлөлт".
   - Зөвхөн урагш явна (down script байхгүй).
   - Хэрэглэгдсэн script-ийг засахгүй. Checksum-ийг migrator ба CI шалгана.
-- **Migrator-ийн хамгаалалт:** `SET ROLE erp_owner`, `SET lock_timeout = '5s'`, `SET statement_timeout = '15min'`, зэрэг ажиллах migrator-ыг `pg_advisory_lock`-оор хориглоно. Lock timeout болбол 3 удаа дахин оролдоно.
-- **`verify`** нь дараахыг шалгана: checksum; `tenant_id`-тэй хүснэгт бүр RLS ENABLE + FORCE + бодлоготой; ledger хүснэгт guard trigger-тэй, `erp_app` ба `erp_worker`-т UPDATE/DELETE/TRUNCATE эрхгүй; `BYPASSRLS` зөвхөн `erp_dispatch_definer`-д; хадгалах хугацаатай хүснэгтэд дараагийн сарын partition бий; `real`/`double precision`/`money` багана байхгүй; `qr_data`/`lottery` багана байхгүй.
+- **Migrator-ийн хамгаалалт:** `erp_migrator`-оор нэвтэрч `SET ROLE app_owner`, `SET lock_timeout = '5s'`, `SET statement_timeout = '15min'`, зэрэг ажиллах migrator-ыг `pg_advisory_lock`-оор хориглоно. Lock timeout болбол 3 удаа дахин оролдоно.
+- **`verify`** нь [db/tests/catalog_checks.sql](db/tests/catalog_checks.sql) ба 900_rls.sql-ийн self-check-тэй ижил дүрмийг шалгана: checksum; `tenant_id`-тэй хүснэгт бүр RLS ENABLE + FORCE + `tenant_isolation` (`company_id NOT NULL` бол `company_isolation`); `app.tenant_id`-гүй query алдаа өгдөг (fail-closed); `platform.ledger_guard`-ийн хүснэгт бүр `trg_<table>_immutable`/`_no_truncate` trigger-тэй, `app_user`/`app_worker`/`app_readonly`-д UPDATE/DELETE/TRUNCATE эрхгүй; `BYPASSRLS` зөвхөн `app_rls_bypass`-д; `real`/`double precision`/`money` багана байхгүй, дүн `platform.amount`, ханш `platform.exch_rate` domain-тэй; `qr_data`/`lottery` багана байхгүй.
 - **Expand/contract.** Хувилбар N-ийн схем N-1 хувилбарын кодтой ажиллах ёстой.
 
 | Өөрчлөлт | Аюулгүй арга |
@@ -2084,11 +2085,12 @@ DR-ийн бүрэн дасгалыг жилд 2 удаа staging-тэй ижи�
 | FK | `NOT VALID` → `VALIDATE` |
 | Enum утга нэмэх | `CHECK`-ийг шинэчилнэ: шинэ CHECK нэмэх (NOT VALID) → VALIDATE → хуучныг устгах |
 
-- **Шинэ хүснэгт** заавал дараах helper-ийг дуудна:
-  - `core.fn_apply_tenant_rls('schema.table')`: RLS ENABLE ба FORCE, бодлого, эрх олгох;
-  - ledger бол `core.fn_make_append_only('schema.table')`: guard trigger, REVOKE.
+- **Шинэ хүснэгт.** Baseline-ийн 900/910/140 файлууд RLS, guard, audit trigger-ийг **нэг удаагийн loop**-оор үүсгэдэг. Тиймээс дараагийн migration шинэ хүснэгтэд ижил объектыг ил бичнэ ([18-dev-setup.md](./18-dev-setup.md) §3.2-ын загвар):
+  - `ENABLE` + `FORCE ROW LEVEL SECURITY`, `tenant_isolation` (+ `company_isolation` RESTRICTIVE) бодлого, `app_user`-т GRANT;
+  - master/setup/ноорог бол `trg_<table>_touch` (`platform.fn_touch_row`) ба `trg_<table>_audit` (`audit.fn_row_change`);
+  - ledger бол `INSERT INTO platform.ledger_guard (...)`, `trg_<table>_immutable` / `trg_<table>_no_truncate` (`platform.fn_guard_immutable`), `trg_<table>_before_insert` (`platform.fn_ledger_before_insert`), `REVOKE UPDATE, DELETE, TRUNCATE … FROM app_user, app_worker, app_readonly`.
 
-  CI-ийн каталог тест (§7.8) үүнийг шалгана.
+  Давхардлыг багасгах reusable helper (`platform.fn_apply_rls(regclass)` г.м.) одоогоор канон схемд байхгүй (Alignment log). CI-ийн каталог тест (§7.8) үүнийг шалгана.
 - **Ledger-ийг UPDATE-ээр backfill хийхгүй.** Trigger үүнийг хориглоно. Шинэ ledger багана NULL-тэй байна. Хуучин мөрүүд NULL хэвээр үлдэнэ. Гаргаж авах өгөгдлийг тусдаа хүснэгтэд хадгална.
 - **Том backfill** (ledger биш) migration дотор бус, idempotent batched job хэлбэрээр ажиллана: transaction бүрд 1 000 мөр.
 - **EF Core** зөвхөн бэлэн схемд map хийнэ. EF migration ашиглахгүй. CI тест EF-ийн model metadata-г `information_schema`-тай харьцуулна.
@@ -2199,7 +2201,7 @@ NuGet сангийн яг хувилбарыг [starter/Directory.Packages.props
 | Ledger | ledger | Батлагдсан бичилтийн append-only хүснэгт (G/L, VAT, авлага, банк гэх мэт) |
 | Transaction | transaction (`gl_transaction`) | Тэнцсэн нэг ваучер (BC Transaction No.) |
 | Register | register (`gl_register`) | Нэг posting run-ийн аудитын бичлэг (BC G/L Register) |
-| Улаан сторно | storno / correction | Ижил баганад эсрэг тэмдэгтэй бичих буцаалт (`is_correction`) |
+| Буцаалт (storno биш) | reversal | Эх бичилтийн эсрэг тэмдэгтэй бичилт; тэмдгээс шалтгаалан эсрэг баганад (Дт↔Кт) орно. Улаан сторно (`Correction`) хэрэглэхгүй (D-C3) |
 | Цоорхойгүй дугаар | gapless numbering | Rollback хийгдсэн ч алгасалгүй дараалсан хууль ёсны дугаар |
 | Advisory lock | advisory lock | PostgreSQL-ийн хэрэглээний түвшний түгжээ (`pg_advisory_xact_lock`) |
 | RLS | Row-Level Security | PostgreSQL-ийн мөрийн түвшний хандалтын бодлого |
@@ -2222,7 +2224,7 @@ NuGet сангийн яг хувилбарыг [starter/Directory.Packages.props
 | 2 | PosAPI-ийн дотоод DB, мерчантыг instance хооронд шилжүүлэх журам, `billIdSuffix`-ийн дээд урт | §9.2, §9.3 | 9 оронтой (`posNo` + 6), хуваарилалт тогтвортой | ITC |
 | 3 | UNKNOWN баримтыг `billIdSuffix`-ээр хайх API байгаа эсэх | §9.2 | Гараар шийднэ | ITC |
 | 4 | QR ба сугалааг дахин хэвлэхийг зөвшөөрөх эсэх | §9.2 | QR-гүй "ХУУЛБАР" | ITC, МТА |
-| 5 | НӨАТ төлөгч бус мерчантын `taxType` | §9.2, Tax | `tax_code`-ийн харгалзаагаар | ITC |
+| 5 | НӨАТ төлөгч бус мерчантын `taxType` | §9.2, Tax | `tax.vat_posting_setup`-ийн eBarimt `taxType` харгалзаагаар | ITC |
 | 6 | Хувийн мэдээллийг Монголд хадгалах заавал шаардлага (data localisation) ба нөөцийг гадаадад хадгалах хязгаар | §10.6, §12 | Бүгдийг Монголд хадгална | Хуульч |
 | 7 | QuestPDF PDF/A нийцэл | §12.8 | PDF + manifest, PDF/A-г шалгана | Техник туршилт |
 | 8 | Order 47-ийн бүрэн шалгах хуудас ба үнэлгээний журам | ADR-0023 | Нийцлийн матриц хөтөлнө | СЯ / ММНБИ |
@@ -2230,7 +2232,7 @@ NuGet сангийн яг хувилбарыг [starter/Directory.Packages.props
 | 10 | Цахим гарын үсгийн провайдерын API, үнэ | §9.8 | MVP-д дотоод баталгаажуулалт, GA-д PAdES | Гэрэгэ, Инфосерт, Тридум |
 | 11 | Монгол дахь провайдер (2 ДЦ, S3, SLA, үнэ) | §12 | Үнийн санал авна | Провайдерууд |
 | 12 | ETAX API ба e-balance импорт | §9.6 | Файл экспорт | МТА, СЯ |
-| 13 | [18-dev-setup.md](./18-dev-setup.md) ба [starter/](./starter/README.md) нь энэ баримт ба ADR-аас зөрдөг. Migration runner: DbUp `Erp.Migrations` ба `platform.schema_version`, энд `Erp.Migrator` ба `core.schema_migration` (ADR-0014). Helper-ийн схем: `platform.*`, энд `core.*`. RLS policy-ийн нэр: `p_tenant_isolation`, энд `rls_<table>__tenant`. Validation: FluentValidation, энд built-in `AddValidation()`. Session: `ErpDbSession`, энд `TenantSession`. Нууцыг env файлд хадгалдаг, энд `/run/secrets` (§10.4). Аюулгүй байдлын зөрүү: starter-ийн `01-roles.sql` нь `erp_owner`-т `BYPASSRLS` өгдөг; 18-dev-setup нь контекстгүй query 0 мөр буцаана гэж бичсэн, энд алдаа өгнө (fail-closed, §7.4) | §5, §7.4, §7.5, §10.4, §14.4 | Батлагдсан ADR хүчинтэй (хазайх бол шинэ ADR, [README](./adr/README.md)). Аюулгүй байдлын хоёр зөрүүг **заавал** энэ баримтын дагуу засна. Бусдыг Sprint 0-ийн PR #2-оос өмнө нэг хувилбар болгож, гурван баримтыг зэрэг шинэчилнэ | Архитектурын баг |
+| 13 | ~~18-dev-setup, starter ба энэ баримтын зөрүү (migration runner, helper-ийн схем, RLS policy-ийн нэр, role, fail-closed)~~ — **Шийдэгдсэн (2026-10-08)**: бүгд канон схем ([db/schema](db/schema/)) ба [DECISIONS](DECISIONS.md) §K-д нийцүүлэгдсэн: runner `Erp.Migrator` + `platform.schema_migration`; хамтын объект `platform.*` (`core` байхгүй); RLS `tenant_isolation`/`company_isolation`; group role `app_*` (+ login `erp_*`), BYPASSRLS зөвхөн `app_rls_bypass`; fail-closed. Доорх "Нийцүүлэлтийн тэмдэглэл"-ийг үз | §5, §7.4, §7.5, §14.4 | — | Архитектурын баг |
 
 ## Хавсралт В. Холбоос
 
@@ -2246,3 +2248,47 @@ NuGet сангийн яг хувилбарыг [starter/Directory.Packages.props
   - [`DimensionSetEntry.Table.al`](../../../src/Layers/W1/BaseApp/Finance/Dimension/DimensionSetEntry.Table.al)
   - [`NoSeriesStatelessImpl.Codeunit.al`](../../../src/Business%20Foundation/App/NoSeries/src/Single/NoSeriesStatelessImpl.Codeunit.al)
   - [`d365basic.permissionset.al`](../../../src/Layers/W1/BaseApp/Permissions/d365basic.permissionset.al)
+
+## Хавсралт Г. Нийцүүлэлтийн тэмдэглэл (Alignment log)
+
+**Огноо:** 2026-10-08. **Үндэслэл:** [DECISIONS](DECISIONS.md) §K (D-K1…D-K7) — DB-ийн нэрийн цорын ганц эх сурвалж нь [db/schema/*.sql](db/schema/). Энэ баримт, [adr/](adr/README.md), [18-dev-setup.md](18-dev-setup.md), [starter/](starter/README.md) ба 05–16 модулийн spec-ийн schema-qualified нэр, функц, role, бодлогын нэрийг канон схемтэй тулгаж зассан. `db/schema` өөрчлөгдөөгүй; шаардлагатай өөрчлөлтийг доор санал болгосон.
+
+**Нэрийн харгалзаа (хуучин → канон):**
+
+| Ангилал | Хуучин нэр | Канон нэр |
+|---|---|---|
+| Схем | `core`, `ops` | байхгүй: хамтын объект `platform.*`; ops нийлбэр `integration.fn_ops_health()` |
+| Схем | `parties`, `cash_bank`, `currency`, `fixed_assets`, `inventory`, `purchases`, `reporting` | `party`, `bank`, `fx`, `fa`, `inv`, `purchase`, `rpt` (C# модулийн нэр `Parties`, `CashBank`, `Currency`, `FixedAssets`, `Inventory`, `Purchases`, `Reporting` хэвээр) |
+| Domain | `core.amount`, `core.amount_lcy`, `core.unit_price`, `core.qty`, `core.pct`, `core.fx_rate` | `platform.amount`, `platform.unit_amount`, `platform.quantity` (19,5), `platform.percent` (9,5), `platform.exch_rate`; `amount_lcy` domain байхгүй |
+| Функц | `core.fn_lock_company_posting`, `core.fn_uuid_v7`, `core.fn_block_ledger_mutation`, `core.fn_make_append_only`, `core.fn_apply_tenant_rls`, `core.fn_add_audit_trigger`, `core.fn_rotate_partitions`, `gl.fn_assert_transaction_balanced`, `integration.fn_claim_outbox_by_id`, `platform.fn_purge_tenant` | `platform.fn_lock_company_posting`; UUIDv7-г апп (`DEFAULT gen_random_uuid()` нөөц); `platform.fn_guard_immutable` + `platform.fn_ledger_before_insert` + `platform.fn_ledger_update` (каталог `platform.ledger_guard`); RLS/guard/audit нь 900/910/140-ийн loop (helper байхгүй); `gl.fn_check_transaction_balanced` / `gl.fn_check_transaction_has_entries`; POS sync claim = тенантын контекст дахь `UPDATE integration.outbox`; purge = `platform.fn_purge_in_progress` + migrator-ийн журам; retention = `audit.fn_purge_expired` (partition-гүй) |
+| Counter | `gl.company_counter`, `platform.no_series(_line)` | `platform.ledger_counter` (`platform.fn_next_entry_no`, D-K3), `platform.number_series` / `number_series_line` / `number_series_counter` / `number_allocation` (`platform.fn_next_document_no`) |
+| RLS | `rls_<table>__tenant`, `p_tenant_isolation` | `tenant_isolation`, RESTRICTIVE `company_isolation`, `tenant_read_system`, `tenant_self`, `app_user_visible`/`_self_write`/`_self_update`; fail-closed (`platform.current_tenant_id()`, D-K6) |
+| Role | `erp_owner` (эзэмшигч), `erp_app`, `erp_worker`, `erp_dispatch_definer` (BYPASSRLS), `erp_ops_ro` | group role `app_owner`, `app_user`, `app_worker`, `app_readonly`, `app_ops`, `app_rls_bypass` (цорын ганц BYPASSRLS); login `erp_owner`/`erp_migrator` → `app_owner`, `erp_app` → `app_user`, `erp_worker` → `app_worker`, `erp_ops_ro` → `app_ops`; `erp_dispatch_definer` хасагдсан |
+| Хүснэгт | `integration.outbox_message`/`inbox_message`/`integration_attempt`, `ebarimt.receipt`/`receipt_event`/`merchant`/`pos_terminal`/`ref_*`, `tax.ref_legal_parameter`/`tax_code`/`vat_settlement`/`vat_period`, `currency.ref_*`/`company_rate`, `gl.account_period_balance`/`gl_entry_reversal`/`gen_posting_setup`/`reason_code`/`journal`, `parties.cust_open_item`/`detailed_cust_ledg_entry`/`vend_*`/`contact`/`consent`, `sales.posted_sales_*`, `purchases.posted_purch_*`, `cash_bank.*`, `reporting.*`, `identity.user`, `platform.membership`/`member_company_role`/`company_setting`/`data_protection_key`/`feature_flag`, `ops.consistency_issue` | `integration.outbox`/`inbox` (оролдлогын мета нь OTel), `ebarimt.ebarimt_document`/`ebarimt_document_event`/`ebarimt_setup`/`ebarimt_pos`/`classification_code` г.м., `tax.tax_parameter`/`vat_posting_setup`/`vat_return_period`/`vat_return_snapshot`, `fx.iso_currency`/`official_exchange_rate`/`currency`/`currency_exchange_rate`, `gl.v_gl_account_period_balance`/whitelisted `reversed*` багана/`party.general_posting_setup`/`platform.reason_code`/`gl.journal_template`+`journal_batch`+`journal_line`, `party.v_cust_open_entry` + `remaining_*` cache/`detailed_cust_ledger_entry`/`vendor_ledger_entry`/`detailed_vendor_ledger_entry` (D-K2), `sales.sales_invoice_*`/`sales_cr_memo_*`, `purchase.purch_inv_*`/`purch_cr_memo_*`, `bank.*`, `rpt.*` + `platform.archive_package` + `integration.job_run`, `platform.app_user` + `identity.user_credential`, `platform.tenant_membership`/`user_company_role`/`company_setup`, `identity.data_protection_key` (D-K7), `platform.fn_integrity_report` |
+| Төлөв | Үе `OPEN/SOFT_LOCKED/CLOSED/HARD_LOCKED`; outbox `DISPATCHING/SENDING/FAILED/UNKNOWN`; eBarimt `SENDING/SENT/REJECTED/RESOLVED_*/VOID_*` | Үе `OPEN/CLOSED/LOCKED` (D-D3); outbox `PENDING/PROCESSING/DONE/DEAD/CANCELLED`; eBarimt `PENDING/SENT/SUCCESS/ERROR/UNKNOWN/CANCELLED` (+ `operation` SAVE/DELETE/MANUAL_VOID) |
+| Dimension | set id = UUIDv7, хоосон = nil UUID; ledger-т global dimension хуулахгүй | `dimension_set_id bigint`, хоосон = 0 (`gl.fn_get_dimension_set_id`); `global_dim_1/2_value_id` trigger-ээр (`gl.fn_derive_global_dimensions`) |
+| Topic / эрх | `ebarimt.receipt.create` / `.void`, `message_type`, `ebarimt.ops`, `parties.customer.*`, `gl.period.post_soft_locked` | `ebarimt.receipt.send` (`topic`), `ebarimt.unknown.resolve`, `party.customer.*`; эрх ба topic-ийн угтвар = схемийн нэр |
+
+**Өөрчлөгдсөн хэсгүүд:**
+
+1. **Энэ баримт (02):** §4.1 (модуль ↔ схемийн хүснэгт, `core` хасагдсан), §4.2.1–§4.2.13 (модулийн карт бүрийн схем, хүснэгт, view-г 010…920-оор), §4.3 (FK жишээ), §4.6 (BC харгалзаа: storno-гүй `gl_entry`, `dimension_set_id bigint`, `number_series*`, `party.*`, `party.general_posting_setup`, `platform.reason_code`, үеийн 3 төлөв), §5.1 (repo-ийн `db/` ба `tests/E2E` бүтэц 18 §2.1-тэй ижил; модуль ↔ схемийн харгалзаа), §5.3, §6.2 (`IsCorrection` хасагдсан), §6.3–§6.6 (posting-ийн SQL араг канон функцээр: `platform.fn_set_context`, `platform.fn_lock_company_posting`, `platform.fn_next_document_no`, `platform.fn_next_entry_no`, `ebarimt.fn_next_bill_seq`), **§6.8 (red storno-г хассан — D-C3; буцаалтын огноо D-D5)**, §6.9 (OPEN/CLOSED/LOCKED), §7.1–§7.8 (хэрэглэгч/гишүүнчлэл, PK/FK, RLS бодлого ба fail-closed, group/login role, SECURITY DEFINER функцүүд, purge, каталог тест), §8.1–§8.8 (append-only каталог `platform.ledger_guard`, trigger нэр, domain, idempotency, hash contributor, шөнийн шалгалт), §9.1–§9.6 (outbox багана/төлөв/topic, eBarimt төлөвийн машин ба `billIdSuffix` D-K4, PosAPI instance, хуулга, ханш, илгээлтийн бүртгэл), §10.4–§10.6, §11.3, §11.6, §14.3–§14.4 (migration), Хавсралт А, Б №13.
+2. **ADR:** 0003 (схемийн жагсаалт, өргөтгөл `pgcrypto`/`btree_gin`), 0004 (PK/FK, RLS бодлого, role), 0005 (`platform.app_user`, `tenant_membership`, `user_company_role`), 0006 (domain), 0007 (append-only каталог, whitelisted багана, storno-гүй буцаалт, retention), 0008 (`number_series*`, `ledger_counter`), 0009 (`platform.fn_lock_company_posting`), 0010 (`dimension_set_id bigint`, global dimension), 0011 (модуль ↔ схем, D-K2), 0012 (outbox/eBarimt нэр ба төлөв), 0014 (runner, baseline, журнал), 0016 (`identity.data_protection_key`), 0018 (claim, retention job), 0019 (`rpt.*`), 0021 (`tax.tax_parameter`, профайл), 0023 (үеийн төлөв, retention, consent).
+3. **18-dev-setup:** §1 D4, §2.1 (`db/schema` baseline, `db/migrations`, `db/tests`), §2.2 (схемийн багана, хамтын объект `platform.*`), §3.1 Id, §3.2 (нэршлийн хүснэгт, шинэ хүснэгт/ledger-ийн SQL загвар — PostgreSQL 16.15 дээр `erp_migrator`-оор туршсан), §3.3 (baseline/seed/V файл, журнал, `verify`), §3.6, §4.1, §5, §7 (role), §10 (CI Path A), §13, §16 PR #3–#4, §19.
+4. **Starter:** `db/init/01-roles.sql` (login role; `erp_dispatch_definer` хасагдсан; group role-ийг 000 үүсгэнэ), `.github/workflows/ci.yml` (эхний `migrate` superuser-ээр, `verify` тайлбар, `db/schema` өөрчлөгдөхгүй байх шалгалт), `.github/workflows/sensitive-review.yml` (`db/schema/`, `db/init/`), `.github/PULL_REQUEST_TEMPLATE.md` (scope = схемийн нэр, DB checklist), `deploy/docker-compose.yml` (тайлбар), `BannedSymbols.txt`, `Directory.Packages.props` (тайлбар), `README.md`. YAML/JSON/XML-ийг дахин шалгасан.
+5. **05–16:** 05 (`integration.outbox.idempotency_key`), 08 (`ops.consistency_issue` → `platform.fn_integrity_report`/`integration.job_run`), 09 (`fx.currency.last_date_adjusted`), 12 (§0.2-ийн хүснэгтийг "хуучин нэр"-ийн лавлагаа болгосон), 16 (Z1–Z4, Z6 "засагдсан" тэмдэг). Бусад spec аль хэдийн канон нэртэй байсан; тэдний "Z-…"/"02 §… → schema" зөрүүний хүснэгт нь одоо түүхэн лавлагаа.
+
+**Сонгосон шийдвэр (баримтуудын хооронд):**
+
+- **Migration runner:** `Erp.Migrator` (`src/Erp.Migrator`) — 18-dev-setup §3.3 ба ADR-0014 аль хэдийн тохирч байсан; 02 §14.4, ADR-0014, 18, starter (`Directory.Packages.props`, CI) нэг нэр, нэг журнал (`platform.schema_migration`) хэрэглэнэ. DbUp / `Erp.Migrations` / `platform.schema_version` / `core.schema_migration` хэрэглэхгүй.
+- **Baseline:** канон `db/schema/000…920` өөрчлөлтгүй, embedded; эхний `migrate` (000) superuser-ээр; дараагийн өөрчлөлт `db/migrations/V0001__…`.
+- **Project layout:** `src/Modules/<Module>/{Contracts,Domain,Application,Infrastructure,Api}/Erp.<Module>.<Layer>.csproj`, 13 модуль (Platform, Integration, Currency, GeneralLedger, Tax, EBarimt, Parties, Inventory, FixedAssets, CashBank, Sales, Purchases, Reporting); C# модулийн нэр ба схемийн нэрийн харгалзаа §4.1 ба 18 §2.2-т ижил.
+
+**Схемд шаардлагатай өөрчлөлт (санал; `db/schema` энэ ажлаар өөрчлөгдөөгүй):**
+
+1. `000_extensions_roles.sql`-ийн `sales`/`purchase` схемийн тайлбар "receivables/payables subledger" гэсэн нь D-K2-той зөрнө (ledger нь `party`-д) — тайлбарыг "sales/purchase documents" болгох.
+2. Quartz.NET-ийн ADO store-д `quartz` схем канон схемд алга; `app_owner` нь database дээр `CREATE` эрхгүй тул migrator үүсгэж чадахгүй — 000-д `CREATE SCHEMA IF NOT EXISTS quartz AUTHORIZATION app_owner` ба `app_worker`-т эрх нэмэх (эсвэл Quartz-ийн хүснэгтийг `integration` схемд `qrtz_` угтвартай байрлуулах шийдвэр гаргах).
+3. `platform.schema_migration` (migrator-ийн журнал) канон схемд алга; одоо migrator өөрөө үүсгэдэг — 010-д (COMMENT-тэй) нэмж `db/tests/catalog_checks.sql`-д тусгах.
+4. 900/910/140-ийн RLS, ledger guard, audit trigger нь нэг удаагийн loop; дараагийн migration-д давхардал ихтэй — `platform.fn_apply_rls(regclass)`, `platform.fn_register_ledger(regclass, key_column, mutable_columns)`, `audit.fn_attach_audit(regclass, ignored_columns)` гэх мэт reusable helper нэмэх.
+5. Татвар/НББ-ээс өөр зорилгын хувийн мэдээллийн зөвшөөрлийн бүртгэл (`party.consent`, ADR-0023) R1-д алга — шаардлага гарвал нэмэх.
+6. ~~`DECISIONS` D-K6-ийн "`erp_owner` нь BYPASSRLS эрхгүй" өгүүлбэрийг group role-оор ("`app_owner` ба гишүүн `erp_owner`, `erp_migrator`") тодруулах (схем аль хэдийн зөв).~~ **Хийгдсэн (2026-10-08, REVIEW-consistency):** D-K6-д тодотгол нэмсэн. #1–#4-ийг [db/CHANGE_REQUESTS.md](db/CHANGE_REQUESTS.md) §6-д `pending` мөр болгосон; #5 (`party.consent`) R1-д шаардлагагүй хэвээр ([db/README.md](db/README.md) F #5).
+7. `000_extensions_roles.sql` нь superuser шаарддаг (`GRANT app_rls_bypass TO app_owner`, mapping `GRANT … TO erp_*`) тул ямар ч дахин ажиллуулалт superuser хэрэгтэй; migrator-ийн журналд 000 бүртгэгдсэний дараа давтагдахгүй тул асуудалгүй, гэхдээ production-ийн runbook-д тусгах.

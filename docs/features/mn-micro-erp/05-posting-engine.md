@@ -1668,7 +1668,7 @@ catch (Exception ex) when (mode == PostingMode.Post && !IsReplay && ex.MapsToSta
 | Бүтэлгүй Post-ийн лог | Тусдаа, богино | Байхгүй | — | — |
 | Залруулгын санал (`correction-proposal`) | Read-only | Байхгүй | — | — |
 | Стандарт журналаас хуулах | Нэг (journal_line INSERT) | `journal_batch` `FOR UPDATE` | Түлхүүр | — |
-| Outbox dispatch | Тусдаа (worker) | `FOR UPDATE SKIP LOCKED` | `outbox.idempotency_key` | — |
+| Outbox dispatch | Тусдаа (worker) | `FOR UPDATE SKIP LOCKED` | `integration.outbox.idempotency_key` | — |
 | G/L-гүй тулгалт / unapply (§5.19) | Нэг, READ COMMITTED | Advisory + дэд дэвтрийн мөр | Түлхүүр ижил transaction-д | Outbox dispatcher |
 
 ### 5.19 G/L-гүй дэд дэвтрийн run (`RunSubledgerOnlyAsync`)
@@ -2496,7 +2496,7 @@ Posting engine нь outbox/inbox-оос **юу ч хэрэглэхгүй** (си
 | `GS-GL-018-document-reversal-blocked` | AT-PST-045 | `SALES`/`PURCHASES` → `gl.reversal_use_credit_memo` |
 | `GS-GL-019-company-posting-window` | AT-PST-018, AT-PST-075 | Цонхноос гадуур posting, буцаалт хориглогдох; залруулгын санал |
 | `GS-GL-020-year-crossing-numbering` | AT-PST-077 | Оны мөр байхгүй → `platform.number_series_missing_line`; 2027-ийн мөр нэмсний дараа `GJ-2027-00001` |
-| `GS-GL-021-year-close-noop-status` | AT-PST-073 | Зөрүү 0 дахин хаалт: ваучергүй, жил `CLOSED` (шинэ; 16-д нэмэх) |
+| `GS-CLOSE-006-year-close-noop-status` | AT-PST-073 | Зөрүү 0 дахин хаалт: ваучергүй, жил `CLOSED` ([16](./16-test-strategy.md) §12.2-т GS-CLOSE-006 — [10](./10-periods-closing-reporting.md) §11.2-ын ижил санал; `GS-GL-021` нь starter-ийн өөр scenario, REVIEW-consistency) |
 
 Scenario бүр: (1) seed + урьдчилсан нөхцөл, (2) команд, (3) хүлээгдэх `gl_entry`, `gl_transaction`, `gl_register`, writer-ийн мөр (олонлогоор, `entry_no` тасралтгүй), (4) хяналт: Σ = 0, хяналтын данс = дэд дэвтэр.
 
@@ -2603,10 +2603,10 @@ Scenario бүр: (1) seed + урьдчилсан нөхцөл, (2) команд,
 | 21 | FX томьёо 09 BR-FX-21/-26-тэй зөрчилтэй | 09-ийг дагасан | Z-PST-17, §6.10 |
 | 22 | 11 X-04/X-05: `FA_DEPRECIATION_RUN`, `ItemApplicationEntry`, `PHYSINVJNL` | Нэмсэн | §3.3, §5.1, §3.7 |
 | 23 | `Source` дүрэм E-A-тай зөрчилтэй (банкны мөрийг partner гэж тооцоогүй); hash contributor-ийн нэр 2 өөр; `GlPostingLine.Key`-ийн жишээ §5.4.2-тэй зөрүүтэй; R-VAT-26 буруу ишлэл | Тааруулсан | §5.4.2, §9.4, §5.1, §5.7.2 |
-| 24 | Тестүүд: AT-PST-005 (14 API-JSON-06a-тай зөрчил), AT-PST-043 (`app_user` → `42501`), AT-PST-054 (үеийн нэр); 16-д байгаа GS-GL-016…020 05-д алга | Засаж, AT-PST-073…078, GS-GL-016…021 нэмсэн | §11 |
+| 24 | Тестүүд: AT-PST-005 (14 API-JSON-06a-тай зөрчил), AT-PST-043 (`app_user` → `42501`), AT-PST-054 (үеийн нэр); 16-д байгаа GS-GL-016…020 05-д алга | Засаж, AT-PST-073…078, GS-GL-016…020 ба GS-CLOSE-006 (анх GS-GL-021 гэж дугаарласан, REVIEW-consistency) нэмсэн | §11 |
 
 **Schema change requests (шинэ):** CR-PST-05 (`gl.journal_line.system_origin`), CR-PST-06 (`fn_assert_posting_date_allowed`-ийн тусдаа SQLSTATE). CR-PST-01…04 хэвээр.
 
-**Бусад баримтад дамжуулах:** 07 BR-PUR-72 (бэлэн худалдан авалтын 2 дахь ваучерын дугаар, Z-PST-15); 14 §9.5 (шинэ код, `gl.fiscal_year_already_closed`-ийг `:close`-д хэрэглэхгүй); 16 (GS-GL-021, AT-PST-073…078); 08 Z-TAX-09 ба Z-TAX-15 хаагдсан.
+**Бусад баримтад дамжуулах:** 07 BR-PUR-72 (бэлэн худалдан авалтын 2 дахь ваучерын дугаар, Z-PST-15); 14 §9.5 (шинэ код, `gl.fiscal_year_already_closed`-ийг `:close`-д хэрэглэхгүй); 16 (GS-CLOSE-006, AT-PST-073…078); 08 Z-TAX-09 ба Z-TAX-15 хаагдсан.
 
 **Нээлттэй хэвээр:** OQ-PST-01…06 (⚠ D-C3, D-C7, D-D4, D-E4), шинэ OQ-PST-07 (кассын буцаалтын МХ баримт).

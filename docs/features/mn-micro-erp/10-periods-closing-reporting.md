@@ -346,7 +346,7 @@ stateDiagram-v2
 | BR-PER-16 | Сар түгжих: эрх `gl.period.lock` + step-up (≤ 15 мин) + "буцаагдахгүй" баталгаажуулалт (`confirmIrreversible = true`); сар `CLOSED` байна. Тухайн жилийн **12-р сар** бол жил `status = 'CLOSED'` (хаалт хийгдсэн, хуучраагүй; ваучергүй хаалт ч тооцогдоно — `closing_transaction_no`-г шалгахгүй) байх ёстой, эс бөгөөс `409 gl.period_lock_requires_year_close` (`LOCKED` 12-р сард хаалтын ваучер бичигдэхгүй — `gl.fn_assert_posting_date_allowed`). **12-р сар `LOCKED` болсон жилийн аль ч сарыг дахин нээх хориотой** (`409 gl.period_reopen_year_end_locked`): нээвэл жил `OPEN` болж (SEC-POST-04), харин дахин хаалтын ваучер `LOCKED` 12-31-нд бичигдэх боломжгүй тул жил хэзээ ч `CLOSED`/`LOCKED` болж чадахгүй түгжрэлд орно (13 §8.4-т нэмэх, Хавсралт А #13). НӨАТ-ын тухайн сарын үе `SUBMITTED` бол UI түгжихийг санал болгоно (заавал биш). | SEC-POST-08; D-D3; D-D4 | AT-PER-16, AT-PER-16b |
 | BR-PER-17 | Жил түгжих (`POST /fiscal-years/{id}:lock`): эрх `gl.period.lock` + step-up; жил `CLOSED`; бүх сар `CLOSED`/`LOCKED`; e-balance илгээлтийн бүртгэл (огноо, лавлах дугаар, нотолгоо — хавсралт эсвэл тайлбар, шивэх хуудасны snapshot) хүсэлтэд заавал (SCR-RPT-02); snapshot-ууд `FINAL` ба сүүлийн жилийн хаалтаас хойш (`created_at ≥ closed_at`, BR-EBL-10); шивэх хуудасны `BLOCKING` шалгалт 0 (BR-EBL-08). Нэг transaction-д: `rpt.filing_submission` INSERT, бүх `CLOSED` сар → `LOCKED` (сар бүрд status log), жил → `LOCKED`, security event `PERIOD_LOCK`, outbox `gl.fiscal_year.locked`. | FR-GL-024 (Locked = илгээсэн нотолгоо); 02 §6.9; SEC-POST-08; REQ-ACC-12 | AT-PER-17 |
 | BR-PER-18 | Шилжилт бүр: `gl.accounting_period_status_log` (сар бүрд нэг мөр), `audit.row_change` (автомат trigger), дахин нээх/түгжихэд security event `PERIOD_REOPEN`/`PERIOD_LOCK` (SEC-POST-05), дахин нээхэд `notify.period_reopened` (SEC-POST-06). Жилийн төлөвийн өөрчлөлт `audit.row_change`-д л (тусдаа лог байхгүй, 13 R11). | D-D3; SEC-POST-05/06 | GS-CLOSE-001 |
-| BR-PER-19 | Зэрэгцээ ажиллагаа: шилжилт бүр `platform.fn_lock_company_posting` (posting-той давхцахгүй), дараа нь сар/жилийн мөрийг `FOR UPDATE`; API-д `If-Match` (`row_version`) — зөрвөл `412 api.precondition_failed`; `Idempotency-Key` заавал (14 API-IDEM-01) — ижил түлхүүрийн давталт хадгалсан хариуг буцаана. | SEC-POST-10; BR-PST-60, -61; D-C6 | AT-PER-19 |
+| BR-PER-19 | Зэрэгцээ ажиллагаа: шилжилт бүр `platform.fn_lock_company_posting` (posting-той давхцахгүй), дараа нь сар/жилийн мөрийг `FOR UPDATE`; API-д `If-Match` (`row_version`) — зөрвөл `412 api.etag_mismatch`; `Idempotency-Key` заавал (14 API-IDEM-01) — ижил түлхүүрийн давталт хадгалсан хариуг буцаана. | SEC-POST-10; BR-PST-60, -61; D-C6 | AT-PER-19 |
 
 ### 4.3 Posting огнооны цонх ба түгжээний давхарга (BR-PER-20..26)
 
@@ -653,7 +653,7 @@ command ClosePeriod(cmd):
     SELECT platform.fn_lock_company_posting(@t, @c)                               -- BR-PER-19, posting-той давхцахгүй
     p  := SELECT * FROM gl.accounting_period WHERE company_id=@c AND id=@id FOR UPDATE
     if p is null                    : raise 404 gl.period_not_found
-    if p.row_version <> cmd.IfMatch : raise 412 api.precondition_failed
+    if p.row_version <> cmd.IfMatch : raise 412 api.etag_mismatch
     if p.status = 'LOCKED'          : raise 409 gl.period_locked
     if p.status = 'CLOSED'          : raise 409 gl.period_already_closed
     fy := SELECT * FROM gl.fiscal_year WHERE company_id=@c AND id=p.fiscal_year_id FOR UPDATE
@@ -1994,7 +1994,7 @@ Override-гүй: `FIN_BORROWINGS` (3.1.1 "Зээл авсан") −900,000 (бу
 | `gl.year_close_result_account_missing` / `_invalid` | 422 | 3500-ын тохиргоо | "Тайлант үеийн ашгийн данс тохируулаагүй/буруу ({account})." | 05 BR-PST-54 |
 | `gl.account_blocked` | 422 | Цэвэр дүнтэй блоклогдсон орлого/зардлын данс | "Блоклогдсон данс: {accounts}. Хаалтаас өмнө блокыг авна уу." | 05 BR-PST-54 |
 | `gl.closing_transaction_not_reversible` (шинэ) | 422 | Хаалтын ваучерыг буцаах | "Жилийн хаалтын ваучерыг буцаахгүй. Сарыг нээж засаад жилийн хаалтыг дахин ажиллуулна уу." | BR-YEC-13; D-D5 |
-| `api.precondition_failed` | 412 | `If-Match` зөрсөн | "Мэдээлэл өөр хэрэглэгчээр өөрчлөгдсөн. Дахин ачаална уу." | 14 |
+| `api.etag_mismatch` | 412 | `If-Match` зөрсөн | "Мэдээлэл өөр хэрэглэгчээр өөрчлөгдсөн. Дахин ачаална уу." | 14 |
 | `platform.permission_denied` / `platform.reauth_required` | 403 | Эрх / step-up | (13) | 13 |
 
 **Анхааруулга (`warnings[]`, батлахыг зогсоохгүй):** `W-04 gl.next_fiscal_year_missing` ("Дараагийн санхүүгийн жил нээгдээгүй тул шилжүүлгийн ноорог үүсээгүй"), `W-06 gl.re_transfer_draft_skipped` (05 §8.7; `reason ∈ {BATCH_MISSING, RE_ACCOUNT_MISSING, PERIOD_NOT_OPEN}` — сүүлийнх нь энэ баримтын нэмэлт: "{Y+1} оны 1-р сар нээлттэй биш тул шилжүүлгийн ноорог үүсээгүй"), `gl.year_ready_to_close` ("12 сар бүгд хаагдсан — жилийн хаалт хийх боломжтой"), `gl.year_close_outdated` ("Хаалтын дараа өөрчлөгдсөн жил — жилийн хаалтыг дахин ажиллуулна уу"), `CIT_RECHECK`.
@@ -2172,7 +2172,7 @@ Override-гүй: `FIN_BORROWINGS` (3.1.1 "Зээл авсан") −900,000 (бу
 - **AT-RPT-40** (BR-RPT-40). **Өгөгдсөн нь** C4 = `C3%C2`, C2 = 0; **Тэгэхэд** нүд 0, `flags = [DIV0]`, `warnings[] = rpt.formula_division_by_zero`.
 - **AT-RPT-44** (BR-RPT-44). §6.7-ийн харьцааны жишээ: `sign_neutral = true` → 25; `false` → −25.
 - **AT-RPT-45** (BR-RPT-45, -47). **Өгөгдсөн нь** E-11; **Хэрэв** СБТ `unit = THOUSAND_MNT`; **Тэгэхэд** 1.1.4 = 1, 1.1.5 = 1, 1.1 = 2, RND.1.3 = 1, 1.3 = 3, 2.3 = 3. **Мөн** Маягт А биш хэрэглэгчийн тайланд ижил өгөгдөл нүдээр бөөрөнхийлөгдөнө (нийт 3, RND мөргүй).
-- **AT-RPT-63** (BR-RPT-63). **Өгөгдсөн нь** хэрэглэгч posting данс 1699 "Бусад үндсэн хөрөнгө" үүсгэж (`statement_line_id` = СБТ 1.2.1), 500,000 үлдэгдэлтэй болгосон; 1699 нь seed-ийн аль ч СБТ мөрийн шүүлтүүрт (`1600..1698`, `1700..1798` …) ордоггүй; **Тэгэхэд** СБТ-ийн `checks[] = rpt.unmapped_accounts` (BLOCKING, 1699, `NOT_IN_ANY_ROW`), `CHK = −500,000 ≠ 0` (`rpt.balance_sheet_not_balanced`); экспорт зөвшөөрөгдөнө (✗ тууз), гарын үсэг → `422 rpt.statement_checks_failed`, `:lock` → `422 rpt.filing_checks_failed` (BR-RPT-61). **Мөн** 1699-ийн `statement_line_id`-г 1.2.8 болговол (шүүлтүүр нь 1.2.1-ийнх биш) → `STATEMENT_LINE_MISMATCH`.
+- **AT-RPT-63** (BR-RPT-63). **Өгөгдсөн нь** хэрэглэгч seed-ийн бичилтгүй `HEADING` данс 1699-ийг (seed-д "Биет бус хөрөнгө" гарчиг; бичилтгүй тул төрлийг өөрчилж болно, FR-GL-001 AC2) `POSTING` болгож "Бусад үндсэн хөрөнгө" гэж нэрлээд (`statement_line_id` = СБТ 1.2.1), 500,000 үлдэгдэлтэй болгосон; 1699 нь seed-ийн аль ч СБТ мөрийн шүүлтүүрт (`1600..1698`, `1700..1798` …) ордоггүй; **Тэгэхэд** СБТ-ийн `checks[] = rpt.unmapped_accounts` (BLOCKING, 1699, `NOT_IN_ANY_ROW`), `CHK = −500,000 ≠ 0` (`rpt.balance_sheet_not_balanced`); экспорт зөвшөөрөгдөнө (✗ тууз), гарын үсэг → `422 rpt.statement_checks_failed`, `:lock` → `422 rpt.filing_checks_failed` (BR-RPT-61). **Мөн** 1699-ийн `statement_line_id`-г 1.2.8 болговол (шүүлтүүр нь 1.2.1-ийнх биш) → `STATEMENT_LINE_MISMATCH`.
 - **AT-RPT-65** (BR-RPT-65, BR-YEC-09). E-8-ын 2027 оны ӨӨТ: RE.2 = 0, T.CHK = 0.
 - **AT-RPT-67** (BR-RPT-67). E-8, E-9: `BS_BALANCED`, `EQ_EQUALS_BS` (12,430,000), `IS_EQUALS_EQ_RE4` (2,430,000), `CF_EQUALS_BS_CASH` (E-9: 10,200,000) бүгд ✓.
 - **AT-RPT-73** (BR-RPT-73). E-10 хувилбар 2: 3.2.1 = −600,000.00; 3.1.1 = −385,714.29; 1.2.6 = −42,857.14; 1.2.4 = −21,428.57; `warnings[] = rpt.cash_flow_mixed_override`.
@@ -2190,7 +2190,7 @@ Override-гүй: `FIN_BORROWINGS` (3.1.1 "Зээл авсан") −900,000 (бу
 | AT-PER-12 | BR-PER-12 | Жил `CLOSED` | 2026-06-ийг Owner нээх | Сар ба жил `OPEN` (нэг transaction); integrity шалгалт зөрчилгүй |
 | AT-PER-14 | BR-PER-14, -40 | 2027-02 `OPEN` | 2027-03-ын шалгах хуудас | `PRIOR_PERIOD_OPEN` WARNING; баталгаажуулж хааж болно |
 | AT-PER-15 | BR-PER-15 | `go_live_date = 2027-04-01`, 1–3-р сар бичилтгүй | 1, 2, 3-р сарыг дараалан `:close` | Бүгд `OK` (2, 3-т өмнөх сар хаагдсан тул WARNING-гүй) |
-| AT-PER-19 | BR-PER-19 | Сарын `row_version = 3` | `If-Match: 2`-той `:close` | `412 api.precondition_failed` |
+| AT-PER-19 | BR-PER-19 | Сарын `row_version = 3` | `If-Match: 2`-той `:close` | `412 api.etag_mismatch` |
 | AT-PER-21 | BR-PER-21 | 2027-03 `CLOSED` | Тулгалт (G/L-гүй run) 2027-03-20-ны огноотой | `gl.period_closed` (BR-PST-70) |
 | AT-PER-22 | BR-PER-22 | Accountant (ERP_SETUP-гүй) | `PATCH /settings/posting-window` | 403; Owner + MFA → 200, `POSTING_WINDOW_CHANGED` |
 | AT-PER-24 | BR-PER-24 (R2) | Компанийн цонх хоосон, хэрэглэгчийн цонх 05 сар | Тэр хэрэглэгч 04-30-ны баримт | `gl.posting_date_outside_user_window` |

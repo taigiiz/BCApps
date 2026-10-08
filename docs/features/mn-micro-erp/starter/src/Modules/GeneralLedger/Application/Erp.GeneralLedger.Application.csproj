@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- G/L use cases (phase A of posting): journal -> PostingDocument assembly, reversal command. No Npgsql here. -->
+  <ItemGroup>
+    <ProjectReference Include="../Domain/Erp.GeneralLedger.Domain.csproj" />
+    <ProjectReference Include="../Contracts/Erp.GeneralLedger.Contracts.csproj" />
+    <ProjectReference Include="../../../BuildingBlocks/Erp.BuildingBlocks.Application/Erp.BuildingBlocks.Application.csproj" />
+  </ItemGroup>
+</Project>

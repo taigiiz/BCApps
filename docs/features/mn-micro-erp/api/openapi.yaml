@@ -6238,6 +6238,40 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
         default: {$ref: '#/components/responses/ServerError'}
+  /companies/{companyId}/vat-return-periods/{id}:preview-close:
+    parameters:
+    - {$ref: '#/components/parameters/CompanyId'}
+    - {$ref: '#/components/parameters/Id'}
+    post:
+      operationId: previewCloseVatReturnPeriod
+      summary: НӨАТ-ын үеийн хаалтыг урьдчилан харах
+      tags: [VAT]
+      description: |-
+        08 §5.10, BR-TAX-69/72: хаалтын ваучерыг ижил кодоор тооцоод ROLLBACK (дугаар олгохгүй). Хариунд `warnings[]`,
+        `lastVatEntryNo`, `scopeVersion` (`:close`-ийн `expectedScopeVersion`-д дамжуулна).
+
+        **Эрх:** `ACTION tax.vat.settle X`. **Хувилбар:** R1. **Шаардлага:** FR-TAX-015.
+      x-permission: ACTION tax.vat.settle X
+      x-release: R1
+      x-requirements: [FR-TAX-015]
+      requestBody:
+        required: false
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/VatPeriodClosePreviewRequest'}}
+      responses:
+        '200':
+          description: Хаалтын урьдчилсан үр дүн
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/VatClosePreview'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default: {$ref: '#/components/responses/ServerError'}
   /companies/{companyId}/vat-return-periods/{id}:close:
     parameters:
     - {$ref: '#/components/parameters/CompanyId'}
@@ -6246,13 +6280,21 @@ paths:
       operationId: closeVatReturnPeriod
       summary: НӨАТ-ын үе хаах
       tags: [VAT]
-      description: '**Эрх:** `ACTION tax.vat.settle X (НӨАТ-ын хаалт, 08 §3.11)`. **Хувилбар:** R1. **Шаардлага:** FR-TAX-015.'
+      description: |-
+        08 BR-TAX-72…76: SETTLEMENT ваучер (`VATSTMT`) ба үеийн төлөв `CLOSED` нэг гүйлгээнд. `expectedScopeVersion` нь
+        `:preview-close` эсвэл `GET /reports/vat-return`-ийн `scopeVersion`-той зөрвөл 409 (`tax.vat_statement_stale`, BR-TAX-69).
+
+        **Эрх:** `ACTION tax.vat.settle X (НӨАТ-ын хаалт, 08 §3.11)`. **Хувилбар:** R1. **Шаардлага:** FR-TAX-015.
       x-permission: ACTION tax.vat.settle X (НӨАТ-ын хаалт, 08 §3.11)
       x-release: R1
       x-requirements: [FR-TAX-015]
       parameters:
       - {$ref: '#/components/parameters/IdempotencyKey'}
       - {$ref: '#/components/parameters/IfMatchOptional'}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/VatPeriodCloseRequest'}}
       responses:
         '200':
           description: CLOSED
@@ -6293,6 +6335,44 @@ paths:
       responses:
         '200':
           description: SUBMITTED
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/VatReturnPeriod'}}
+          headers: {Idempotent-Replayed: {$ref: '#/components/headers/IdempotentReplayed'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+        default: {$ref: '#/components/responses/ServerError'}
+  /companies/{companyId}/vat-return-periods/{id}:reopen:
+    parameters:
+    - {$ref: '#/components/parameters/CompanyId'}
+    - {$ref: '#/components/parameters/Id'}
+    post:
+      operationId: reopenVatReturnPeriod
+      summary: НӨАТ-ын үеийг дахин нээх
+      tags: [VAT]
+      description: |-
+        08 BR-TAX-79: зөвхөн `CLOSED` ба хамгийн сүүлийн үе; хаалтын ваучерыг эх огноогоор буцаана (нягтлан бодох үе `OPEN`
+        байх). `SUBMITTED` → 409 `tax.vat_period_already_submitted`; шалтгаан < 10 → 422 `tax.reopen_reason_required`.
+
+        **Эрх:** `ACTION tax.vat.reopen X (Owner, step-up)`. **Хувилбар:** R1. **Шаардлага:** FR-TAX-015.
+      x-permission: ACTION tax.vat.reopen X (Owner, step-up)
+      x-release: R1
+      x-requirements: [FR-TAX-015]
+      parameters:
+      - {$ref: '#/components/parameters/IdempotencyKey'}
+      - {$ref: '#/components/parameters/IfMatchOptional'}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/PeriodReopenRequest'}}
+      responses:
+        '200':
+          description: OPEN
           content:
             application/json: {schema: {$ref: '#/components/schemas/VatReturnPeriod'}}
           headers: {Idempotent-Replayed: {$ref: '#/components/headers/IdempotentReplayed'}}
@@ -9219,15 +9299,25 @@ components:
       properties:
         code:
           type: string
-          description: жишээ `sales.unposted_drafts`, `ebarimt.unknown_documents`, `bank.unreconciled`.
+          description: 10 BR-PER-31…43, BR-YEC-02/03-ийн UPPER_SNAKE код, жишээ `BANK_UNRECONCILED`, `EBARIMT_OPEN`, `DRAFTS_IN_PERIOD`.
           readOnly: true
         title: {type: string, readOnly: true}
         status: {type: string, enum: [OK, WARNING, BLOCKING], readOnly: true}
         count: {type: integer, format: int32, readOnly: true}
         detail: {type: [string, 'null'], readOnly: true}
+        amount:
+          anyOf:
+          - {$ref: '#/components/schemas/Amount'}
+          - {type: 'null'}
+          description: MNT дүн (жишээ нь баталгаажаагүй орцын НӨАТ, 10 §5.1).
+          readOnly: true
+        manual:
+          type: boolean
+          description: Хэрэглэгч гараар баталгаажуулдаг мөр (`CASH_COUNTED` г.м., 10 §5.1).
+          readOnly: true
         link:
           type: [string, 'null']
-          description: Холбогдох жагсаалтын API зам.
+          description: Холбогдох SPA зам (10 §5.1), жишээ `/bank/reconciliations?account=BANK01`.
           readOnly: true
       required: [code, title, status, count]
     CloudEvent:
@@ -13714,6 +13804,34 @@ components:
           description: Дараагийн хуудасны opaque cursor (`?after=`). Сүүлийн хуудсанд `null`.
         hasMore: {type: boolean}
       description: '`VatReturnPeriod`-ийн keyset хуудас (§4.1).'
+    VatScopeVersion:
+      type: string
+      pattern: '^[0-9a-f]{16}$'
+      description: 08 BR-TAX-69-ийн scope-ийн хувилбар (sha256-ийн эхний 16 hex). Хаалтын хооронд entry нэмэгдсэн/баталгаажсаныг илрүүлнэ.
+    VatPeriodClosePreviewRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        postingDate: {type: [string, 'null'], format: date, description: 'Анхдагч: үеийн `ending_date` (BR-TAX-72).'}
+        settlementAccountId: {type: [string, 'null'], format: uuid, description: '`tax_setup.vat_settlement_account_id` байхгүй үед (BR-TAX-76).'}
+    VatPeriodCloseRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        postingDate: {type: string, format: date, description: '≥ үеийн `ending_date`, нээлттэй нягтлан бодох үед (BR-TAX-72).'}
+        settlementAccountId: {type: [string, 'null'], format: uuid, description: 'BR-TAX-76; анхдагч нь setup-ийн данс (seed 2310).'}
+        expectedScopeVersion: {$ref: '#/components/schemas/VatScopeVersion'}
+        expectedLastVatEntryNo: {type: [integer, 'null'], format: int64}
+      required: [postingDate, expectedScopeVersion]
+    VatClosePreview:
+      allOf:
+      - {$ref: '#/components/schemas/PostingPreview'}
+      - type: object
+        properties:
+          lastVatEntryNo: {type: [integer, 'null'], format: int64, readOnly: true}
+          scopeVersion: {$ref: '#/components/schemas/VatScopeVersion', readOnly: true}
+        required: [scopeVersion]
+      description: НӨАТ-ын хаалтын preview (08 §5.10); `PostingPreview` + scope-ийн хувилбар.
     VatReturnReport:
       type: object
       properties:
@@ -13737,7 +13855,15 @@ components:
           description: ДДТД баталгаажаагүй тул хасагдаагүй орцын НӨАТ (D-E4).
           readOnly: true
         generatedAt: {type: string, format: date-time, readOnly: true}
-      required: [dateFrom, dateTo, statementCode, lines, unconfirmedInputVat, generatedAt]
+        lastVatEntryNo:
+          type: [integer, 'null']
+          format: int64
+          description: Компанийн хамгийн их `tax.vat_entry.entry_no` (08 BR-TAX-69).
+          readOnly: true
+        scopeVersion:
+          $ref: '#/components/schemas/VatScopeVersion'
+          readOnly: true
+      required: [dateFrom, dateTo, statementCode, lines, unconfirmedInputVat, generatedAt, scopeVersion]
       description: НӨАТ-ын тайлангийн туслах тооцоо (ТТ-03а, FR-TAX-013, D-E8).
     Vendor:
       type: object

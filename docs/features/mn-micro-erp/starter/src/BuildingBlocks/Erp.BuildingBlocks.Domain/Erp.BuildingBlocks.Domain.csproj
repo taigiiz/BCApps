@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Shared kernel: Money / MoneyMath (ADR-0006), CurrencyCode, Result / Error. No infrastructure dependencies. -->
+</Project>

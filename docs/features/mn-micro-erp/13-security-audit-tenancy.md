@@ -320,6 +320,35 @@ POST /bff/invitations:accept { token }
 3. Баталгаажуулах холбоос (24 цаг) дарахад `email_confirmed = true`. `audit.fn_log_security_event(NULL, NULL, 'EMAIL_VERIFIED', userId)`.
 4. Баталгаажаагүй хэрэглэгч тенант үүсгэх, урилга хүлээн авах боломжгүй (`403 platform.email_not_verified`).
 
+#### 5.3.1 Бүртгэл → тенант → компани: DB-ийн дараалал (2026-10-08-нд шалгасан)
+
+FR-PLT-001 (SEC-ID-14) ба FR-PLT-003-ийн серверийн гурван transaction. Бүгд `app_user` role-оор (RLS идэвхтэй) ажиллана. `platform.fn_set_context`-ийг **INSERT-ээс өмнө** дуудна: `platform.app_user`-ийн `app_user_self_write` policy нь `id = platform.current_user_id()`, `platform.tenant`-ийн `tenant_self` нь `id = platform.current_tenant_id()` шаардана. Канон схем + seed (`db/apply.sh --seed`) дээр PostgreSQL 16.15-д ажиллуулж шалгасан ([REVIEW-readiness.md](./REVIEW-readiness.md)).
+
+```sql
+-- T1. Бүртгүүлэх (Flow A): тенантгүй контекст
+SELECT platform.fn_set_context(NULL, NULL, :user_id, :request_id);
+INSERT INTO platform.app_user (id, email, display_name) VALUES (:user_id, lower(:email), :name);
+INSERT INTO identity.user_credential (user_id, password_hash) VALUES (:user_id, :hash);
+-- + identity.one_time_token (purpose = 'EMAIL_CONFIRMATION', зөвхөн SHA-256 hash)
+
+-- T2. Тенант үүсгэх (имэйл баталгаажсаны дараа): шинэ tenant id-аар контекст тавина
+SELECT platform.fn_set_context(:tenant_id, NULL, :user_id, :request_id);
+INSERT INTO platform.tenant (id, name, status) VALUES (:tenant_id, :name, 'ACTIVE');  -- plan_code/max_companies: 19 PO-19
+INSERT INTO platform.tenant_membership (tenant_id, user_id, status, joined_at) VALUES (:tenant_id, :user_id, 'ACTIVE', now());
+SELECT platform.fn_mn_seed_roles();                                   -- built-in 5 role (§6.5)
+INSERT INTO platform.user_company_role (tenant_id, user_id, company_id, role_id)
+SELECT :tenant_id, :user_id, NULL, id FROM platform.role WHERE code = 'OWNER';   -- SEC-ID-05, SEC-ID-14
+
+-- T3. Компани (wizard алхам 1–3) ба provisioning (алхам 9, нэг transaction)
+SELECT platform.fn_set_context(:tenant_id, :company_id, :user_id, :request_id);
+INSERT INTO platform.company (id, tenant_id, name, status) VALUES (:company_id, :tenant_id, :name, 'PROVISIONING');
+INSERT INTO platform.company_setup (tenant_id, company_id, legal_name, tin, vat_registered, vat_registered_from, district_code)
+VALUES (…);                                                           -- provisioning-ээс ӨМНӨ (НӨАТ-ын матриц үүгээр)
+SELECT platform.fn_provision_company_mn(:tenant_id, :company_id, :first_fiscal_year);   -- эхний ба дараагийн жил, PROVISIONING → ACTIVE
+```
+
+**Мэдэгдэж буй дутуу зүйл:** CR-03-т заасан `email_confirmed` багана канон `identity.user_credential`-д **алга** (§5.3-ын 3-р алхам, `platform.email_not_verified` үүнээс хамаарна). Sprint 1-ийн эхний migration-д нэмнэ (REVIEW-readiness.md B-03). Тенант үүсгэх REST endpoint 13 §19 ба `api/openapi.yaml`-д алга — [19](./19-risks-open-questions.md) TL-14.
+
 ### 5.4 Flow B: интерактив нэвтрэлт (BFF + code + PKCE)
 
 ```mermaid

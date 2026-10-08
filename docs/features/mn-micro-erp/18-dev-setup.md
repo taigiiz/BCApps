@@ -12,6 +12,8 @@
 
 ## 0. Товчоор: эхний 30 минут
 
+> **Sprint 0-ийн бодит төлөв (2026-10-08, [REVIEW-readiness.md](./REVIEW-readiness.md)).** Доорх команд нь Sprint 1-ийн **зорилтот** төлөв. Starter-ээс хуулсан репод одоогоор `tools/Erp.DevTools`, `seed --set demo` (`db/seed/demo/`), `web/`, `Erp.Worker`-ийн outbox/Quartz, OpenIddict нэвтрэлт **байхгүй** — 3-р алхмын сүүлийн хоёр команд, 4-р алхмын SPA, "демо хэрэглэгч" ажиллахгүй. Эхний өдөр [§16.1](#161-sprint-0-skeleton--starter-д-бэлэн-2026-10-08)-ийн командуудыг ашиглана: `dotnet restore` → `dotnet build -c Release` → `docker compose -f deploy/docker-compose.yml up -d postgres` → `dotnet test` (integration-ийн default DB нь compose-ийн `postgres/postgres@localhost:5432`). Компани provision хийх SQL: [13 §5.3.1](./13-security-audit-tenancy.md).
+
 ```bash
 # 0) Шаардлагатай хэрэгслүүд (§5.1): .NET 10 SDK, Node 24 LTS, Docker + Compose v2, psql 17
 git clone git@github.com:mn-erp/erp.git && cd erp
@@ -26,7 +28,9 @@ dotnet user-secrets --id mn-erp-local-dev set "ConnectionStrings:Worker"     "Ho
 dotnet user-secrets --id mn-erp-local-dev set "ConnectionStrings:Migrations" "Host=localhost;Port=5432;Database=erp;Username=erp_migrator;Password=erp_migrator_local"
 
 # 3) Схем ба демо өгөгдөл
-dotnet run --project src/Erp.Migrator -- migrate
+dotnet run --project src/Erp.Migrator -- migrate --connection "Host=localhost;Port=5432;Database=erp;Username=postgres;Password=postgres"   # анх удаа: 000 (role, өргөтгөл) superuser шаарддаг
+dotnet run --project src/Erp.Migrator -- migrate            # дараагийн удаа: ConnectionStrings:Migrations (erp_migrator)
+dotnet run --project src/Erp.Migrator -- seed               # хууль журмын параметр + MN багц (db/seed/legal_parameters.sql, mn_*.sql)
 dotnet run --project src/Erp.Migrator -- seed --set demo   # master data + ноорог баримт
 dotnet run --project tools/Erp.DevTools -- demo-post        # ноорогуудыг posting engine-ээр батална (§13.2)
 
@@ -53,7 +57,7 @@ Trace-ийг http://localhost:16686 (Jaeger), PosAPI mock-ийн хүсэлтү�
 | D1 | Монголын бичил бизнест (1–10 ажилтан) зориулсан **шинэ, бие даасан multi-tenant SaaS**. Business Central (BC)-ийн нягтлан бодох бүртгэлийн логик ба өгөгдлийн загварыг хялбаршуулж дахин хэрэгжүүлнэ. BC extension **биш**. | BC-ийн объектын нэр (G/L Entry, Cust. Ledger Entry, No. Series, Codeunit 12 "Gen. Jnl.-Post Line" г.м.)-ийг лавлагаа болгоно. Хүснэгт, класс нэрийг BC-ийн нэрээс гаргана (§3.2). |
 | D2 | .NET 10 LTS, ASP.NET Core, C#. Aggregate ба CRUD-д EF Core 10 + Npgsql, posting ба тайланд raw SQL (Npgsql/Dapper). | Posting, тайлангийн SQL-ийг `.sql` файл болгон бичиж review хийнэ. EF-ийг master data ба баримтын draft-д хэрэглэнэ. |
 | D3 | Мөнгө = `System.Decimal`; DB-д дүн `numeric(19,4)` (валютын нарийвчлалаар бөөрөнхийлсөн), ханш `numeric(38,18)`. | `double`/`float` ашиглавал build унана (ERP0001 analyzer). Бөөрөнхийлөлтийг зөвхөн `Money` туслахаар хийнэ (§4). |
-| D4 | PostgreSQL 17 эсвэл 18; DDL 16+ дээр ажиллах ёстой. Migration-ыг гараар бичсэн SQL-ээр хийнэ (RLS, trigger орно); EF auto-migration хэрэглэхгүй. | PG18-ийн зөвхөн тусгай боломжийг (`uuidv7()`, `WITHOUT OVERLAPS`) DDL-д **шууд хэрэглэхгүй**. UUIDv7-г апп үүсгэнэ (`Guid.CreateVersion7()`); DB-ийн default нь `core.fn_uuid_v7()` wrapper (PG18-д `uuidv7()`-ийг, PG16/17-д ижил үр дүнтэй plpgsql хэрэгжүүлэлтийг дуудна). Давхцалгүй хугацааг `btree_gist` exclusion constraint-ээр хамгаална. CI migration-ыг PG 16/17/18 дээр шалгана. |
+| D4 | PostgreSQL 17 эсвэл 18; DDL 16+ дээр ажиллах ёстой. Migration-ыг гараар бичсэн SQL-ээр хийнэ (RLS, trigger орно); EF auto-migration хэрэглэхгүй. | PG18-ийн зөвхөн тусгай боломжийг (`uuidv7()`, `WITHOUT OVERLAPS`) DDL-д **шууд хэрэглэхгүй**. UUIDv7-г апп үүсгэнэ (`Guid.CreateVersion7()`); Канон DDL-ийн `DEFAULT gen_random_uuid()` нь зөвхөн гараар/seed-ээр оруулах мөрийн нөөц ([db/schema](./db/schema/)). Давхцалгүй хугацааг `btree_gist` exclusion constraint-ээр хамгаална. CI migration-ыг PG 16/17/18 дээр шалгана. |
 | D5 | Shared schema. Бизнесийн мөр бүр `tenant_id` **ба** `company_id`-тай (BC "company" = tenant доторх тусдаа санхүүгийн дэвтэр). `tenant_id` дээр **FORCE** Row-Level Security (RLS) хоёрдогч хамгаалалт болно. | Query бүр `tenant_id`, `company_id`-аар шүүнэ. RLS-д найдаж шүүлтүүрээ орхихгүй. RLS нь **fail-closed**: `app.tenant_id` тохируулаагүй query 0 мөр биш, **алдаа** өгнө ([02-architecture.md](./02-architecture.md) §7.4). Шинэ хүснэгт бүрт RLS загвар заавал (§3.2). |
 | D6 | Ledger хүснэгтүүд зөвхөн нэмэгдэнэ (append-only): UPDATE/DELETE эрх хураагдсан, guard trigger-тэй. Залруулгыг зөвхөн буцаалт (reversal)-аар хийнэ. Debit = Credit тэнцвэрийг DB шалгана. | Ledger мөрийг засах код бичихгүй. Алдааг reversal posting-оор засна. |
 | D7 | Хууль ёсны баримтын дугаар нь BC No. Series-ийн утгаар **цоорхойгүй (gapless)** байна. Дугаарыг posting transaction дотор түгжсэн counter мөрөөс авна. Техникийн id нь UUIDv7. | Дугаарыг `INumberAllocator`-аар, зөвхөн posting transaction дотор авна. Sequence-ийг хууль ёсны дугаарт хэрэглэхгүй. |
@@ -125,9 +129,12 @@ erp/
 │       └── Integration/
 │
 ├── db/
-│   ├── init/01-roles.sql                # зөвхөн локал/CI: role ба database үүсгэнэ
-│   ├── migrations/                      # V0001__core_schemas_and_domains.sql ... , R__reporting__trial_balance.sql
-│   ├── seed/
+│   ├── init/01-roles.sql                # зөвхөн локал/CI: login role ба database үүсгэнэ (superuser)
+│   ├── schema/                          # baseline = канон 000_extensions_roles.sql … 920_views.sql (өөрчлөлтгүй; Erp.Migrator-т embedded)
+│   ├── migrations/                      # baseline-ийн дараах өөрчлөлт: V0001__<module>_<desc>.sql …, R__rpt__trial_balance.sql
+│   ├── tests/                           # catalog_checks.sql, smoke.sql, seed_checks.sql (канон)
+│   ├── apply.sh                         # psql-ээр scratch DB-д суулгах (канон)
+│   ├── seed/                            # legal_parameters.sql, mn_*.sql (канон MN багц, repeatable)
 │   │   ├── demo/                        # S001__demo_tenant.sql ... + README.md (демо хэрэглэгчид)
 │   │   └── README.md
 │   └── README.md
@@ -176,21 +183,21 @@ erp/
 
 | Модуль | Хавтас / namespace угтвар | PostgreSQL schema | Хариуцлага | BC-ийн гол лавлагаа | Эзэмшигч баг |
 |---|---|---|---|---|---|
-| Platform | `src/Modules/Platform` / `Erp.Platform` | `platform`, `identity`, `audit`, `ops` | tenant, company, хэрэглэгч ба эрх (Identity + OpenIddict), дугаарлалт, аудит лог, хавсралт, тоон гарын үсгийн бүртгэл | Company, User Setup, No. Series (T308/T309), Change Log | platform (Numbering — ledger-owners) |
+| Platform | `src/Modules/Platform` / `Erp.Platform` | `platform`, `identity`, `audit` | tenant, company, хэрэглэгч ба эрх (Identity + OpenIddict), дугаарлалт, аудит лог, хавсралт, тоон гарын үсгийн бүртгэл | Company, User Setup, No. Series (T308/T309), Change Log | platform (Numbering — ledger-owners) |
 | GeneralLedger | `GeneralLedger` / `Erp.GeneralLedger` | `gl` | дансны төлөвлөгөө, санхүүгийн үе, журнал, **posting engine** (`IPostingService`), G/L бичилт, register, dimension | T17 G/L Entry, T45 G/L Register, T81 Gen. Journal Line, CU12 Gen. Jnl.-Post Line | ledger-owners |
 | Tax | `Tax` / `Erp.Tax` | `tax` | НӨАТ, НХАТ код, posting setup, хугацаатай (effective-dated) параметр, VAT entry, татварын тайлан | T254 VAT Entry, VAT Posting Setup | tax-owners |
-| Parties | `Parties` / `Erp.Parties` | `parties` | харилцагч (customer), нийлүүлэгч (vendor), ТТД шалгалт, хувийн мэдээллийн маск/шифрлэлт, **авлага/өглөгийн ledger** ба open item, тооцоо хаах (application) | T18 Customer, T23 Vendor, T21/T379, T25/T380 | platform (+ ledger review) |
+| Parties | `Parties` / `Erp.Parties` | `party` | харилцагч (customer), нийлүүлэгч (vendor), posting group ба General Posting Setup, ТТД шалгалт, хувийн мэдээллийн маск/шифрлэлт, **авлага/өглөгийн ledger** (D-K2) ба open entry, тооцоо хаах (application) | T18 Customer, T23 Vendor, T21/T379, T25/T380 | platform (+ ledger review) |
 | Sales | `Sales` / `Erp.Sales` | `sales` | үнийн санал, нэхэмжлэх, credit memo (ноорог ба posted баримт), posting баримт угсралт | T36/T37, T112, CU80 Sales-Post | sales баг (+ ledger review) |
-| Purchases | `Purchases` / `Erp.Purchases` | `purchases` | худалдан авалтын нэхэмжлэх, credit memo, оролтын НӨАТ-ын баримт тулгалт | T38/T39, T122, CU90 Purch.-Post | purchases баг |
-| CashBank | `CashBank` / `Erp.CashBank` | `cash_bank` | касс, банкны данс, төлбөр, хуулга импорт, тулгалт, МХ-1/МХ-2 | T270, T271 Bank Account Ledger Entry | cashbank баг |
-| Currency | `Currency` / `Erp.Currency` | `currency` | валют, Монголбанкны ханш, ханшийн тэгшитгэл (revaluation) | T4 Currency, T330 Currency Exchange Rate | ledger-owners |
-| FixedAssets | `FixedAssets` / `Erp.FixedAssets` | `fixed_assets` | үндсэн хөрөнгө, элэгдэл (санхүүгийн ба татварын дэвтэр) | T5600, T5601 FA Ledger Entry | ledger-owners |
-| Inventory | `Inventory` / `Erp.Inventory` | `inventory` | бараа (минимал), байршил, item ledger, өртөг | T27 Item, T32 Item Ledger Entry | inventory баг |
-| Reporting | `Reporting` / `Erp.Reporting` | `reporting` | санхүүгийн тайлан, e-balance экспорт, PDF (QuestPDF), Excel (ClosedXML); зөвхөн view/read | Trial Balance, Account Schedules | reporting баг |
+| Purchases | `Purchases` / `Erp.Purchases` | `purchase` | худалдан авалтын нэхэмжлэх, credit memo, оролтын НӨАТ-ын баримт тулгалт | T38/T39, T122, CU90 Purch.-Post | purchases баг |
+| CashBank | `CashBank` / `Erp.CashBank` | `bank` | касс, банкны данс, төлбөр, хуулга импорт, тулгалт, МХ-1/МХ-2 | T270, T271 Bank Account Ledger Entry | cashbank баг |
+| Currency | `Currency` / `Erp.Currency` | `fx` | валют, Монголбанкны ханш, ханшийн тэгшитгэл (revaluation) | T4 Currency, T330 Currency Exchange Rate | ledger-owners |
+| FixedAssets | `FixedAssets` / `Erp.FixedAssets` | `fa` | үндсэн хөрөнгө, элэгдэл (санхүүгийн ба татварын дэвтэр) | T5600, T5601 FA Ledger Entry | ledger-owners |
+| Inventory | `Inventory` / `Erp.Inventory` | `inv` | бараа (минимал), байршил, item ledger, өртөг | T27 Item, T32 Item Ledger Entry | inventory баг |
+| Reporting | `Reporting` / `Erp.Reporting` | `rpt` | санхүүгийн тайлан (Маягт А-ийн мөр, Account Schedule), e-balance экспорт, PDF (QuestPDF), Excel (ClosedXML); бусад модулийг зөвхөн view/read-ээр | Trial Balance, Account Schedules | reporting баг |
 | EBarimt | `EBarimt` / `Erp.EBarimt` | `ebarimt` | PosAPI pool, баримт угсрах, outbox handler, баримтын лог (`qrData`/`lottery`-гүй), лавлах өгөгдөл | E-Document (санаа) | ebarimt-owners |
-| Integration | `Integration` / `Erp.Integration` | `integration`, `quartz` | outbox, idempotency, integration_attempt, Quartz job store, вэбхүүк | Job Queue Entry | platform |
+| Integration | `Integration` / `Erp.Integration` | `integration` (+ `quartz` store) | outbox, inbox, idempotency, job_definition/job_run, Quartz job store, вэбхүүк | Job Queue Entry | platform |
 
-Schema-ийн нэрс [`02-architecture.md`](./02-architecture.md) §4.2-той ижил. Бүх модульд хамаарах SQL объект нь **`core`** schema-д байна ([ADR-0006](./adr/ADR-0006-money-and-rounding.md), [ADR-0007](./adr/ADR-0007-append-only-ledger-reversal.md), [ADR-0014](./adr/ADR-0014-sql-first-migrations.md)). Үүнд мөнгөний domain-ууд (`core.amount`, `core.amount_lcy` г.м., §4.1), туслах функцүүд (`core.fn_apply_tenant_rls`, `core.fn_make_append_only`, `core.fn_block_ledger_mutation`, `core.fn_add_audit_trigger`, `core.fn_uuid_v7`, `core.fn_lock_company_posting`, `core.fn_rotate_partitions`) ба migration-ий журнал `core.schema_migration` орно. Тэдгээрийг эхний migration-ууд үүсгэнэ (§16, PR #4).
+Schema-ийн нэрийн **эх сурвалж нь канон схем [`db/schema/*.sql`](./db/schema/)** ([DECISIONS](./DECISIONS.md) D-K1); [`02-architecture.md`](./02-architecture.md) §4.1–§4.2 ба §5.1-ийн модуль ↔ схемийн харгалзаа энэ хүснэгттэй ижил. C# модулийн нэр (хавтас, namespace) нь BC-ийн функциональ нэртэй (`Parties`, `CashBank`, `Currency`), схем нь богино (`party`, `bank`, `fx`) байж болно. Бүх модульд хамаарах SQL объект нь **`platform`** schema-д байна; тусдаа `core`/`ops` схем байхгүй. Үүнд мөнгөний domain-ууд (`platform.amount`, `platform.unit_amount`, `platform.quantity`, `platform.percent`, `platform.exch_rate`, §4.1), контекст функц (`platform.fn_set_context`, `platform.current_tenant_id()`, `platform.current_company_id()`), posting түгжээ (`platform.fn_lock_company_posting`), дугаарлалт (`platform.fn_next_document_no`, `platform.fn_next_entry_no`), ledger guard (`platform.fn_guard_immutable`, `platform.fn_ledger_before_insert`, `platform.fn_ledger_update`, каталог `platform.ledger_guard`) ба migration-ий журнал `platform.schema_migration` (migrator үүсгэнэ) орно. Аудитын trigger функц нь `audit.fn_row_change`. Эдгээрийг baseline (канон `db/schema/000…920`, өөрчлөлтгүй) үүсгэнэ (§3.3, §16 PR #4). Permission-ийн угтвар нь схемийн нэр (`party.customer.apply`, `bank.payment.post`).
 
 ### 2.3 Модулийн доторх давхарга
 
@@ -248,7 +255,7 @@ Erp.<M>.Contracts       ──►  Erp.BuildingBlocks.Domain   (Money, id төр
 | Харагдах байдал | Default нь `internal sealed`. `public` зөвхөн `Contracts`-д болон модулийн бүртгэлийн класст. `record`-ийг DTO, command, event, value object-д хэрэглэнэ. |
 | Async | I/O хийдэг бүх зүйл async байна. `CancellationToken ct` хамгийн сүүлийн parameter (CA1068), дуудлага бүрт дамжуулна (CA2016 = error). `.Result`/`.Wait()` хэрэглэхгүй. |
 | Цаг хугацаа | `DateTime.Now/UtcNow/Today`, `DateTimeOffset.Now/UtcNow` хориотой (RS0030). Техникийн цагийг inject хийсэн `TimeProvider`-оос (`GetUtcNow()`) авна; тестэд `FakeTimeProvider` хэрэглэнэ. Бизнесийн огноог (`posting_date`, `document_date`) `IBusinessCalendar` (`Erp.BuildingBlocks.Application`) өгнө: `DateOnly`/`BusinessDate`, Улаанбаатарын (Asia/Ulaanbaatar) хуанлийн огноо. Техникийн цаг нь `DateTimeOffset` (UTC). |
-| Id | `Guid.NewGuid()` хориотой. UUIDv7-г `Guid.CreateVersion7()`-оор үүсгэнэ. DB-ийн default нь `core.fn_uuid_v7()`. Domain-д strongly-typed id: `readonly record struct CustomerId(Guid Value)`. |
+| Id | `Guid.NewGuid()` хориотой. UUIDv7-г `Guid.CreateVersion7()`-оор үүсгэнэ (D-C8); DB-ийн `DEFAULT gen_random_uuid()` нь зөвхөн гараар/seed-ээр оруулахад. Domain-д strongly-typed id: `readonly record struct CustomerId(Guid Value)`. |
 | Алдаа | Хүлээгдэж буй бизнесийн алдаа (хаагдсан үе, хүрэлцэхгүй үлдэгдэл) нь `Result<T>` / `Error(code)` болно. `code` нь тогтвортой англи түлхүүр (`gl.period_closed`), UI-д орчуулна. Exception зөвхөн bug болон дэд бүтцийн алдаанд. |
 | Validation | Request-ийн хэлбэрийг Api давхаргад .NET 10-ийн built-in Minimal API validation-оор (`builder.Services.AddValidation()`, DataAnnotations атрибут ба `IValidatableObject`) шалгана. Нэмэлт сан (FluentValidation г.м.) хэрэглэхгүй. Бизнесийн invariant Domain-д. Command-ийн endpoint filter-ийн дараалал: Authorization → Validation → Idempotency → `TenantSession` (BEGIN + `set_config`) → Handler → Commit → post-commit hook ([02-architecture.md](./02-architecture.md) §5.3). |
 | Лог | Source-generated `[LoggerMessage]` (CA1848 = error), template тогтмол (CA2254), placeholder `PascalCase`. Хувийн мэдээлэл, `qrData`/`lottery`, токен логлохгүй (§3.6). |
@@ -262,19 +269,19 @@ Erp.<M>.Contracts       ──►  Erp.BuildingBlocks.Domain   (Money, id төр
 
 | Объект | Дүрэм | Жишээ |
 |---|---|---|
-| Schema | модуль бүрт нэг, богино `snake_case` ([02-architecture.md](./02-architecture.md) §4.2) | `core` (нийтлэг domain, helper, журнал), `platform`, `identity`, `audit`, `ops`, `gl`, `tax`, `parties`, `sales`, `purchases`, `cash_bank`, `currency`, `fixed_assets`, `inventory`, `reporting`, `ebarimt`, `integration`, `quartz` |
-| Хүснэгт | ганц тоо, `snake_case`, BC нэрээс товчлолыг хадгална | `gl.gl_entry` (T17), `gl.gl_register` (T45), `tax.vat_entry` (T254), `parties.cust_ledger_entry` (T21), `parties.detailed_cust_ledg_entry` (T379), `platform.no_series_line` (T309) |
+| Schema | модуль бүрт нэг, богино `snake_case`; эх сурвалж [db/schema](./db/schema/) (D-K1, [02-architecture.md](./02-architecture.md) §4.1) | `platform` (нийтлэг domain, helper, counter, журнал), `identity`, `audit`, `gl`, `tax`, `party`, `sales`, `purchase`, `bank`, `fx`, `fa`, `inv`, `rpt`, `ebarimt`, `integration`; + Quartz-ийн `quartz` store |
+| Хүснэгт | ганц тоо, `snake_case`, BC нэрээс товчлолыг хадгална | `gl.gl_entry` (T17), `gl.gl_register` (T45), `tax.vat_entry` (T254), `party.cust_ledger_entry` (T21), `party.detailed_cust_ledger_entry` (T379), `platform.number_series_line` (T309) |
 | Багана | `snake_case`; BC талбараас: "Document No." → `document_no`, "Amount (LCY)" → `amount_lcy` | `posting_date`, `document_no`, `amount`, `amount_lcy`, `vat_base_amount` |
 | Эхний баганууд | `tenant_id uuid NOT NULL`, `company_id uuid NOT NULL` (бизнесийн мөр бүрт) | |
-| Түлхүүр | aggregate ба ledger мөр: `id uuid` (UUIDv7, апп үүсгэнэ). Ledger-ийн `entry_no`, `transaction_no`, `register_no` нь компани бүрээр **цоорхойгүй** бөгөөд posting transaction дотор `gl.company_counter`-оос олгогдоно ([02-architecture.md](./02-architecture.md) §6.6). Ledger-т `IDENTITY`/`SEQUENCE` хэрэглэхгүй (rollback-д цоорхой үүсгэдэг). PK ба index бүр `tenant_id`-аар эхэлнэ | `PRIMARY KEY (tenant_id, company_id, id)`, `UNIQUE (tenant_id, company_id, entry_no)` |
+| Түлхүүр | aggregate ба ledger мөр: `id uuid PRIMARY KEY` (UUIDv7, апп үүсгэнэ) + composite FK-ийн зорилт `UNIQUE (company_id, id)`. Ledger-ийн `entry_no`, `transaction_no`, `gl_register_no` нь компани бүрээр **цоорхойгүй** бөгөөд posting transaction дотор `platform.fn_next_entry_no(ledger, n)` → `platform.ledger_counter`-оос олгогдоно (D-K3, [02-architecture.md](./02-architecture.md) §6.6). Ledger-т `IDENTITY`/`SEQUENCE` хэрэглэхгүй (rollback-д цоорхой үүсгэдэг). FK нь `(tenant_id, company_id) → platform.company (tenant_id, id)`, бусад рүү `(company_id, x_id)`; бизнесийн index `company_id`-аар эхэлнэ | `id uuid PRIMARY KEY`, `UNIQUE (company_id, entry_no)`, `UNIQUE (company_id, id)` |
 | Огноо, цаг | бизнесийн огноо → `date`; техникийн цаг → `timestamptz` (UTC); `created_at`, `created_by` | |
 | Boolean | `is_`/`has_` угтвартай | `is_reversed`, `has_attachments` |
 | Enum маягийн утга | `text` + `CHECK (... IN (...))`; PostgreSQL `ENUM` төрөл хэрэглэхгүй (өөрчлөхөд хүнд) | `status text CHECK (status IN ('PENDING','SENT','REJECTED','UNKNOWN','RESOLVED'))` |
-| Constraint | `pk_<table>`, `fk_<table>__<ref_table>`, `uq_<table>__<cols>`, `ck_<table>__<rule>`, `ex_<table>__<cols>` (exclusion) | `ck_gl_entry__debit_xor_credit` |
-| Index | `ix_<table>__<col1>_<col2>` | `ix_gl_entry__tenant_id_company_id_posting_date` |
-| Trigger / функц | trigger: `trg_<table>__<what>`; функц (trigger функц орно): `<schema>.fn_<verb>_<noun>` | `trg_gl_entry__block_update_delete`, `trg_gl_entry__assert_balanced`, `core.fn_block_ledger_mutation()`, `core.fn_apply_tenant_rls(regclass)` |
-| RLS policy | хүснэгт бүрт `rls_<table>__tenant` (`core.fn_apply_tenant_rls` үүсгэнэ, [ADR-0004](./adr/ADR-0004-shared-schema-multitenancy-rls.md)) | `rls_sales_header__tenant` |
-| Мөнгө, ханш | `core.amount`, `core.amount_lcy`, `core.unit_price`, `core.qty`, `core.pct`, `core.fx_rate` domain-оор (§4.1, [ADR-0006](./adr/ADR-0006-money-and-rounding.md)). `money`, `real`, `double precision` төрлийг **хэзээ ч** хэрэглэхгүй | |
+| Constraint | Канон схем PK/UNIQUE/FK/CHECK-ийг ихэнхдээ нэргүй (PostgreSQL-ийн автомат нэр) тодорхойлдог; нэр өгөх бол `pk_<table>`, `fk_<table>__<ref_table>`, `uq_<table>__<cols>`, `ck_<table>__<rule>`, `ex_<table>__<cols>` (exclusion) | `ck_gl_entry__amount_sign` |
+| Index | `ix_<table>__<col1>_<col2>`; unique index `ux_<table>__<what>` | `ix_general_ledger_setup__dim1`, `ux_bank_statement_line__dedupe` |
+| Trigger / функц | trigger: `trg_<table>_<what>` (нэг доогуур зураас, канон схемтэй ижил); функц (trigger функц орно): `<schema>.fn_<verb>_<noun>` | `trg_gl_entry_immutable`, `trg_gl_entry_no_truncate`, `trg_gl_entry_before_insert`, `trg_gl_entry_balanced`, `trg_<table>_audit`, `platform.fn_guard_immutable()`, `gl.fn_check_transaction_balanced()` |
+| RLS policy | канон нэр ([900_rls.sql](./db/schema/900_rls.sql), [ADR-0004](./adr/ADR-0004-shared-schema-multitenancy-rls.md)): `tenant_isolation` (тенантын хүснэгт бүр), `company_isolation` (RESTRICTIVE, `company_id NOT NULL`), `tenant_read_system` (системийн NULL-tenant мөрийг уншуулах) | `CREATE POLICY tenant_isolation ON sales.sales_header …` |
+| Мөнгө, ханш | `platform.amount`, `platform.unit_amount`, `platform.quantity`, `platform.percent`, `platform.exch_rate` domain-оор (§4.1, [ADR-0006](./adr/ADR-0006-money-and-rounding.md), D-C1). `money`, `real`, `double precision` төрлийг **хэзээ ч** хэрэглэхгүй | |
 | `jsonb` | зөвхөн аудит, outbox payload, тохиргоонд. Тооцоонд орох дүнг `jsonb`-д хадгалахгүй | |
 | Collation | DB default нь `C.UTF-8` (code point дараалал). Локал/CI-д libc `C.UTF-8`; prod-ийн PG17+ кластерт `initdb --locale-provider=builtin --builtin-locale=C.UTF-8` (OS/glibc шинэчлэлтээс бүрэн хамааралгүй, collation version анхааруулга гардаггүй). Монгол цагаан толгойн эрэмбийг `ORDER BY name COLLATE "mn-x-icu"`-ээр хийнэ (Ө, Ү зөв байрлалд) | |
 
@@ -285,67 +292,91 @@ Erp.<M>.Contracts       ──►  Erp.BuildingBlocks.Domain   (Money, id төр
 - Зөвхөн parameter-тэй query (Dapper `@tenantId`). SQL string залгахгүй.
 - RLS байгаа ч query бүрт `WHERE tenant_id = @tenantId AND company_id = @companyId` бичнэ. RLS нь шүүлтүүр биш, хамгаалалт. Мөн index-ийг ашиглахад шаардлагатай.
 - Posting, тайлангийн SQL нь `Infrastructure/Sql/<verb>_<object>.sql` embedded resource байна (жишээ: `insert_gl_entries.sql`). Ингэснээр diff-д харагдана, тестлэгдэнэ.
-- Transaction: команд нь `READ COMMITTED`, тайлан нь `REPEATABLE READ READ ONLY`. Transaction-ийг зөвхөн `TenantSession` нээнэ (Worker-т `TenantScope.RunAsync`, компани тус бүрээр). Тэр эхлээд `set_config('app.tenant_id' | 'app.company_id' | 'app.user_id' | 'app.request_id', …, true)`, `SET LOCAL lock_timeout = '5s'`, `SET LOCAL statement_timeout = '30s'`-ийг тохируулна ([02-architecture.md](./02-architecture.md) §7.3). Гараар `set_config` дуудахгүй, `NpgsqlDataSource`-ийг модульд шууд inject хийхгүй. Контекст тохируулаагүй query RLS-ээр **алдаа** өгнө (fail-closed).
-- Posting-ийн түгжээний дараалал (deadlock-оос сэргийлнэ): (1) `SELECT core.fn_lock_company_posting(tenant_id, company_id)` (дотроо `pg_advisory_xact_lock`); (2) дугаарын цувралын мөрүүдийг (`platform.no_series_line … FOR UPDATE`) тогтмол дарааллаар (`series_code`) түгжинэ; (3) `gl.company_counter`; (4) insert. Үе хаах, ханшийн дахин үнэлгээ, элэгдлийн run ижил түгжээ авна ([02-architecture.md](./02-architecture.md) §6.5).
+- Transaction: команд нь `READ COMMITTED`, тайлан нь `REPEATABLE READ READ ONLY`. Transaction-ийг зөвхөн `TenantSession` нээнэ (Worker-т `TenantScope.RunAsync`, компани тус бүрээр). Тэр эхлээд `set_config('app.tenant_id' | 'app.company_id' | 'app.user_id' | 'app.request_id', …, true)`, `SET LOCAL lock_timeout = '5s'`, `SET LOCAL statement_timeout = '30s'`-ийг тохируулна ([02-architecture.md](./02-architecture.md) §7.3). Үүнийг `platform.fn_set_context(tenant, company, user, request)` нэг дуудлагаар хийнэ. Гараар `set_config` дуудахгүй, `NpgsqlDataSource`-ийг модульд шууд inject хийхгүй. Контекст тохируулаагүй query RLS-ээр **алдаа** өгнө (fail-closed).
+- Posting-ийн түгжээний дараалал (deadlock-оос сэргийлнэ): (1) `SELECT platform.fn_lock_company_posting(tenant_id, company_id)` (дотроо `pg_advisory_xact_lock`); (2) хууль ёсны дугаар `platform.fn_next_document_no(series_code, date)` (цувралын мөрийг `FOR UPDATE` түгжинэ), олон цуврал бол тогтмол дарааллаар (`series_code`); (3) ledger-ийн дугаар `platform.fn_next_entry_no(ledger, n)` (`platform.ledger_counter`); (4) insert. Үе хаах, ханшийн дахин үнэлгээ, элэгдлийн run ижил түгжээ авна ([02-architecture.md](./02-architecture.md) §6.5).
 
-**Шинэ tenant хүснэгтийн загвар** (migration бүрт хуулна; helper-ууд [ADR-0014](./adr/ADR-0014-sql-first-migrations.md), RLS [02-architecture.md](./02-architecture.md) §7.4):
+**Шинэ tenant хүснэгтийн загвар** (baseline-ийн дараах migration бүрт хуулна). Baseline-д [900_rls.sql](./db/schema/900_rls.sql), [910_ledger_guards.sql](./db/schema/910_ledger_guards.sql), [140_integration_audit.sql](./db/schema/140_integration_audit.sql) нь RLS, guard, audit trigger-ийг **нэг удаагийн loop**-оор үүсгэдэг тул шинэ хүснэгтэд эдгээрийг ил бичнэ ([ADR-0014](./adr/ADR-0014-sql-first-migrations.md), RLS [02-architecture.md](./02-architecture.md) §7.4):
 
 ```sql
 -- Module: Sales · Ticket: ERP-123 · Expand/contract: expand · Rollback: forward-fix only
--- V0042__sales_create_sales_header.sql
--- lock_timeout = 5s, statement_timeout = 15min-ийг runner тохируулдаг (§3.3). Өөр утга хэрэгтэй бол SET LOCAL.
+-- V0042__sales_create_sales_quote_header.sql   (R3-ийн жишээ хүснэгт)
+-- lock_timeout = 5s, statement_timeout = 15min-ийг runner тохируулдаг (§3.3). Runner SET ROLE app_owner хийсэн байна.
 
-CREATE TABLE sales.sales_header (                -- ноорог баримт; хууль ёсны дугаар posting үед олгогдоно
+CREATE TABLE sales.sales_quote_header (            -- ноорог баримт; хууль ёсны дугаар posting үед олгогдоно
+    id            uuid              PRIMARY KEY DEFAULT gen_random_uuid(),   -- апп UUIDv7 өгнө (D-C8)
     tenant_id     uuid              NOT NULL,
     company_id    uuid              NOT NULL,
-    id            uuid              NOT NULL DEFAULT core.fn_uuid_v7(),
-    draft_no      text              NOT NULL,
+    no            platform.document_no NOT NULL,
     posting_date  date              NOT NULL,
-    currency_code char(3)           NOT NULL,
-    amount        core.amount       NOT NULL DEFAULT 0,
+    currency_code platform.currency_code,
+    amount        platform.amount   NOT NULL DEFAULT 0,
     created_at    timestamptz       NOT NULL DEFAULT now(),
-    created_by    uuid              NOT NULL,
-    CONSTRAINT pk_sales_header PRIMARY KEY (tenant_id, company_id, id)
+    created_by    uuid              DEFAULT platform.current_user_id(),
+    updated_at    timestamptz,
+    updated_by    uuid,
+    row_version   integer           NOT NULL DEFAULT 1,
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    UNIQUE (company_id, no),
+    UNIQUE (company_id, id)                         -- composite FK-ийн зорилт
 );
+COMMENT ON TABLE sales.sales_quote_header IS 'Mirrors BC table 36 Sales Header (document type Quote).';
 
--- RLS ENABLE + FORCE, policy rls_sales_header__tenant
---   USING / WITH CHECK (tenant_id = current_setting('app.tenant_id')::uuid)
--- + GRANT to erp_app / erp_worker. app.tenant_id тохируулаагүй бол query АЛДАА өгнө (fail-closed).
-SELECT core.fn_apply_tenant_rls('sales.sales_header');
-SELECT core.fn_add_audit_trigger('sales.sales_header');      -- master data / setup / ноорог баримтад
+-- RLS (900_rls.sql-тэй ижил): app.tenant_id тохируулаагүй бол query АЛДАА өгнө (fail-closed, D-K6)
+ALTER TABLE sales.sales_quote_header ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales.sales_quote_header FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON sales.sales_quote_header
+    USING (tenant_id = platform.current_tenant_id()) WITH CHECK (tenant_id = platform.current_tenant_id());
+CREATE POLICY company_isolation ON sales.sales_quote_header AS RESTRICTIVE
+    USING (company_id = platform.current_company_id()) WITH CHECK (company_id = platform.current_company_id());
+GRANT SELECT ON sales.sales_quote_header TO app_user, app_readonly;
+GRANT INSERT, UPDATE, DELETE ON sales.sales_quote_header TO app_user;
+
+-- master data / setup / ноорог баримтад (140_integration_audit.sql-тэй ижил)
+CREATE TRIGGER trg_sales_quote_header_touch BEFORE UPDATE ON sales.sales_quote_header
+    FOR EACH ROW EXECUTE FUNCTION platform.fn_touch_row();
+CREATE TRIGGER trg_sales_quote_header_audit AFTER INSERT OR UPDATE OR DELETE ON sales.sales_quote_header
+    FOR EACH ROW EXECUTE FUNCTION audit.fn_row_change();
 ```
 
-**Ledger хүснэгтэд нэмэлтээр:**
+**Ledger хүснэгтэд нэмэлтээр** (910_ledger_guards.sql-тэй ижил):
 
 ```sql
--- guard trigger (trg_<table>__block_update_delete мөр бүрт, trg_<table>__block_truncate statement-д,
--- функц нь core.fn_block_ledger_mutation) + REVOKE UPDATE, DELETE, TRUNCATE
-SELECT core.fn_apply_tenant_rls('gl.gl_entry');
-SELECT core.fn_make_append_only('gl.gl_entry');
+INSERT INTO platform.ledger_guard (table_name, key_column, mutable_columns, description)
+VALUES ('xx.xx_ledger_entry', 'entry_no', ARRAY['reversed','reversed_by_entry_no'], 'BC T…');
+CREATE TRIGGER trg_xx_ledger_entry_immutable BEFORE UPDATE OR DELETE ON xx.xx_ledger_entry
+    FOR EACH ROW EXECUTE FUNCTION platform.fn_guard_immutable();          -- whitelist-ээс бусад өөрчлөлт → ERL01
+CREATE TRIGGER trg_xx_ledger_entry_no_truncate BEFORE TRUNCATE ON xx.xx_ledger_entry
+    FOR EACH STATEMENT EXECUTE FUNCTION platform.fn_guard_immutable();
+CREATE TRIGGER trg_xx_ledger_entry_before_insert BEFORE INSERT ON xx.xx_ledger_entry
+    FOR EACH ROW EXECUTE FUNCTION platform.fn_ledger_before_insert();     -- company_id = app.company_id (ERT01)
+REVOKE UPDATE, DELETE, TRUNCATE ON xx.xx_ledger_entry FROM app_user, app_worker, app_readonly;
+-- entry_no: platform.fn_next_entry_no('XX_LEDGER_ENTRY', n); IDENTITY/SEQUENCE хэрэглэхгүй (D-K3)
 ```
 
-Transaction бүрийн Debit = Credit тэнцвэрийг `DEFERRABLE INITIALLY DEFERRED` constraint trigger (`trg_gl_entry__assert_balanced`, функц `gl.fn_assert_transaction_balanced`) commit үед шалгана. Ledger мөрийн `company_id` нь `app.company_id`-тай таарч байгааг `BEFORE INSERT` trigger шалгана. Яг тодорхойлолтыг [02-architecture.md](./02-architecture.md) §7.4, §8-аас үзнэ.
+Transaction бүрийн Debit = Credit тэнцвэрийг `DEFERRABLE INITIALLY DEFERRED` constraint trigger-ууд (`trg_gl_entry_balanced` → `gl.fn_check_transaction_balanced`, `trg_gl_transaction_has_entries` → `gl.fn_check_transaction_has_entries`, `ERB01`) commit үед шалгана. Ledger мөрийн `company_id` нь `app.company_id`-тай таарч байгааг `BEFORE INSERT` trigger (`platform.fn_ledger_before_insert`) шалгана. Яг тодорхойлолтыг [910_ledger_guards.sql](./db/schema/910_ledger_guards.sql), [02-architecture.md](./02-architecture.md) §7.4, §8-аас үзнэ.
 
-**Tenant-гүй хүснэгт.** Улсын хэмжээний лавлах өгөгдөл (ISO валют, Монголбанкны албан ханш, хуулийн огноотой татварын параметр, БҮНА ангилал, eBarimt-ийн лавлах) бизнесийн мөр биш. Тиймээс `tenant_id`-гүй, RLS-гүй байна. `erp_app` зөвхөн `SELECT` эрхтэй. Шинэчлэлтийг `erp_worker` (ханш, eBarimt лавлах job) эсвэл migration хийнэ ([02-architecture.md](./02-architecture.md) §7.5). Ийм хүснэгтийг тухайн модулийн schema-д `ref_` угтвартай нэрлэнэ (`currency.ref_currency`, `currency.ref_official_rate`, `tax.ref_legal_parameter`, `ebarimt.ref_classification`). `verify` команд эдгээрийг allow-list-ээр таньдаг.
+**Tenant-гүй хүснэгт.** Улсын хэмжээний лавлах өгөгдөл (ISO валют, Монголбанкны албан ханш, хуулийн огноотой татварын параметр, БҮНА ангилал, eBarimt-ийн лавлах) бизнесийн мөр биш. Тиймээс `tenant_id`-гүй, RLS-гүй байна. `app_user` (`erp_app`) зөвхөн `SELECT` эрхтэй. Шинэчлэлтийг `app_worker` (`erp_worker`: ханш, eBarimt лавлах job) эсвэл migration хийнэ ([02-architecture.md](./02-architecture.md) §7.5). Ийм хүснэгт тухайн модулийн schema-д, тусгай угтваргүй байна (`fx.iso_currency`, `fx.official_exchange_rate`, `tax.tax_parameter`, `ebarimt.classification_code`, `ebarimt.tax_product_code`, `rpt.statement_line`). `verify` команд эдгээрийг `tenant_id` баганагүйгээр нь таньдаг. Нэвтрэлтийн `identity.*` хүснэгтүүд мөн тенантгүй, RLS-гүй (D-K7).
 
 ### 3.3 Migration
 
 | Дүрэм | Тайлбар |
 |---|---|
-| Байршил, нэр | `db/migrations/V0001__description.sql`. 4 оронтой хувилбар, **хоёр** доогуур зураас, жижиг үсгийн `snake_case` тайлбар. Тайлбарын эхний үг нь модуль: `V0012__gl_create_gl_entry.sql`, `V0013__sales_add_due_date.sql` ([ADR-0014](./adr/ADR-0014-sql-first-migrations.md)). |
-| Repeatable | `R__<schema>__<object>.sql` (зөвхөн view ба функц): `R__reporting__trial_balance.sql`. Бүх V файлын дараа, checksum өөрчлөгдсөн үед нэрийн дарааллаар дахин ажиллана. |
-| Лавлах өгөгдөл | Улсын лавлах (валют, хуулийн параметр, БҮНА) нь **V файлаар** орно (`V0031__tax_ref_legal_parameter_2027.sql`): шинэ утгыг шинэ мөрөөр (хүчин төгөлдөр болох огноотой) нэмнэ, хуучныг засахгүй ([ADR-0014](./adr/ADR-0014-sql-first-migrations.md) №7, [ADR-0021](./adr/ADR-0021-effective-dated-parameters.md)). |
+| Baseline | Канон [`db/schema/*.sql`](./db/schema/) (`000_extensions_roles.sql` … `920_views.sql`) репод **өөрчлөлтгүй** `db/schema/`-д байж, `Erp.Migrator`-т embedded resource болно. Migrator тэдгээрийг нэрийн дарааллаар, нэг бүрийг өөрийн transaction-д (журналын мөртэй хамт) ажиллуулна; psql-ийн `\set …` мөрийг алгасна. `000` нь cluster group role (`app_*`), өргөтгөл, модулийн схем үүсгэдэг тул **эхний `migrate`** нь bootstrap superuser холболтоор: локал/CI-д `postgres` (§0, §10), production-д DBA (2 хүн, runbook). Дараагийн бүх ажиллагаа `erp_migrator`-оор. Baseline файлыг хэзээ ч засахгүй (CI өмнөх release-тэй харьцуулна); spec багц доторх starter-т `tools/ci/sync-db.sh` хуулбарыг шинэчилж, `DatabasePackageDriftTests` зөрүүг барина. |
+| Seed | `db/seed/legal_parameters.sql`, `db/seed/mn_*.sql` (канон MN багц: `tax.tax_parameter`, `fx.iso_currency`, `rpt.statement_line`, `platform.fn_provision_company_mn` г.м.) — `seed` командаар, **repeatable** (checksum өөрчлөгдвөл дахин ажиллана). Демо өгөгдөл тусдаа (`seed --set demo`, §13). |
+| Байршил, нэр | Baseline-ийн дараах өөрчлөлт: `db/migrations/V<NNNN>__<module>_<description>.sql` (`V0001`-ээс, baseline-ийн дараа ажиллана). 4 оронтой хувилбар, **хоёр** доогуур зураас, жижиг үсгийн `snake_case` тайлбар. Тайлбарын эхний үг нь модуль (схемийн нэр): `V0012__gl_add_gl_register_hash.sql`, `V0013__sales_add_due_date.sql` ([ADR-0014](./adr/ADR-0014-sql-first-migrations.md)). |
+| Repeatable | `R__<schema>__<object>.sql` (зөвхөн view ба функц): `R__rpt__trial_balance.sql`. Бүх V файлын дараа, checksum өөрчлөгдсөн үед нэрийн дарааллаар дахин ажиллана. |
+| Лавлах өгөгдөл | Улсын лавлах (валют, хуулийн параметр, БҮНА) нь seed эсвэл **V файлаар** орно (`V0031__tax_tax_parameter_2027.sql`, `tax.tax_parameter`-д): шинэ утгыг шинэ мөрөөр (хүчин төгөлдөр болох огноотой) нэмнэ, хуучныг засахгүй ([ADR-0014](./adr/ADR-0014-sql-first-migrations.md) №7, [ADR-0021](./adr/ADR-0021-effective-dated-parameters.md)). |
 | Толгой | Эхний мөр: `-- Module: GeneralLedger · Ticket: ERP-123 · Expand/contract: expand · Rollback: forward-fix only`. `lock_timeout = '5s'`, `statement_timeout = '15min'`-ийг runner файл бүрийн өмнө тохируулна. Өөр утга хэрэгтэй бол файл дотор `SET LOCAL` хийнэ. Lock timeout болбол runner тухайн файлыг 3 удаа дахин оролдоно. |
 | Transaction | Файл бүр өөрийн transaction-д ажиллана (runner ороож өгнө). Transaction-д ажиллах боломжгүй statement (`CREATE INDEX CONCURRENTLY`) нь тусдаа файлд байж, эхний мөрөнд `-- migrator: no-transaction` тэмдэгтэй байна. |
 | Өөрчлөхгүй | `main`-д merge хийгдсэн migration-ийг **хэзээ ч** засахгүй. Runner checksum (SHA-256)-аар шалгана, CI өмнөх release-тэй харьцуулна. Алдааг шинэ V файлаар засна. |
 | Expand → contract | Хувилбар N-ийн схем N-1 хувилбарын кодтой ажиллана. Хуучин app-ийн хэрэглэдэг багана/хүснэгтийг тухайн release-д устгахгүй, нэрийг өөрчлөхгүй. `NOT NULL`, FK, CHECK-ийг `NOT VALID` → `VALIDATE` дарааллаар нэмнэ. Contract (хуучныг устгах) нь **дараагийн** release-д. Ledger-ийг UPDATE-ээр backfill хийхгүй. Том backfill нь batched job хэлбэрээр явна ([02-architecture.md](./02-architecture.md) §14.4). |
-| Шинэ хүснэгт | §3.2-ын загвар: `tenant_id`, `company_id`, `core.fn_apply_tenant_rls(...)`; master data-д `core.fn_add_audit_trigger(...)`; ledger-т `core.fn_make_append_only(...)`. |
+| Шинэ хүснэгт | §3.2-ын загвар: `tenant_id`, `company_id`, RLS (`tenant_isolation` + `company_isolation`, ENABLE + FORCE) ба GRANT; master data-д `trg_<table>_touch` + `trg_<table>_audit` (`audit.fn_row_change`); ledger-т `platform.ledger_guard` мөр + `trg_<table>_immutable`/`_no_truncate`/`_before_insert` + REVOKE. |
 | Дугаарын мөргөлдөөн | Хувилбарын дугаарыг PR нээхдээ авна. `main` дээр давхцвал **өөрийнхөө** файлын дугаарыг merge-ээс өмнө өөрчилнө (CI давхардлыг илрүүлнэ). |
 | Гүйцэтгэл | Зөвхөн `Erp.Migrator`-оор. Staging, prod-д DDL-ийг гараар ажиллуулахыг хориглоно. Онцгой тохиолдолд break-glass runbook-ийн дагуу, 2 хүн оролцож хийнэ. |
-| Runner ба journal | `Erp.Migrator` нь **өөрсдийн** console runner (гадаад migration сан хэрэглэхгүй, хэдэн зуун мөр код, integration тесттэй — [ADR-0014](./adr/ADR-0014-sql-first-migrations.md)). Journal нь `core.schema_migration` (version, SHA-256 checksum, applied_at, applied_by, execution_ms). |
-| Runner-ийн хамгаалалт | `SET ROLE erp_owner`, `SET lock_timeout = '5s'`, `SET statement_timeout = '15min'`, session-level `pg_advisory_lock(<тогтмол>)` (зэрэг ажиллах runner-ийг хориглоно; иймээс PgBouncer-ийг тойрч PostgreSQL руу шууд холбогдоно). Application startup дээр migration **ажиллуулахгүй**. |
+| Runner ба journal | `Erp.Migrator` нь **өөрсдийн** console runner (гадаад migration сан хэрэглэхгүй, хэдэн зуун мөр код, integration тесттэй — [ADR-0014](./adr/ADR-0014-sql-first-migrations.md)). Нэр нь `Erp.Migrator` (`src/Erp.Migrator`) — [02-architecture.md](./02-architecture.md) §14.4 ба ADR-0014-тэй ижил; DbUp/Flyway/`Erp.Migrations` хэрэглэхгүй. Journal нь `platform.schema_migration` (script, kind = SCHEMA/SEED, SHA-256 checksum, applied_at, applied_by, execution_ms); migrator 000-ийн дараа шууд үүсгэнэ. |
+| Runner-ийн хамгаалалт | `erp_migrator`-оор нэвтэрч `SET ROLE app_owner`, `SET lock_timeout = '5s'`, `SET statement_timeout = '15min'`, session-level `pg_advisory_lock(<тогтмол>)` (зэрэг ажиллах runner-ийг хориглоно; иймээс PgBouncer-ийг тойрч PostgreSQL руу шууд холбогдоно). Application startup дээр migration **ажиллуулахгүй**. |
 
-Runner-ийн командууд: `migrate`, `verify`, `seed --set <name>`, `info`, `reset --i-know-this-is-local` (зөвхөн `Development` орчинд). Холболтыг `ConnectionStrings:Migrations` тохиргооноос авна; CI-д `--connection "<connection string>"` сонголтоор дарна. `seed --set demo` нь `Production` орчинд **ажиллахаас татгалзана** (§13). `verify` бол каталогийн тест ([02-architecture.md](./02-architecture.md) §7.8). Дараахыг шалгана: checksum; `tenant_id` баганатай хүснэгт бүрт RLS `ENABLE` + `FORCE` + `rls_<table>__tenant`; `app.tenant_id`-гүй SELECT/INSERT алдаа өгдөг (fail-closed); `pg_roles`-ийн `erp_*` role-уудаас `BYPASSRLS` зөвхөн `erp_dispatch_definer`-д байгаа; ledger хүснэгтэд append-only trigger ба `erp_app`/`erp_worker`-т UPDATE/DELETE/TRUNCATE эрх байхгүй; master data-д аудит trigger; `real`/`double precision`/`money` багана байхгүй; дүнгийн багана `core.amount`/`core.amount_lcy`, ханшийн багана `core.fx_rate` domain-тэй; `qr_data`/`lottery` нэртэй багана байхгүй.
+Runner-ийн командууд: `migrate`, `verify`, `seed --set <name>`, `info`, `reset --i-know-this-is-local` (зөвхөн `Development` орчинд). Холболтыг `ConnectionStrings:Migrations` тохиргооноос авна; CI-д `--connection "<connection string>"` сонголтоор дарна. `seed --set demo` нь `Production` орчинд **ажиллахаас татгалзана** (§13). `verify` бол каталогийн тест ([02-architecture.md](./02-architecture.md) §7.8). Дараахыг шалгана: checksum; `tenant_id` баганатай хүснэгт бүрт RLS `ENABLE` + `FORCE` + `tenant_isolation` (`company_id NOT NULL` бол `company_isolation`); `app.tenant_id`-гүй SELECT/INSERT алдаа өгдөг (fail-closed, D-K6); `pg_roles`-оос `BYPASSRLS` зөвхөн `app_rls_bypass`-д (бусад `app_*` ба `erp_*` role-д байхгүй); `platform.ledger_guard`-ийн хүснэгт бүрт `trg_<table>_immutable`/`_no_truncate` trigger ба `app_user`/`app_worker`/`app_readonly`-д UPDATE/DELETE/TRUNCATE эрх байхгүй; master data-д `trg_<table>_audit`; `real`/`double precision`/`money` багана байхгүй; дүнгийн багана `platform.amount`, ханшийн багана `platform.exch_rate` domain-тэй ([db/tests/catalog_checks.sql](./db/tests/catalog_checks.sql)); `qr_data`/`lottery` нэртэй багана байхгүй.
 
 Шинэ migration үүсгэх: `dotnet run --project tools/Erp.DevTools -- new-migration gl add_gl_register_hash` → `db/migrations/V00NN__gl_add_gl_register_hash.sql` (толгой коммент бөглөгдсөн загвар).
 
@@ -381,7 +412,7 @@ Runner-ийн командууд: `migrate`, `verify`, `seed --set <name>`, `inf
 
 | Хэзээ ч бичихгүй (лог, span attribute, metric label, алдааны мессеж, outbox payload-ийн лог) | Хэрхэн |
 |---|---|
-| eBarimt `qrData`, `lottery` | `PrintOnly<T>` төрөлд ороож, `[EbarimtPrintOnly]` data classification-оор тэмдэглэнэ (`Microsoft.Extensions.Compliance.Redaction`). eBarimt HttpClient logger-гүй (`RemoveAllLoggers()`), body capture **унтраалттай**. Хариуг зөвхөн санах ойд байлгаад хэвлэх DTO руу шууд дамжуулна. `ebarimt.receipt`, `ebarimt.receipt_event`-д ийм багана байхгүй. Collector давхар устгана (`deploy/otel-collector.yaml`). |
+| eBarimt `qrData`, `lottery` | `PrintOnly<T>` төрөлд ороож, `[EbarimtPrintOnly]` data classification-оор тэмдэглэнэ (`Microsoft.Extensions.Compliance.Redaction`). eBarimt HttpClient logger-гүй (`RemoveAllLoggers()`), body capture **унтраалттай**. Хариуг зөвхөн санах ойд байлгаад хэвлэх DTO руу шууд дамжуулна. `ebarimt.ebarimt_document`, `ebarimt.ebarimt_document_event`-д ийм багана байхгүй, JSON багана бүр `integration.fn_has_forbidden_ebarimt_keys` CHECK-тэй (D-J3). Collector давхар устгана (`deploy/otel-collector.yaml`). |
 | Нууц үг, токен, cookie, `X-API-KEY` | Header-ийг logging-оос хасна. `IConfiguration`-ийн debug view prod-д унтраалттай. |
 | Регистрийн дугаар, civil_id, `consumerNo`, утас, имэйл | `[PersonalData]` classification + HMAC redactor (түлхүүр нь runtime secret) эсвэл маск (`УБ******12`). Энгийн SHA-256 hash хэрэглэхгүй: регистрийн дугаарын орон зай бага тул буцааж тайлж болно. Collector эдгээр нэртэй attribute-ийг **устгана**. |
 | Request/response body | ASP.NET Core болон HttpClient-ийн body capture бүх газарт унтраалттай. |
@@ -398,14 +429,15 @@ Span attribute ба metric-ийн нэрийг [02-architecture.md](./02-archite
 
 | Утга | C# | PostgreSQL domain | JSON (API) | TypeScript |
 |---|---|---|---|---|
-| Баримтын ба валютын (FCY) дүн | `decimal` | `core.amount` = `numeric(19,4)`, `NaN` хориотой | `"12345.67"` | `Money` (branded string) |
-| MNT ledger дүн (LCY) | `decimal` | `core.amount_lcy` = `numeric(19,4)`, `VALUE = round(VALUE, 2)` | `"12345.67"` | `Money` |
-| Нэгжийн үнэ | `decimal` | `core.unit_price` = `numeric(19,6)` | `"1234.5"` | `Money` |
-| Тоо хэмжээ | `decimal` | `core.qty` = `numeric(19,4)` | `"2"` | `Qty` |
-| Хувь (НӨАТ 10%) | `decimal` | `core.pct` = `numeric(9,6)`, 0–100 | `"10"` | `Pct` |
-| Ханш (1 нэгж валют = X MNT) | `decimal` | `core.fx_rate` = `numeric(38,18)`, `> 0 AND < 1e10` | `"3595.4"` | `Rate` |
+| Баримтын, валютын (FCY) ба MNT ledger (LCY) дүн | `decimal` | `platform.amount` = `numeric(19,4)`; валютын нарийвчлалаар бөөрөнхийлж хадгална (MNT 0.01, LCY-д тусдаа domain байхгүй) | `"12345.67"` | `Money` (branded string) |
+| Нэгжийн үнэ / өртөг | `decimal` | `platform.unit_amount` = `numeric(19,6)` | `"1234.5"` | `Money` |
+| Тоо хэмжээ | `decimal` | `platform.quantity` = `numeric(19,5)` | `"2"` | `Qty` |
+| Хувь (НӨАТ 10%) | `decimal` | `platform.percent` = `numeric(9,5)`, 0–100 | `"10"` | `Pct` |
+| Ханш (1 нэгж валют = X MNT) | `decimal` | `platform.exch_rate` = `numeric(38,18)`; `0 < rate < 1e10`-ийг апп шалгана | `"3595.4"` | `Rate` |
 
-Дүнг хадгалахаас өмнө **валютын нарийвчлалаар** бөөрөнхийлнэ: `currency.ref_currency.amount_precision` (`ICurrencyCatalog`; MNT 0.01, USD 0.01, JPY 1). Бүртгэлийн валют MNT, нарийвчлал нь 0.01-ээр тогтмол. eBarimt мөн 2 оронтой.
+Domain-ууд [010_platform.sql](./db/schema/010_platform.sql)-д (D-C1).
+
+Дүнг хадгалахаас өмнө **валютын нарийвчлалаар** бөөрөнхийлнэ: `fx.currency.amount_rounding_precision` (ISO анхдагч `fx.iso_currency.minor_units`; `ICurrencyCatalog`; MNT 0.01, USD 0.01, JPY 1). Бүртгэлийн валют MNT, нарийвчлал нь 0.01-ээр тогтмол. eBarimt мөн 2 оронтой.
 
 ### 4.2 Заавал мөрдөх 12 дүрэм
 
@@ -416,7 +448,7 @@ Span attribute ба metric-ийн нэрийг [02-architecture.md](./02-archite
 5. **НӨАТ, НХАТ:** `tax_code` бүлэг бүрд **нэг удаа** бөөрөнхийлж, мөрүүдэд **running remainder** аргаар хуваарилна (BC-ийн загвар). НӨАТ шингэсэн үнэд `VAT = round(gross × r / (100 + r), p)`, `base = gross − VAT`. Бүх тооцоог `ITaxCalculator.ComputeDocument` нэг функц хийнэ. UI preview, PDF, eBarimt payload, posting бүгд **ижил** үр дүн авна.
 6. **Хөнгөлөлт ба бусад хуваарилалт** нь running remainder аргаар хийгдэнэ. Ингэснээр Σ хэсэг = нийт яг тэнцэнэ.
 7. **Валют:** FCY→LCY хөрвүүлэлтийг хуримтлагдсан нийлбэрийн аргаар хийнэ (ADR-0006). Ханшийг "1 нэгж валют = X MNT" хэлбэрээр хадгална. Урвуу ханш (`1/rate`) хадгалахгүй. **Тэнцэхгүй үлдэгдлийг автоматаар нөхөхийг ("round-off plug") хориглоно.** Зөрүүг зөвхөн тодорхой дансанд бичнэ: бэлэн мөнгөний бүхэлчлэл ("Invoice rounding"), тулгалтын бөөрөнхийлөлт (≤ 0.01, "Appln. rounding"), ханшийн олз/гарз.
-8. Хуваалтын үр дүн 28 орон хүртэл байдаг. DB-д бичихээс өмнө зорилтот нарийвчлал руу **ил тодоор** бөөрөнхийлнө. PostgreSQL scale-ээс илүү орныг **алдаагүйгээр, чимээгүй** бөөрөнхийлдөг (`core.amount_lcy` л бөөрөнхийлөөгүй MNT-г CHECK-ээр татгалзана). Integration тестийн `AssertNoHiddenRounding` туслах нь бичсэн утгыг буцааж уншаад яг тэнцүү эсэхийг шалгана.
+8. Хуваалтын үр дүн 28 орон хүртэл байдаг. DB-д бичихээс өмнө зорилтот нарийвчлал руу **ил тодоор** бөөрөнхийлнө. PostgreSQL scale-ээс илүү орныг **алдаагүйгээр, чимээгүй** бөөрөнхийлдөг (`platform.amount` нь `numeric(19,4)` тул 0.01-ээс нарийн MNT-г DB татгалзахгүй; шөнийн `platform.fn_integrity_report` I-08 `UNROUNDED_MNT` илрүүлнэ). Integration тестийн `AssertNoHiddenRounding` туслах нь бичсэн утгыг буцааж уншаад яг тэнцүү эсэхийг шалгана.
 9. Харьцуулалтыг яг тэнцүүгээр (`==`) хийнэ. Epsilon/tolerance хэрэглэхгүй.
 10. Parse, format хийхдээ хадгалах ба API-д `InvariantCulture` хэрэглэнэ. `mn-MN` форматыг зөвхөн харуулахад (PDF, Excel, UI). Статутын маягтын тусгай форматыг (мянгатын тусгаарлагч, ₮ эсвэл мянган ₮) Reporting модулийн нэг газарт тодорхойлно.
 11. **JSON:** `DecimalStringJsonConverter` бүх API-д бүртгэгдсэн. Бичихдээ invariant, `.` тусгаарлагч, мянгатын тусгаарлагчгүй, exponent-гүй, илүү тэггүй (`"12345.6"`, `"-15.25"`, `"0"`) байна. Уншихдаа зөвхөн string хүлээн авна (`^-?(0|[1-9]\d{0,14})(\.\d{1,18})?$`). Number ирвэл `400`. SQL дээр `SUM(numeric)` яг тооцогдоно. `AVG`-ийн үр дүнг ил тодоор `round(…, 2)` хийнэ.
@@ -461,7 +493,7 @@ public static class MoneyMath
 ### 5.2 Анхны тохиргоо алхам алхмаар
 
 1. **Clone ба tool:** `git clone …`, дараа нь `dotnet tool restore`, `cd web && npm ci`.
-2. **Дэд бүтэц асаах:** `docker compose -f deploy/docker-compose.yml up -d`. `docker compose -f deploy/docker-compose.yml ps` команд `postgres`-ийг `healthy` гэж харуулах ёстой. Анх асаахад `db/init/01-roles.sql` ажиллаж [02-architecture.md](./02-architecture.md) §7.5-ын role-уудыг (`erp_owner`, `erp_migrator`, `erp_app`, `erp_worker`, `erp_dispatch_definer`, `erp_ops_ro`) болон `erp`, `erp_test` database-ийг үүсгэнэ.
+2. **Дэд бүтэц асаах:** `docker compose -f deploy/docker-compose.yml up -d`. `docker compose -f deploy/docker-compose.yml ps` команд `postgres`-ийг `healthy` гэж харуулах ёстой. Анх асаахад `db/init/01-roles.sql` login role-уудыг (`erp_owner`, `erp_migrator`, `erp_app`, `erp_worker`, `erp_ops_ro`) болон `erp`, `erp_test` database-ийг үүсгэнэ. Group role (`app_*`), өргөтгөл, модулийн схемийг эхний `migrate` (superuser холболт, §0) канон `db/schema/000_extensions_roles.sql`-ээр үүсгэж, login role-уудыг group role-д нэгтгэнэ ([02-architecture.md](./02-architecture.md) §7.5).
 3. **Нууц тохируулах** (§0-ийн 2-р алхам): гурван connection string-ийг (`App` → `erp_app`, `Worker` → `erp_worker`, `Migrations` → `erp_migrator`) `dotnet user-secrets --id mn-erp-local-dev`-д хадгална. Энэ нэг `UserSecretsId` нь `Erp.Api`, `Erp.Worker`, `Erp.Migrator` гурвын хооронд хуваалцагдана (`Directory.Build.props`). User-secrets нь зөвхөн `Development` орчинд ачаалагдана (§7.1).
 4. **Migration:** `dotnet run --project src/Erp.Migrator -- migrate`, дараа нь `-- verify`. Хүлээгдэх үр дүн: `Applied N migrations` болон `verify: OK`.
 5. **Демо өгөгдөл:** `dotnet run --project src/Erp.Migrator -- seed --set demo`, дараа нь `dotnet run --project tools/Erp.DevTools -- demo-post` (§13.2).
@@ -480,7 +512,7 @@ public static class MoneyMath
 | Unit тест | `dotnet test --project tests/Unit/Erp.Tests.Unit.csproj` |
 | Нэг классын тест | `dotnet test --project tests/Unit/Erp.Tests.Unit.csproj -- --filter-class "*MoneyTests"` |
 | Architecture тест | `dotnet test --project tests/Architecture/Erp.Tests.Architecture.csproj` |
-| Integration тест (Testcontainers) | `dotnet test --project tests/Integration/Erp.Tests.Integration.csproj` |
+| Integration тест (Testcontainers) | `dotnet test --project tests/Integration/Erp.Tests.Integration.csproj` (Sprint 0 skeleton: Testcontainers-гүй, `ERP_TEST_DB`-ийн PostgreSQL дээр; golden-ууд ч энд — §16.1) |
 | Golden тест локал PG дээр | `ERP_TEST_PG_ADMIN="Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres" dotnet test --project tests/Golden/Erp.Tests.Golden.csproj` |
 | Нэг golden scenario | `dotnet test --project tests/Golden/Erp.Tests.Golden.csproj -- --filter-trait "Scenario=GS-SAL-001"` |
 | Coverage тайлан | `dotnet test … -- --coverage --coverage-output-format cobertura` → `dotnet reportgenerator -reports:**/*.cobertura.xml -targetdir:artifacts/coverage` |
@@ -542,7 +574,7 @@ Options класс бүр `ValidateDataAnnotations().ValidateOnStart()` хийн
 |---|---|---|---|
 | `ConnectionStrings:App` | `Host=localhost;Port=5432;Database=erp;Username=erp_app;Password=…` | ✔ | `Erp.Api`; `erp_app` role |
 | `ConnectionStrings:Worker` | `…;Username=erp_worker;Password=…` | ✔ | `Erp.Worker`; `erp_worker` role |
-| `ConnectionStrings:Migrations` | `…;Username=erp_migrator;Password=…` | ✔ | Зөвхөн `Erp.Migrator` (`SET ROLE erp_owner`). PgBouncer-ийг тойрч PG руу шууд холбогдоно (session-level advisory lock) |
+| `ConnectionStrings:Migrations` | `…;Username=erp_migrator;Password=…` | ✔ | Зөвхөн `Erp.Migrator` (`SET ROLE app_owner`). PgBouncer-ийг тойрч PG руу шууд холбогдоно (session-level advisory lock) |
 | `Ebarimt:PosApi:Instances:0:Name` / `:BaseUrl` | `local-mock` / `http://localhost:7080` | — | PosAPI pool (нэг instance ≤ 1000 мерчант) |
 | `Ebarimt:PosApi:ReceiptTimeoutSeconds` | `20` (connect timeout 3 s; тестэд `2`) | — | Timeout болвол `UNKNOWN`, retry хийхгүй ([02-architecture.md](./02-architecture.md) §10) |
 | `Ebarimt:ReferenceApi:BaseUrl` | `http://localhost:7080` | — | prod: `https://api.ebarimt.mn` |
@@ -564,7 +596,7 @@ Options класс бүр `ValidateDataAnnotations().ValidateOnStart()` хийн
 | `erp_migrator` DB нууц үг | user-secrets | `/run/secrets/ConnectionStrings__Migrations` (deploy runner, migrator container-т mount) | 180 хоног | devops |
 | OIDC signing/encryption гэрчилгээ | dev cert | `/run/secrets/oidc_signing.pfx`, `oidc_encryption.pfx` + нууц үг (`/run/secrets/Auth__SigningCertificatePassword`) | 90 хоног | devops |
 | Тенантын нууцын KEK (`platform.tenant_secret`) | локал тогтмол түлхүүр | `/run/secrets/Secrets__Kek` | жил бүр | platform |
-| ASP.NET Data Protection түлхүүр | локал файл | PostgreSQL `platform.data_protection_key` + X.509 гэрчилгээгээр шифрлэнэ | автоматаар 90 хоног | platform |
+| ASP.NET Data Protection түлхүүр | локал файл | PostgreSQL `identity.data_protection_key` (D-K7) + X.509 гэрчилгээгээр шифрлэнэ | автоматаар 90 хоног | platform |
 | eBarimt staging операторын данс | user-secrets (eBarimt хөгжүүлэгчид) | staging `/run/secrets` | ажилтан солигдох бүрт | ebarimt-owners |
 | eBarimt production `X-API-KEY`, операторын данс | **локалд хэзээ ч байхгүй** | prod `/run/secrets` | ITC-ийн журмаар | ebarimt-owners |
 | SMTP | — | `/run/secrets/Smtp__Password` | 180 хоног | devops |
@@ -573,7 +605,7 @@ Options класс бүр `ValidateDataAnnotations().ValidateOnStart()` хийн
 
 **Production нууцын эх сурвалж.** Нууцыг хувийн `erp-infra` репод SOPS + age-ээр шифрлэж хадгална ([02-architecture.md](./02-architecture.md) §10.4). Ansible playbook тэдгээрийг host дээр `/etc/erp/secrets/<service>/<KEY>` файл (эрх `0400`, эзэмшигч нь container-ийн `$APP_UID` = 1654) болгон бичнэ. Docker Compose тэдгээрийг container-т `/run/secrets/` руу read-only mount хийнэ. Нууцыг орчны хувьсагч эсвэл `.env` файлд хийхгүй. Age-ийн private түлхүүр 2 хүнд (devops lead, CTO) байна. Production нууц **GitHub Secrets-д хадгалагдахгүй** бөгөөд Монголын ДТ-ээс гарахгүй.
 
-**Production DB role.** [02-architecture.md](./02-architecture.md) §7.5-ын role-уудыг (`erp_owner`, `erp_migrator`, `erp_app`, `erp_worker`, `erp_dispatch_definer`, `erp_ops_ro`, `erp_backup`) `db/init/01-roles.sql`-тэй ижил загвараар ops runbook-ийн дагуу үүсгэнэ. `BYPASSRLS` зөвхөн `erp_dispatch_definer`-д (NOLOGIN) байна. `erp_owner`-т **хэзээ ч** өгөхгүй (өгвөл FORCE RLS эзэмшигчид үйлчлэхээ болино); `verify` үүнийг шалгана. Нууц үгийг secret store-оос авна. `pg_hba.conf`-д зөвхөн `hostssl … scram-sha-256` зөвшөөрнө. App role-уудад connection limit тавина. `postgres` superuser-ээр application холбогдохгүй.
+**Production DB role.** Эрхийг канон [000_extensions_roles.sql](./db/schema/000_extensions_roles.sql)-ийн NOLOGIN **group role**-ууд агуулна: `app_owner` (бүх объектын эзэн), `app_user`, `app_worker`, `app_readonly`, `app_ops`, `app_rls_bypass` ([02-architecture.md](./02-architecture.md) §7.5). Login role-ууд (`erp_owner` NOLOGIN DB эзэмшигч, `erp_migrator`, `erp_app`, `erp_worker`, `erp_ops_ro`, `erp_backup`)-ыг `db/init/01-roles.sql`-тэй ижил загвараар ops runbook-ийн дагуу үүсгэнэ; 000 файл тэдгээрийг group role-д нэгтгэнэ (`erp_owner`/`erp_migrator` → `app_owner`, `erp_app` → `app_user`, `erp_worker` → `app_worker`, `erp_ops_ro` → `app_ops`). `BYPASSRLS` зөвхөн `app_rls_bypass`-д (NOLOGIN, хэн ч нэвтрэхгүй, зөвхөн тенант хоорондын SECURITY DEFINER функцийн эзэн) байна. `app_owner` ба түүний гишүүдэд **хэзээ ч** өгөхгүй (өгвөл FORCE RLS эзэмшигчид үйлчлэхээ болино, D-K6); 900_rls.sql-ийн self-check ба `verify` үүнийг шалгана. Нууц үгийг secret store-оос авна. `pg_hba.conf`-д зөвхөн `hostssl … scram-sha-256` зөвшөөрнө. App role-уудад connection limit тавина. `postgres` superuser-ээр application холбогдохгүй.
 
 **Хориг.** `appsettings*.json`, `docker-compose.yml`, тест, баримтад жинхэнэ нууц үг байж болохгүй (локал `*_local` нууц үгс л зөвшөөрөгдөнө). CI-д gitleaks ажиллана (§10). GitHub push protection идэвхтэй. Нууц санамсаргүй commit хийгдвэл тэр даруй **сольж (rotate)**, дараа нь түүхийг цэвэрлэнэ.
 
@@ -679,7 +711,7 @@ Image/SBOM-ийн эмзэг байдлыг Grype (Anchore) шалгана. [02-
 **Migration шалгалтын алхмууд (`migrations` job):**
 
 1. **Lint:** файлын нэр `V\d{4}__snake_case.sql` / `R__schema__object.sql` хэлбэртэй, хувилбар давхардаагүй, өмнөх release tag-аас хойш **хуучин V файл өөрчлөгдөөгүй** (`git diff --name-status <prev-tag>`).
-2. **Path A — хоосон DB:** `db/init/01-roles.sql`, дараа нь `migrate`, `verify`, дахин `migrate` (no-op байх ёстой).
+2. **Path A — хоосон DB:** `db/init/01-roles.sql`, дараа нь superuser холболтоор эхний `migrate` (000 орно), `erp_migrator`-оор `verify`, дахин `migrate` (no-op байх ёстой).
 3. **Path B — өмнөх release-ийн snapshot:** өмнөх `v*` tag-ийг `git worktree`-ээр гаргаж, **тэр хувилбарын** `Erp.Migrator`-аар `migrate` + `seed --set demo` хийнэ (схем ба өгөгдөл бүхий snapshot). Дараа нь одоогийн `Erp.Migrator`-аар `migrate` + `verify` хийнэ. Энэ нь өгөгдөлтэй DB дээр upgrade ажиллахыг баталгаажуулна.
 4. **Schema diff:** Path A ба Path B-ийн `pg_dump --schema-only` (service container дотроос, хувилбар таарна; `\restrict` мөрийг шүүнэ) **яг ижил** байх ёстой.
 
@@ -687,7 +719,7 @@ Image/SBOM-ийн эмзэг байдлыг Grype (Anchore) шалгана. [02-
 
 **Тестийн DB стратеги.** `Erp.BuildingBlocks.Testing.PostgresFixture`:
 - `ERP_TEST_PG_ADMIN` тохируулагдсан бол (CI golden, локал compose) тэр серверийг хэрэглэнэ (superuser холболт: role-ууд `db/init/01-roles.sql`-ээр урьдчилан үүссэн байх ёстой). Үгүй бол Testcontainers-ээр `ERP_TEST_PG_IMAGE` (default `postgres:17`)-ийг асааж `db/init/01-roles.sql`-ийг ажиллуулна.
-- Нэг удаа `erp_tpl_<run>` template DB-д migration хийнэ. Тест класс бүрт `CREATE DATABASE … TEMPLATE erp_tpl_<run>` хийж хурдан клон үүсгэнэ.
+- Нэг удаа `erp_tpl_<run>` template DB-д admin холболтоор migration-ийг (000 орно) хийнэ. Тест класс бүрт `CREATE DATABASE … TEMPLATE erp_tpl_<run>` хийж хурдан клон үүсгэнэ.
 - Тест `erp_app` (Worker-ийн тест `erp_worker`)-аар холбогдож tenant ба компанийг `TenantSession`-оор тохируулна, тиймээс RLS идэвхтэй. Ledger хамгаалалтын тест `erp_migrator`-аар ч UPDATE хийж trigger барьж байгааг шалгана.
 - xUnit-ийн parallelization нь класс тус бүрээр явна (DB тусдаа учир аюулгүй).
 
@@ -768,7 +800,7 @@ Image/SBOM-ийн эмзэг байдлыг Grype (Anchore) шалгана. [02-
 
 | Ангилал | Жишээ | Хаана | Хэрхэн ачаалах | Орчин |
 |---|---|---|---|---|
-| Лавлах (tenant-гүй) | ISO валют, хуулийн огноотой татварын параметр (2027-01-01-ний мөрүүд урьдчилан), БҮНА ангилал, банкны код | `db/migrations/V####__<module>_ref_*.sql` (шинэ утга = шинэ мөр, хүчин төгөлдөр болох огноотой; [ADR-0014](./adr/ADR-0014-sql-first-migrations.md) №7) | `migrate` | бүгд |
+| Лавлах (tenant-гүй) | ISO валют, хуулийн огноотой татварын параметр (2027-01-01-ний мөрүүд урьдчилан), БҮНА ангилал, банкны код | baseline-д канон [db/seed](./db/seed/README.md) (`legal_parameters.sql` → `tax.tax_parameter`, `mn_00_catalogs.sql` → `fx.iso_currency`, `rpt.statement_line`, `platform.source_code` г.м.); дараа нь `db/migrations/V####__<module>_<desc>.sql` (шинэ утга = шинэ мөр, хүчин төгөлдөр болох огноотой; [ADR-0014](./adr/ADR-0014-sql-first-migrations.md) №7) | `migrate` | бүгд |
 | Загвар (template) | Монголын дансны төлөвлөгөөний загвар, posting setup, дугаарын цувралын загвар, тайлангийн мөр | загвар хүснэгт (`V####__…_template_*.sql`) + модуль бүрийн `ICompanySeeder` (Platform.Contracts) | шинэ компани үүсэхэд кодоор хуулна | бүгд |
 | Демо | "Демо ХХК" tenant | `db/seed/demo/S###__*.sql` (master data + ноорог) → `Erp.DevTools demo-post` (posting engine-ээр батлах) | `seed --set demo`, дараа нь `demo-post` | local, staging (prod-д хориотой) |
 | Тестийн fixture | builder: `TestData.SalesInvoice().WithLine(...)` | `src/BuildingBlocks/Erp.BuildingBlocks.Testing` | кодоор | ci |
@@ -781,7 +813,7 @@ Image/SBOM-ийн эмзэг байдлыг Grype (Anchore) шалгана. [02-
   - **"Демо Үйлчилгээ ХХК"** — НӨАТ төлөгч биш.
 - Үүрэг тус бүрээр хэрэглэгч: Owner, Accountant, Cashier, Viewer. Нэвтрэх мэдээллийг `db/seed/demo/README.md`-д бичнэ; эдгээр нууц үг зөвхөн `Development` орчинд хүчинтэй. `Staging`-д seed нь демо хэрэглэгчийн нууц үгийг `/run/secrets/Demo__UserPassword`-оос авна (репод байгаа нууц үгээр staging руу нэвтрэх боломжгүй байх ёстой), MFA заавал.
 - 10 харилцагч (B2B ТТД-тэй ба B2C), 5 нийлүүлэгч, БҮНА кодтой 20 бараа, эхний үлдэгдэл, нэг сарын баримт (нэхэмжлэх, төлбөр, худалдан авалт, валютын гүйлгээ).
-- Seed нь **idempotent**: тогтмол UUID ба `ON CONFLICT DO NOTHING`. Runner seed-ийг `erp_migrator` → `SET ROLE erp_owner`-оор ажиллуулна. FORCE RLS эзэмшигчид ч үйлчилдэг тул tenant/компани бүрийн өмнө `app.tenant_id`, `app.company_id`, `app.user_id`-ийг `set_config(…, true)`-ээр заавал тохируулна (аудит trigger мөн эдгээрийг уншдаг).
+- Seed нь **idempotent**: тогтмол UUID ба `ON CONFLICT DO NOTHING`. Runner seed-ийг `erp_migrator` → `SET ROLE app_owner`-оор ажиллуулна. FORCE RLS эзэмшигчид ч үйлчилдэг тул tenant/компани бүрийн өмнө `platform.fn_set_context(tenant, company, user, request)`-ээр (`app.tenant_id`, `app.company_id`, `app.user_id`) заавал тохируулна (аудит trigger мөн эдгээрийг уншдаг).
 - Seed SQL нь ledger хүснэгтэд (`gl_transaction`, `gl_entry`, `vat_entry`, `*_ledger_entry`, `detailed_*`) шууд INSERT **хийхгүй** (§2.4 дүрэм №5; цоорхойгүй counter ба hash chain эвдэрнэ). Эхний үлдэгдлийг `OPENING` ваучерын **ноорог**, бусад баримтыг ноорог хэлбэрээр оруулна. Тэдгээрийг `dotnet run --project tools/Erp.DevTools -- demo-post` батална: модулиудыг in-process ачаалж (`Add<M>Module()`), `ConnectionStrings:App`-аар `IPostingService`-ийг дуудна. Аль хэдийн батлагдсан ноорог үлдэхгүй тул дахин ажиллуулахад аюулгүй.
 - `seed --set demo` нь `Production` орчинд ажиллахаас татгалзана.
 - Seed файлын нэр: `S001__demo_tenant.sql`, `S002__demo_master_data.sql`, …
@@ -869,8 +901,8 @@ Production өгөгдлийг доод орчин (staging, local) руу **ху
 |---|---|---|---|
 | 1 | `build: scaffolding from starter` | devops | `starter/`-ийг хуулж, ruleset, environment, CODEOWNERS багуудыг тохируулна |
 | 2 | `build: solution and empty projects` | tech lead | `Erp.slnx`, 3 host, 6 BuildingBlocks, 13 модуль × 5 давхарга, 4 тест төсөл, `tools/Erp.DevTools`, project reference-ууд (§2.4), `launchSettings.json` (Api 5100, Worker 5200), `packages.lock.json` |
-| 3 | `feat(db): migrator` | platform | `Erp.Migrator` (өөрийн runner, ADR-0014): journal `core.schema_migration` (SHA-256 checksum), `SET ROLE erp_owner`, `lock_timeout 5s` + 3 удаа retry, session advisory lock, `-- migrator: no-transaction`, `--connection`, `migrate/verify/seed/info/reset`, Production-д demo seed хориг; runner-ийн integration тест |
-| 4 | `feat(db): core foundation` | ledger-owners + devops | `V0001__core_schemas_and_domains.sql` (schema-ууд, `core.amount`… domain, `core.fn_uuid_v7()`), `V0002__core_rls_and_guard_helpers.sql` (`core.fn_apply_tenant_rls`, `core.fn_make_append_only`, `core.fn_block_ledger_mutation`, `core.fn_add_audit_trigger`, `core.fn_lock_company_posting`), `V0003__integration_outbox_idempotency.sql`, `V0004__integration_quartz_tables.sql` |
+| 3 | `feat(db): migrator` | platform | `Erp.Migrator` (өөрийн runner, ADR-0014): journal `platform.schema_migration` (SHA-256 checksum), `SET ROLE app_owner`, psql `\set` мөрийг алгасах, `lock_timeout 5s` + 3 удаа retry, session advisory lock, `-- migrator: no-transaction`, `--connection`, `migrate/verify/seed/info/reset`, Production-д demo seed хориг; runner-ийн integration тест |
+| 4 | `feat(db): canonical baseline` | ledger-owners + devops | Канон `db/schema/000…920`, `db/seed`, `db/tests`, `db/apply.sh`-ийг **өөрчлөлтгүй** хуулна (domain `platform.amount`…, `platform.fn_set_context`, `platform.fn_lock_company_posting`, `platform.fn_next_document_no`/`fn_next_entry_no`, `platform.fn_guard_immutable`, RLS `tenant_isolation`/`company_isolation`, `audit.fn_row_change`; group role `app_*`); `Erp.Migrator` тэдгээрийг embed хийнэ; CI нь `migrate` (эхнийх нь superuser) → `verify` → `db/tests/*.sql`-ийг ажиллуулна. Дараа нь `V0001__integration_quartz_tables.sql` (Quartz-ийн `qrtz_*`; `quartz` схемийг `app_owner` эзэмшилтэйгээр 000-д нэмэх нь канон схемд шаардлагатай өөрчлөлт — [02-architecture.md](./02-architecture.md) "Нийцүүлэлтийн тэмдэглэл") |
 | 5 | `feat(platform): building blocks` | tech lead | `Erp.BuildingBlocks.Domain` (`Monetary/MoneyMath` + tie тест, `Money`, `BusinessDate`, `Result<T>`), `IBusinessCalendar`, `TimeProvider` бүртгэл, `TenantSession`, `TenantScope`, `DecimalStringJsonConverter`, ProblemDetails, Idempotency filter, `AddValidation()`, `AddKeyPerFile("/run/secrets")`, OTel тохиргоо |
 | 6 | `test: fixtures and first guards` | platform | `PostgresFixture`, анхны RLS тест (tenant A ≠ B, контекстгүй query алдаа өгөх), ledger immutability тест, §2.4-ийн 14 architecture дүрэм |
 | 7 | `feat(web): SPA skeleton` | frontend | Vite + React + TS, i18n (`mn`/`en`), BFF login, AG Grid жишээ, `Money` төрөл, ESLint хориг, `api:gen` |
@@ -910,6 +942,53 @@ find src tests -name 'Class1.cs' -delete
 dotnet restore Erp.slnx --force-evaluate   # packages.lock.json үүсгэнэ, commit хийнэ
 ```
 
+> **Тэмдэглэл (2026-10-08):** `dotnet sln Erp.slnx add <олон төсөл> --solution-folder X` нь .NET SDK 10.0.401 дээр solution folder-ийг буруу онооно (бүх төсөл эхний folder-т орсон). Төсөл бүрийг тусад нь нэмэх, эсвэл `Erp.slnx`-ийг гараар засна (starter-ийн `Erp.slnx`-ийг үз).
+
+### 16.1 Sprint 0 skeleton — starter-д бэлэн (2026-10-08)
+
+[`starter/`](./starter/) нь PR #2–#6, #10-ын **хамгийн бага, ажилладаг хувилбарыг** аль хэдийн агуулна. Шинэ репод `cp -r starter/. .` хийсэн өдрөөсөө доорх командууд ногоон байна; Sprint 1 нь модулиудыг үүн дээр нэмнэ. Дэлгэрэнгүй (бүтэц, curl жишээ, хэрэгжсэн/stub хүснэгт): [`starter/README.md`](./starter/README.md) "Sprint 0 walking skeleton".
+
+**Build / ажиллуулах / тест** (репо root-оос; .NET 10 SDK, PostgreSQL 16+):
+
+```bash
+dotnet restore                       # packages.lock.json (CI: --locked-mode)
+dotnet build -c Release              # 0 warning (TreatWarningsAsErrors, ERP0001, RS0030, CA/MA/IDE дүрмүүд)
+dotnet test                          # Unit + Architecture + Integration
+# Integration: ERP_TEST_DB (libpq "key=value" эсвэл Npgsql формат) — DB/role/extension үүсгэх эрхтэй хэрэглэгч.
+# Default: "host=localhost port=5432 user=postgres password=postgres dbname=erp_skeleton_test" (= deploy/docker-compose.yml ба CI). DB-г DROP/CREATE → Erp.Migrator
+# migrate + seed + verify → тест бүрд шинэ компани (platform.fn_provision_company_mn, НӨАТ төлөгч, 2026–2027 он).
+ERP_TEST_DB="host=localhost port=5432 user=postgres password=postgres dbname=erp_skeleton_test" dotnet test
+dotnet test --project tests/Integration/Erp.Tests.Integration.csproj -- --filter-namespace Erp.Tests.Integration.Golden
+python3 tools/ci/validate-golden.py  # golden JSON ↔ tests/Golden/golden-scenario.schema.json (16 §11.6)
+
+dotnet run --project src/Erp.Migrator -- migrate --connection "<superuser/ops connection>"   # db/schema 000…920
+dotnet run --project src/Erp.Migrator -- seed    --connection "…"                             # legal_parameters + mn_*
+dotnet run --project src/Erp.Migrator -- verify  --connection "…"                             # checksum + catalog_checks.sql
+ConnectionStrings__App="…erp_app…" dotnet run --project src/Erp.Api                          # http://localhost:5100/health/ready
+```
+
+**Баталгаажуулсан үр дүн (2026-10-08, .NET SDK 10.0.401, PostgreSQL 16.15):** 19 төсөл 0 warning / 0 error; `dotnet test` **125/125** (Unit 66, Architecture 38, Integration 21); `dotnet format whitespace/style --verify-no-changes` цэвэр; migrator-оор суулгасан DB дээр `db/tests/{catalog_checks,smoke,seed_checks}.sql` бүгд PASS; `ci.yml` actionlint 0 алдаа.
+
+**Хэрэгжсэн (ажилладаг, тестлэгдсэн):**
+
+| Хэсэг | Төсөл / файл | Тест |
+|---|---|---|
+| `MoneyMath` (AwayFromZero, UP/DOWN абсолют утгаар, `IsRounded`, running-remainder `Allocate`), `Money`, `CurrencyCode`, `Result`/`Error` | `Erp.BuildingBlocks.Domain` (shared kernel) | tie тохиолдол (§4.2 #12), FsCheck: Σ хуваарилалт = нийт |
+| `TenantSession` (BEGIN + `platform.fn_set_context` + `lock_timeout`/`statement_timeout`, сонголттой `Database:SessionRole`), `ITenantTransactionRunner`, `IBusinessCalendar` + `TimeProvider`, `DecimalStringJsonConverter`, ProblemDetails `errors[]` | `Erp.BuildingBlocks.*` | JSON: number → 400, string → decimal |
+| Posting engine (§5.2): advisory lock, түгжээний доорх шалгалт (тэнцэл яг, бөөрөнхийлөлт, ≥ 2 мөр, POSTING/blocked/direct posting, OPEN үе + компанийн цонх, шалтгааны код, writer), `fn_next_document_no` (gapless GJ) + `fn_next_entry_no`, `gl_transaction`/`gl_entry`/`gl_register`, `SET CONSTRAINTS ALL IMMEDIATE`, SQLSTATE (`ERB01`, `ERP01`, `ERG01`, `ERN0x`, `55P03`) → код; preview = ижил код + ROLLBACK | `Erp.GeneralLedger.Infrastructure.Posting` (+ `Posting/Sql/*.sql`) | тэнцсэн/тэнцээгүй, хаалттай үе, үегүй огноо, цонх, хяналтын/heading данс, preview, 20 зэрэгцээ posting завсаргүй |
+| Журнал → `PostingDocument` (ваучер = баримтын № + огноо, BR-PST-27 дараалал, мөрийн тэнцэл, хоёр талт мөр); `POST /api/v1/companies/{id}/gl/postings[:preview]` | `Erp.GeneralLedger.Application/Api` | integration + golden |
+| Журналын НӨАТ (gross, `NORMAL`): `IJournalVatHandler` (Tax), `tax.vat_entry` + `gl_entry_vat_entry_link` суурь мөртэй, НӨАТ-ын үеийн шалгалт | `Erp.Tax.*` | 110 000 → 100 000 + 10 000 (борлуулалт, худалдан авалт), I-06 |
+| Буцаалт (§5.10): эх огноо/дугаар, эсрэг тэмдэг = эсрэг багана (D-C3), `platform.fn_ledger_update`-ээр эх мөр/гүйлгээ/register-ийг тэмдэглэх, VAT entry-ийн толин тусгал; `POST …/gl-transactions/{no}:reverse` | `ReversalService`, `VatEntryWriter` | давхар буцаалт 409, буцаалтыг буцаах 409, шалтгаангүй 422 |
+| `Erp.Migrator` (ADR-0014): `migrate`/`seed`/`verify`/`info`, journal `platform.schema_migration`, script бүр нэг transaction, schema = versioned, seed = repeatable | `src/Erp.Migrator` | fixture бүр хоосон DB-ээс |
+| Architecture дүрэм §2.4: #1, #2, #3 (модулийн хил, GL ↛ Tax), #4, #5 (ledger SQL эзэмшил), #6, #7, #8, #9 (handler sealed), #13 | `tests/Architecture` (ArchUnitNET + reflection) | non-vacuity шалгалттай |
+| Golden runner (16 §11.8-ийн дэд олонлог): JSON, `journal.post/preview`, `transaction.reverse`, preview = post (I-09), I-01/06/07/08, `GS-E0xx` код; дэмжээгүй түлхүүр → `GS-E090` | `tests/Integration/Golden`, `tests/Golden/Drafts/{gl,vat}` | self-test: буруу дүн/код/дугаар барина |
+
+**Stub эсвэл хараахан байхгүй (Sprint 1+):** нэвтрэлт/BFF/OpenIddict ба `RequirePermission` (tenant нь `X-Erp-Tenant-Id` dev header — зөвхөн локал/CI), `Idempotency-Key`, `ETag/If-Match`, ноорог журналын resource (`/journals/{id}:post`), OpenAPI үүсгэлт, OTel, outbox, `Erp.Worker` (зөвхөн `/health/live`), dimension, `CUSTOMER`/`VENDOR`/`BANK_ACCOUNT` журналын тал (Parties/CashBank writer), `REVERSE_CHARGE`/`FULL_VAT`/хасагдахгүй НӨАТ (тодорхой алдааны код буцаана), register бүхэлд буцаах, хаалттай үеийн залруулгын санал, жилийн хаалт, `Erp.DevTools`, `seed --set demo`, `reset`, `db/migrations/V####`, Testcontainers (`ERP_TEST_PG_IMAGE`), тусдаа `Erp.Tests.Golden` (YAML, `extends`, `variants`, `*.actual.yaml`), `audit.posting_log` (доорх алдаа).
+
+**Нэршлийн зөрүү (энэ баримт давамгайлна):** Sprint 0-ийн даалгаварт `Erp.SharedKernel`, `tests/Erp.UnitTests`, `tools/Erp.Migrator`, `tests/golden/*.json` гэж бичсэн; skeleton нь §2.1-ийн дагуу `Erp.BuildingBlocks.Domain`, `tests/{Unit,Architecture,Integration}/Erp.Tests.*`, `src/Erp.Migrator`, `tests/Golden/{Scenarios,Drafts}/<area>/GS-*.json` (16 §11.2) хэрэглэсэн.
+
+**Канон схемийн алдаа (skeleton илрүүлсэн, schema change request):** `audit.posting_log` нь `platform.ledger_guard`-д бүртгэлтэй тул `trg_posting_log_before_insert` (`platform.fn_ledger_before_insert`) нь `NEW.created_at`-ийг оноодог, гэтэл хүснэгтэд `created_at` алга → ямар ч INSERT `42703`-аар унана. Санал: `created_at timestamptz NOT NULL DEFAULT now()` нэмэх (эсвэл энэ хүснэгтийг before-insert trigger-ээс чөлөөлөх). Засагдтал engine BR-PST-67-ийн posting log-ийг бичихгүй.
+
 ---
 
 ## 17. Санал болгох IDE өргөтгөл
@@ -940,7 +1019,7 @@ dotnet restore Erp.slnx --force-evaluate   # packages.lock.json үүсгэнэ, 
 | `postgres` асахгүй, `port is already allocated` | Локалд өөр PostgreSQL 5432 дээр байна | `ERP_PG_PORT=55432 docker compose … up -d`, connection string-д порт солих |
 | Role/DB байхгүй (`role "erp_app" does not exist`) | Volume өмнө нь үүссэн тул init script ажиллаагүй | `docker compose -f deploy/docker-compose.yml down -v`, дараа нь `up -d` |
 | `unrecognized configuration parameter "app.tenant_id"` эсвэл `invalid input syntax for type uuid: ""` | `app.tenant_id` тохируулаагүй (RLS fail-closed) | Transaction-ийг `TenantSession`-оор нээх; psql-д `BEGIN; SELECT set_config('app.tenant_id','<uuid>',true);` |
-| Query 0 мөр буцаана | Буруу tenant/company контекст | psql-д `SELECT current_user, current_setting('app.tenant_id', true), current_setting('app.company_id', true);` |
+| Query 0 мөр буцаана | Буруу (өөр) tenant/company контекст. Контекст огт тохируулаагүй бол 0 мөр биш, алдаа гарна (fail-closed, D-K6) | psql-д `SELECT current_user, current_setting('app.tenant_id', true), current_setting('app.company_id', true);` |
 | Ledger INSERT: `company_id` таарахгүй гэсэн алдаа | `app.company_id` тохируулаагүй эсвэл өөр компани | `TenantSession`-ийг зөв компанитай нээх (BEFORE INSERT trigger шалгадаг) |
 | `permission denied for table gl_entry` (UPDATE/DELETE) эсвэл `ledger is append-only` | Ledger-ийг засах гэсэн | Зориуд хориглосон. Reversal posting хийнэ |
 | `Erp.Migrator`: `checksum mismatch for V00NN` | `main`-д орсон migration-ийг засварласан | Засварыг буцааж шинэ V файл үүсгэ. Локалд merge хийгдээгүй файл бол `reset --i-know-this-is-local` |
@@ -990,4 +1069,4 @@ dotnet restore Erp.slnx --force-evaluate   # packages.lock.json үүсгэнэ, 
 3. Монголын ДТ-ийн үйлчилгээ үзүүлэгч, VM/registry/VPN-ийн бодит тохиргоо (research §17 #1). `cd.yml`-ийн `vars` түүнээс хамаарна.
 4. QuestPDF-ийн PDF/A нийцэл (10 жилийн архив), орлогын босго давахаас өмнө төлбөртэй лиценз.
 5. GitHub Actions-ийн хувийн репо, self-hosted runner-ийн 2026 оны үнэ (research §17 #11).
-6. **Үлдсэн жижиг зөрүү (cross-doc review-д шийднэ).** 2026-10-06-ны review-ээр энэ баримт ба `starter/`-ийг батлагдсан ADR-ууд ба [02-architecture.md](./02-architecture.md)-тай нэгтгэсэн ([02-architecture.md](./02-architecture.md) Хавсралт Б №13): `Erp.Migrator` (өөрийн runner, DbUp-гүй), `core.schema_migration`, `core.*` domain ба `core.fn_*` helper, `rls_<table>__tenant`, `-- migrator: no-transaction`, `lock_timeout 5s`, лавлах өгөгдөл V файлаар, schema нэрс (`parties`, `purchases`, `cash_bank`, `currency`, `fixed_assets`, `inventory`, `reporting`), `TenantSession`, `IPostingService`, built-in `AddValidation()`, `Erp.BuildingBlocks.Domain` (+ `.Documents`), `TimeProvider` + `IBusinessCalendar`, `/run/secrets`, `…/post-preview`, freeze календарь, орчнууд (`local`/`ci`/`staging`/`production`), span/metric нэрс. Аюулгүй байдлын хоёр зөрүүг засав: `erp_owner`-т `BYPASSRLS` өгөхгүй; контекстгүй query 0 мөр биш алдаа өгнө (fail-closed). Үлдсэн нь: (а) image-ийн тоо — 02-architecture §3 нь API ба worker-ийг нэг image-ээс гэж бичсэн, starter нь `api`, `worker`, `migrator` гурван target гаргадаг (SPA зөвхөн api-д); (б) image-ийн эмзэг байдлын скан — 02-architecture §10.8 Trivy, starter Grype (§10); (в) E2E хавтасны нэр (`tests/E2E` ба `tests/e2e`). Нэгийг сонгоод энэ баримт, `starter/`, 02-architecture-ийг зэрэг шинэчилнэ.
+6. **Үлдсэн жижиг зөрүү (cross-doc review-д шийднэ).** 2026-10-06-ны review-ээр энэ баримт ба `starter/`-ийг батлагдсан ADR-ууд ба [02-architecture.md](./02-architecture.md)-тай нэгтгэсэн (`Erp.Migrator`, `-- migrator: no-transaction`, `lock_timeout 5s`, лавлах өгөгдөл V файлаар, `TenantSession`, `IPostingService`, built-in `AddValidation()`, `Erp.BuildingBlocks.Domain` (+ `.Documents`), `TimeProvider` + `IBusinessCalendar`, `/run/secrets`, `…/post-preview`, freeze календарь, орчнууд, span/metric нэрс). **2026-10-08-нд** DB-ийн нэрсийг канон схем ([db/schema](./db/schema/)) ба [DECISIONS](./DECISIONS.md) §K-д нийцүүлсэн: схем `platform`, `gl`, `tax`, `party`, `sales`, `purchase`, `bank`, `fx`, `fa`, `inv`, `rpt`, `ebarimt`, `integration`, `audit`, `identity` (`core`, `ops`, `parties`, `cash_bank`, `currency`, `fixed_assets`, `inventory`, `purchases`, `reporting` байхгүй); domain `platform.amount` г.м.; helper `platform.fn_*`; RLS бодлого `tenant_isolation`/`company_isolation`; group role `app_*` + login `erp_*`, BYPASSRLS зөвхөн `app_rls_bypass` (`erp_dispatch_definer` хасагдсан); journal `platform.schema_migration`; E2E хавтас `tests/E2E` (02-architecture §5.1-тэй ижил). Аюулгүй байдлын хоёр зөрүү засагдсан хэвээр: `app_owner`/`erp_owner`-т `BYPASSRLS` өгөхгүй; контекстгүй query 0 мөр биш алдаа өгнө (fail-closed, D-K6). Үлдсэн нь: (а) image-ийн тоо — 02-architecture §3 нь API ба worker-ийг нэг image-ээс гэж бичсэн, starter нь `api`, `worker`, `migrator` гурван target гаргадаг (SPA зөвхөн api-д); (б) image-ийн эмзэг байдлын скан — 02-architecture §10.8 Trivy, starter Grype (§10). Нэгийг сонгоод энэ баримт, `starter/`, 02-architecture-ийг зэрэг шинэчилнэ.

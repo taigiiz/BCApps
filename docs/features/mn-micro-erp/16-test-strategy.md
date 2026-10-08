@@ -3,7 +3,7 @@
 > **Төлөв:** Хөгжүүлэлтэд бэлэн тодорхойлолт (development-ready spec), ноорог v1.
 > **Огноо:** 2026-10-07
 > **Уншигч:** QA, backend ба frontend хөгжүүлэгч, DevOps, golden scenario хянадаг нягтлан зөвлөх, бүтээгдэхүүний эзэн (UAT, чанарын хаалга)
-> **Эх сурвалж (давамгайлах дарааллаар):** [DECISIONS.md](./DECISIONS.md) (D-K1: DB-ийн нэрийн эх сурвалж нь [`db/schema/*.sql`](./db/schema/)) → [adr/](./adr/README.md) → [02-architecture.md](./02-architecture.md) (§1.2, §5.4, §6, §7.8, §8, §9, §11, §12.7, §13) → [03-domain-model.md](./03-domain-model.md) (§5 инвариант INV-01…INV-31) → [01-requirements.md](./01-requirements.md) (FR, NFR-001…NFR-123) → [18-dev-setup.md](./18-dev-setup.md) (§9 DoD, §10 CI, §13 тест өгөгдөл) → [12-ebarimt-integration.md](./12-ebarimt-integration.md) (§24 AT-EB, §25 staging) → [13-security-audit-tenancy.md](./13-security-audit-tenancy.md) (§17 SEC-T, §20 AT-SEC) → [14-api.md](./14-api.md) (§9 алдааны код, §19) → [15-ui-ux.md](./15-ui-ux.md) (§11 хүртээмж, AT-UI) → [research/tech-architecture.md](./research/tech-architecture.md) §11, §16 (TA-14).
+> **Эх сурвалж (давамгайлах дарааллаар):** [DECISIONS.md](./DECISIONS.md) (D-K1: DB-ийн нэрийн эх сурвалж нь [`db/schema/*.sql`](./db/schema/)) → [adr/](./adr/README.md) → [02-architecture.md](./02-architecture.md) (§1.2, §5.4, §6, §7.8, §8, §9, §11, §12.7, §13) → [03-domain-model.md](./03-domain-model.md) (§5 инвариант INV-01…INV-31) → [01-requirements.md](./01-requirements.md) (FR, NFR-001…NFR-121) → [18-dev-setup.md](./18-dev-setup.md) (§9 DoD, §10 CI, §13 тест өгөгдөл) → [12-ebarimt-integration.md](./12-ebarimt-integration.md) (§24 AT-EB, §25 staging) → [13-security-audit-tenancy.md](./13-security-audit-tenancy.md) (§17 SEC-T, §20 AT-SEC) → [14-api.md](./14-api.md) (§9 алдааны код, §19) → [15-ui-ux.md](./15-ui-ux.md) (§11 хүртээмж, AT-UI) → [research/tech-architecture.md](./research/tech-architecture.md) §11, §16 (TA-14).
 > **Модулийн spec.** Хяналтын үед (2026-10-07) репод [05-posting-engine](./05-posting-engine.md), [06-sales-receivables](./06-sales-receivables.md), [07-purchases-payables](./07-purchases-payables.md), [08-tax-vat-mn](./08-tax-vat-mn.md), [11-fixed-assets-inventory](./11-fixed-assets-inventory.md) байна; [09-bank-cash-fx](./09-bank-cash-fx.md) зэрэгцэн бичигдэж байна (хяналтын үед бүрэн биш); тайлангийн spec хараахан байхгүй. Модулийн spec golden ID-г (GS-GL, GS-SAL, GS-AR, GS-PUR, GS-AP, GS-VAT) өөрөө оноосон бол тэр ID ба дүн давамгайлна (§0.4 Z8, §12.1). Шинээр бичигдэх spec-тэй §12-ын хүлээгдэх үр дүнг тулгаж, зөрвөл §22-ын журмаар шийднэ.
 > **Энэ баримт `db/` болон бусад баримтыг засаагүй.** Схемийн өөрчлөлтийг §20-д, бусад баримтын өөрчлөлтийг §21-д хүсэлт болгон бичсэн.
 
@@ -97,12 +97,12 @@ Golden scenario-ийн `AREA` кодууд нь [18 §13.3](./18-dev-setup.md)-�
 
 | # | Зөрүү | Шийдвэр (энэ баримтад) | Үндэслэл |
 |---|---|---|---|
-| Z1 | [02](./02-architecture.md), [18](./18-dev-setup.md)-д `core.*`, `parties`, `cash_bank`, `currency`, `fixed_assets`, `inventory`, `reporting` schema, `integration.outbox_message`, `ebarimt.receipt`, `vend_ledger_entry` гэх мэт нэр байна | Тест, golden scenario, SQL жишээ бүгд каноник нэрийг хэрэглэнэ: `platform.*` (domain, туслах функц), `party`, `bank`, `fx`, `fa`, `inv`, `rpt`, `integration.outbox`, `ebarimt.ebarimt_document`, `party.vendor_ledger_entry`, `party.detailed_vendor_ledger_entry` | D-K1 |
-| Z2 | [02 §6.8](./02-architecture.md)-д буцаалтыг "улаан сторно" гэж бичсэн | Буцаалт нь эсрэг тэмдэгтэй, **эсрэг баганад** орно. Сторно байхгүй. Golden scenario-д буцаалтын бичилт нь эх бичилтийн эсрэг талд (Дт ↔ Кт) бичигдэнэ | D-C3, FR-GL-010 AC1 |
-| Z3 | [02 §6.9](./02-architecture.md)-д үеийн төлөв `OPEN → SOFT_LOCKED → CLOSED → HARD_LOCKED` | Каноник төлөв: `OPEN`, `CLOSED`, `LOCKED` (`gl.accounting_period`, `gl.fiscal_year`). НӨАТ-ын үе: `OPEN`, `CLOSED`, `SUBMITTED` (`tax.vat_return_period`) | D-D3, D-K1 |
-| Z4 | [02 §9.1](./02-architecture.md)-д outbox-ийн төлөв `DISPATCHING`, `SENDING`, `UNKNOWN`… | Каноник: `integration.outbox.status` ∈ `PENDING`, `PROCESSING`, `DONE`, `DEAD`, `CANCELLED`. eBarimt-ийн баримтын төлөв: `ebarimt.ebarimt_document.status` ∈ `PENDING`, `SENT`, `SUCCESS`, `ERROR`, `UNKNOWN`, `CANCELLED` | D-K1, [12 §9](./12-ebarimt-integration.md) |
+| Z1 | **[02/18/ADR-д 2026-10-08-нд засагдсан]** [02](./02-architecture.md), [18](./18-dev-setup.md)-д `core.*`, `parties`, `cash_bank`, `currency`, `fixed_assets`, `inventory`, `reporting` schema, `integration.outbox_message`, `ebarimt.receipt`, `vend_ledger_entry` гэх мэт нэр байна | Тест, golden scenario, SQL жишээ бүгд каноник нэрийг хэрэглэнэ: `platform.*` (domain, туслах функц), `party`, `bank`, `fx`, `fa`, `inv`, `rpt`, `integration.outbox`, `ebarimt.ebarimt_document`, `party.vendor_ledger_entry`, `party.detailed_vendor_ledger_entry` | D-K1 |
+| Z2 | **[02/18/ADR-д 2026-10-08-нд засагдсан]** [02 §6.8](./02-architecture.md)-д буцаалтыг "улаан сторно" гэж бичсэн | Буцаалт нь эсрэг тэмдэгтэй, **эсрэг баганад** орно. Сторно байхгүй. Golden scenario-д буцаалтын бичилт нь эх бичилтийн эсрэг талд (Дт ↔ Кт) бичигдэнэ | D-C3, FR-GL-010 AC1 |
+| Z3 | **[02/18/ADR-д 2026-10-08-нд засагдсан]** [02 §6.9](./02-architecture.md)-д үеийн төлөв `OPEN → SOFT_LOCKED → CLOSED → HARD_LOCKED` | Каноник төлөв: `OPEN`, `CLOSED`, `LOCKED` (`gl.accounting_period`, `gl.fiscal_year`). НӨАТ-ын үе: `OPEN`, `CLOSED`, `SUBMITTED` (`tax.vat_return_period`) | D-D3, D-K1 |
+| Z4 | **[02/18/ADR-д 2026-10-08-нд засагдсан]** [02 §9.1](./02-architecture.md)-д outbox-ийн төлөв `DISPATCHING`, `SENDING`, `UNKNOWN`… | Каноник: `integration.outbox.status` ∈ `PENDING`, `PROCESSING`, `DONE`, `DEAD`, `CANCELLED`. eBarimt-ийн баримтын төлөв: `ebarimt.ebarimt_document.status` ∈ `PENDING`, `SENT`, `SUCCESS`, `ERROR`, `UNKNOWN`, `CANCELLED` | D-K1, [12 §9](./12-ebarimt-integration.md) |
 | Z5 | [18 §13.3](./18-dev-setup.md) golden-ийг YAML гэсэн; энэ даалгавар JSON schema шаардсан | Файлын формат нь **YAML** хэвээр (нягтлан уншихад хялбар). Бүтцийг **JSON Schema (draft 2020-12)** тодорхойлно. YAML-ийг JSON болгоод schema-аар шалгана (§11.6). JSON файлыг ч хүлээн авна | Хоёуланд нийцнэ |
-| Z6 | [02 §6.3](./02-architecture.md)-ийн DB role `erp_app`, `erp_owner`; schema-д `app_user`, `app_owner`, `app_worker`, `app_readonly`, `app_rls_bypass` | Тест нь login role (`erp_app`, `erp_worker`, `erp_migrator`, `erp_ops_ro`)-оор холбогдоно. Тэдгээр нь group role-д харгалзана (`erp_app` → `app_user` г.м., `000_extensions_roles.sql`) | D-K1 |
+| Z6 | **[02/18/ADR-д 2026-10-08-нд засагдсан]** [02 §6.3](./02-architecture.md)-ийн DB role `erp_app`, `erp_owner`; schema-д `app_user`, `app_owner`, `app_worker`, `app_readonly`, `app_rls_bypass` | Тест нь login role (`erp_app`, `erp_worker`, `erp_migrator`, `erp_ops_ro`)-оор холбогдоно. Тэдгээр нь group role-д харгалзана (`erp_app` → `app_user` г.м., `000_extensions_roles.sql`) | D-K1 |
 | Z7 | Дансны дугаар: 01-requirements-ийн AC-д "5100" (борлуулалтын орлого) гэж ерөнхийлсөн. Seed-д бараа = 5100, үйлчилгээ = 5110, экспорт = 5120 | Golden scenario seed-ийн дансыг ([seed/README §3, §5](./db/seed/README.md)) яг хэрэглэнэ. Мөр бүрд Gen. Prod. бүлгийг (GOODS/SERVICES) заасан тул орлогын данс тодорхой | Seed бол тестийн oracle-ийн нэг хэсэг |
 | Z8 | [05 §11.2](./05-posting-engine.md), [06 §11.2](./06-sales-receivables.md), [07 §11.2](./07-purchases-payables.md) ба [08 §4](./08-tax-vat-mn.md) (BR-ийн "Шалгах" багана, E-TAX-01…12) нь golden ID-г (GS-GL-001…015, GS-SAL-001…012, GS-AR-001…007, GS-PUR-001…012, GS-AP-001…007) өөрсдийн жишээнд оноосон; [08 §11.2](./08-tax-vat-mn.md) нь энэ баримтын GS-VAT-001…012-ийг хүлээн авч, өөрийн E-TAX жишээг тэдгээрийн нэмэлт case болгосон ба GS-VAT-013…022-ийг нэмсэн; жишээ нь шинэ бус counter (`GJ-2026-00042`), өөр master data (`C0001`, `V00007`) ашигладаг | Модулийн spec-ийн ID ба дүнг баримтлана. Энэ баримтын нэмэлт scenario дараагийн дугаар авна (GS-GL-016…020, GS-SAL-013, GS-PUR-013…015, GS-AR-008…009). Тулгалтын AREA нь `AR`, `AP`. Хөрвүүлэх дүрэм: §12.1 | Нэг ID нэг scenario (TST-GS-02); дүнгийн эх сурвалж нэг |
 
@@ -1569,6 +1569,10 @@ function RunScenario(file):
 | GS-GL-018 | Баримтаас үүссэн гүйлгээг буцаах хориг | R1 | NOW | FR-GL-013 AC2, D-D5 |
 | GS-GL-019 | Компанийн posting-ийн цонх | R1 | NOW | FR-GL-023 |
 | GS-GL-020 | Жил дамнасан дугаарлалт | R1 | NOW | FR-PLT-008, D-C7 |
+| GS-GL-021 | Тэнцсэн журнал: хуулийн дугаар огнооны дарааллаар, завсаргүй (starter `Drafts/gl`, BR-PST-27) — **санал** | R1 | NOW | FR-GL-006, FR-GL-009, D-C7 |
+| GS-GL-022 | Хаалттай үе рүү бичих хориг, нээлттэй үе хэвийн (starter `Drafts/gl`) — **санал** | R1 | NOW | FR-GL-024, D-D3 |
+| GS-GL-023 | Журналын буцаалт эсрэг баганад, BANK01-гүй (GS-GL-006-ийн хувилбар, starter `Drafts/gl`) — **санал** | R1 | NOW | FR-GL-010, FR-GL-013, D-C3 |
+| GS-GL-024 | Компанийн posting-ийн цонх профайлаас (GS-GL-019-ийн хувилбар, starter `Drafts/gl`) — **санал** | R1 | NOW | FR-GL-023 |
 | GS-VAT-001 | Баримтын түвшний НӨАТ, running remainder (+ 08 E-TAX-01 case) | R1 | NOW | FR-TAX-004 |
 | GS-VAT-002 | Үнэ НӨАТ-тэй, бэлэн борлуулалт | R1 | NOW | FR-TAX-005, FR-SAL-006 |
 | GS-VAT-003 | Холимог ангилал VAT10/VAT0/EXEMPT | R1 | NOW | FR-TAX-002, FR-TAX-007, INV-31 |
@@ -1591,6 +1595,7 @@ function RunScenario(file):
 | GS-VAT-020 | НХАТ-ын хаалт (08 E-TAX-10) | R2 | NOW | FR-TAX-019 |
 | GS-VAT-021 | Хялбаршуулсан НӨАТ (08 E-TAX-11, Could) | R2 | 2027 | FR-TAX-022 |
 | GS-VAT-022 | ААНОАТ-ын туслах тайлан (08 E-TAX-12) | R2 | 2027 | 08 BR-TAX-105…107 |
+| GS-VAT-023 | Журналын НӨАТ 10% gross арга: 110 000 = 100 000 + 10 000 (05 §6.4, starter `Drafts/vat`) — **санал** | R1 | NOW | FR-TAX-004, FR-TAX-007 |
 | GS-SAL-001 | B2C бэлэн борлуулалт, МХ-1, eBarimt | R1 | NOW | FR-SAL-006, FR-EBR-002 |
 | GS-SAL-002 | B2B зээлийн нэхэмжлэх, 4 мөр, НӨАТ-ын хуваарилалт (06 P1) | R1 | NOW | FR-SAL-003…005, FR-PTY-007 |
 | GS-SAL-003 | Хөнгөлөлт тусдаа дансанд `LINE_DISCOUNTS` (06 P1a) | R1 | NOW | FR-SAL-003 AC2, D-F2 |
@@ -1642,26 +1647,50 @@ function RunScenario(file):
 | GS-CASH-005 | Хуулийн баримтын огнооны дараалал (кассын хоцорсон баримт) | R1 | NOW | D-C7, INV-08 |
 | GS-CASH-006 | Хэтэвч (QPay) ба шимтгэл | R1 | NOW | FR-BNK-017 |
 | GS-CASH-007 | Мөнгөний бичилтийг буцаах ба хориг | R1 | NOW | FR-BNK-015 |
+| GS-CASH-008 | МХ-1/МХ-2 хэвлэмэл: дүн үсгээр, харьцсан данс, гарын үсэг (09 §11.4) — **санал** | R1 | NOW | FR-BNK-002, FR-BNK-003 |
+| GS-CASH-009 | Хэтэвчийн тооцоо ба дараагийн банкны хуулгаар тулгах (09 §11.4) — **санал** | R1 | NOW | FR-BNK-017 |
 | GS-REC-001 | Хуулга импорт, автомат тулгалт, батлах | R1 | NOW | FR-BNK-008, 011, 012, 013 |
 | GS-REC-002 | Давхар импорт (файл ба мөр) | R1 | NOW | FR-BNK-010 |
 | GS-REC-003 | Тэнцэхгүй хуулга ба хоёрдмол тулгалт | R1 | NOW | FR-BNK-011 AC2, FR-BNK-013 AC2 |
 | GS-REC-004 | Тулгалтын тайлан ба буцаах | R1 | NOW | FR-BNK-014, FR-BNK-016 |
+| GS-REC-005 | MEDIUM санал, хүлцэл, зөрүүг хуваах (09 §11.4 P7) — **санал** | R1 | NOW | FR-BNK-011, FR-BNK-013 |
+| GS-REC-006 | n:1 ба 1:n бүлэг, `YES_MULTIPLE` (09 §11.4) — **санал** | R1 | NOW | FR-BNK-011, FR-BNK-013 |
+| GS-REC-007 | Хаан/Голомт preset fixture (09 §11.4) — **санал** | R1 | NOW | FR-BNK-008, FR-BNK-009 |
+| GS-REC-008 | Тулгалтын явцад зорилт өөрчлөгдөх `bank.match_target_changed` (09 §11.4) — **санал** | R1 | NOW | FR-BNK-013 |
+| GS-REC-009 | Батлах → буцаах → дахин батлах, давхар ваучергүй (09 §11.4) — **санал** | R1 | NOW | FR-BNK-013, FR-BNK-014, FR-BNK-016 |
+| GS-REC-010 | Хуулга хаях ба дахин импорт, `BR` цувралын огнооны дараалал (09 §11.4) — **санал** | R1 | NOW | FR-BNK-010, D-C7 |
 | GS-FX-001 | Валютын нэхэмжлэх, хуримтлагдсан хөрвүүлэлт | R2 | NOW | FR-FX-004 |
 | GS-FX-002 | Ханш хайх (амралтын өдөр, ханшгүй) | R2 | NOW | FR-FX-002 |
 | GS-FX-003 | Сарын эцсийн хэрэгжээгүй ханшийн зөрүү | R2 | NOW | FR-FX-008 |
 | GS-FX-004 | Төлбөр ба хэрэгжсэн ханшийн зөрүү | R2 | NOW | FR-FX-007 |
 | GS-FX-005 | Валютын мөнгөний дансны дахин үнэлгээ | R2 | NOW | FR-FX-009 |
 | GS-FX-006 | Валютын хориг (тулгалт, хоцорсон posting) | R2 | NOW | FR-FX-006, FR-FX-010 |
+| GS-FX-007 | Нийлүүлэгчийн хэсэгчилсэн төлбөр, 2 дахь дахин үнэлгээ, мөнгөний данс (09 §11.4 P9–P13) — **санал** | R2 | NOW | FR-FX-007, FR-FX-008, FR-FX-009 |
+| GS-FX-008 | Хоцорсон дахин үнэлгээний run (09 §11.4 P14) — **санал** | R2 | NOW | FR-FX-008, FR-FX-010 |
+| GS-FX-009 | Run буцаах ба дахин ажиллуулах (09 §11.4) — **санал** | R2 | NOW | FR-FX-010 |
+| GS-FX-010 | MNT-ээр USD нэхэмжлэх (09 §11.4 P15) — **санал** | R2 | NOW | FR-FX-004 |
+| GS-FX-011 | Валют арилжаа (09 §11.4 P16) — **санал** | R2 | NOW | FR-FX-007, FR-BNK-007 |
+| GS-FX-012 | Хөрвүүлэлтийн засварын мөр 0.01 (09 §6.4) — **санал** | R2 | NOW | FR-FX-004 |
+| GS-FX-013 | Монголбанкны job (mock): формат, амралтын өдөр, anomaly, MANUAL давамгайлал (09 §11.4) — **санал** | R2 | NOW | FR-FX-003 |
+| GS-FX-014 | Валют худалдан авах, валютын кассын тооллого, delta = 0 run буцаалт (09 §11.4) — **санал** | R2 | NOW | FR-FX-009, FR-FX-010, FR-BNK-004 |
 | GS-CLOSE-001 | Сарын хаалт, дахин нээх, түгжих | R1 | NOW | FR-GL-024, D-D3 |
 | GS-CLOSE-002 | Жилийн хаалтын дараах тайлан | R1 | NOW | FR-RPT-001 AC2, FR-RPT-009 |
 | GS-CLOSE-003 | Жилийн хаалтын урьдчилсан нөхцөл ба W-04 | R1 | NOW | FR-GL-026 AC1 |
 | GS-CLOSE-004 | Шинэ жилийн гүйлгээ балансын эхний үлдэгдэл | R1 | NOW | FR-GL-026 AC3, FR-RPT-001 |
 | GS-CLOSE-005 | Сарын хаалтын шалгах хуудас | R1 | NOW | FR-GL-025 |
+| GS-CLOSE-006 | Зөрүү 0 дахин хаалт: ваучергүй, жил `CLOSED` (05 AT-PST-073, 10 §11.2) — **санал** | R1 | NOW | FR-GL-026 AC2 |
+| GS-CLOSE-007 | e-balance бүртгэж жил түгжих; дараагийн posting `gl.period_locked` (10 §11.2) — **санал** | R1 | NOW | FR-GL-024, FR-RPT-013 |
+| GS-CLOSE-008 | 12-р сарыг хаалтгүй түгжих → 409; LOCKED 1–11-р сартай жилийн хаалт (10 §11.2) — **санал** | R1 | NOW | FR-GL-024, FR-GL-026 |
+| GS-CLOSE-009 | Ваучергүй анхны хаалт ба 12-р сар түгжих, түгжсэн жилийн сар нээх 409 (10 §11.2) — **санал** | R1 | NOW | FR-GL-024, FR-GL-026 |
+| GS-CLOSE-010 | Хуучирсан snapshot-оор жил түгжих `rpt.filing_snapshots_stale` (10 §11.2) — **санал** | R1 | NOW | FR-GL-026, FR-RPT-013 |
 | GS-RPT-001 | Гүйлгээ баланс (жилийн 8 ваучер) | R1 | NOW | FR-RPT-001, FR-RPT-002 |
 | GS-RPT-002 | СБТ, ОДТ, ӨӨТ (жил хаагдаагүй) | R1 | NOW | FR-RPT-008…010 |
 | GS-RPT-003 | Авлага ба өглөгийн насжилт | R1 | NOW | FR-RPT-004, FR-RPT-005 |
 | GS-RPT-004 | Мөнгөн гүйлгээний тайлан (шууд арга) | R1 | NOW | FR-RPT-011 |
 | GS-RPT-005 | e-balance мянган төгрөг | R1 | NOW | FR-RPT-013 |
+| GS-RPT-006 | Тайлангийн хөдөлгүүр: харьцуулах багана, `sign_neutral`, 0-д хуваах, мөчлөг (10 §11.2) — **санал** | R1 | NOW | FR-RPT-008…011 |
+| GS-RPT-007 | МГТ override ба хуримтлагдсан бөөрөнхийлөлт (10 §11.2) — **санал** | R1 | NOW | FR-RPT-011 |
+| GS-RPT-008 | ОДТ мянгат, зангуу мөр 22 (10 §6.8) — **санал** | R1 | NOW | FR-RPT-009, FR-RPT-013 |
 | GS-EBR-001 | B2C бэлэн, VAT_ABLE (жишээ A) | R1 | NOW | FR-EBR-003, 004, 005, 008 |
 | GS-EBR-002 | VAT_ABLE + VAT_FREE дэд баримт | R1 | NOW | FR-EBR-003, AT-EB-06 |
 | GS-EBR-003 | Сөрөг (хөнгөлөлтийн) мөр шингээх | R1 | NOW | AT-EB-10 |
@@ -1671,6 +1700,8 @@ function RunScenario(file):
 | GS-EBR-007 | Өмнөх сарын засвар (`reportMonth`) | R1 | NOW | FR-EBR-011, D-J4 |
 | GS-EBR-008 | НӨАТ төлөгч бус мерчант (`NOT_VAT`) | R1 | NOW | FR-EBR-015, VAL-09 |
 | GS-EBR-009 | eBarimt тохируулаагүй компани | R1 | NOW | FR-EBR-001 AC2, AT-EB-05 |
+
+**`санал` тэмдэгтэй мөр (2026-10-08, [REVIEW-consistency.md](./REVIEW-consistency.md)):** модулийн spec (05 §11, 09 §11.4, 10 §11.2) эсвэл starter-ийн skeleton (`starter/tests/Golden/Drafts/`) санал болгосон ID-г давхардал, мөргөлдөөнөөс сэргийлж энд **нөөцөлсөн** (TST-GS-02: нэг ID нэг scenario). Тэдгээр нь §12.3–§12.12-т дэлгэрэнгүй хараахан ороогүй, нягтлан баталгаажуулаагүй (TST-GS-03) — `Drafts/`-д байна. 05-ын анхны "GS-GL-021 year-close-noop" санал нь 10-ын GS-CLOSE-006-тэй ижил тул GS-CLOSE-006 болгож нэгтгэсэн; GS-GL-021…024 нь starter-ийн файлуудын ID.
 
 Бүх R1 scenario-д `variants: [{name: y2027, rules: "2027", shiftDates: "+1Y"}]` нэмнэ. Үл хамаарах нь: GS-VAT-009, GS-VAT-018, GS-SAL-012 ба огноо нь аль хэдийн 2027 онд байгаа scenario (GS-SAL-002…012, GS-AR-001…007, GS-PUR-001…011, GS-AP-001…007, 08-ийн E-TAX жишээнд суурилсан GS-VAT-013…022). Ингэснээр 2027 оны параметрээр (D-K5) ижил үр дүн гарахыг баталгаажуулна. Хүлээгдэх утга өөрчлөгдөх тохиолдолд `expectOverride` бичнэ (NFR-006, NFR-110). `shiftDates` нь бүх огноо, `firstFiscalYear`, хүлээгдэх баримтын дугаарын он (`SI-2026-` → `SI-2027-`)-г хамт шилжүүлнэ. Шилжүүлсний дараа 2-р сарын 29 эсвэл амралтын өдөр (GS-FX-002) хамаарах scenario-д `expectOverride` заавал.
 

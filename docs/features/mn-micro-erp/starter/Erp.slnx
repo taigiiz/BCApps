@@ -1,0 +1,34 @@
+<Solution>
+  <Folder Name="/Hosts/">
+    <Project Path="src/Erp.Api/Erp.Api.csproj" />
+    <Project Path="src/Erp.Migrator/Erp.Migrator.csproj" />
+    <Project Path="src/Erp.Worker/Erp.Worker.csproj" />
+  </Folder>
+  <Folder Name="/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/Erp.BuildingBlocks.Api/Erp.BuildingBlocks.Api.csproj" />
+    <Project Path="src/BuildingBlocks/Erp.BuildingBlocks.Application/Erp.BuildingBlocks.Application.csproj" />
+    <Project Path="src/BuildingBlocks/Erp.BuildingBlocks.Domain/Erp.BuildingBlocks.Domain.csproj" />
+    <Project Path="src/BuildingBlocks/Erp.BuildingBlocks.Infrastructure/Erp.BuildingBlocks.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/Modules/" />
+  <Folder Name="/Modules/GeneralLedger/">
+    <Project Path="src/Modules/GeneralLedger/Api/Erp.GeneralLedger.Api.csproj" />
+    <Project Path="src/Modules/GeneralLedger/Application/Erp.GeneralLedger.Application.csproj" />
+    <Project Path="src/Modules/GeneralLedger/Contracts/Erp.GeneralLedger.Contracts.csproj" />
+    <Project Path="src/Modules/GeneralLedger/Domain/Erp.GeneralLedger.Domain.csproj" />
+    <Project Path="src/Modules/GeneralLedger/Infrastructure/Erp.GeneralLedger.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Tax/">
+    <Project Path="src/Modules/Tax/Contracts/Erp.Tax.Contracts.csproj" />
+    <Project Path="src/Modules/Tax/Domain/Erp.Tax.Domain.csproj" />
+    <Project Path="src/Modules/Tax/Infrastructure/Erp.Tax.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="tests/Architecture/Erp.Tests.Architecture.csproj" />
+    <Project Path="tests/Integration/Erp.Tests.Integration.csproj" />
+    <Project Path="tests/Unit/Erp.Tests.Unit.csproj" />
+  </Folder>
+  <Folder Name="/Tools/">
+    <Project Path="tools/Erp.Analyzers/Erp.Analyzers.csproj" />
+  </Folder>
+</Solution>

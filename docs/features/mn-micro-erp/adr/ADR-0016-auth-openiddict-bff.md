@@ -36,7 +36,7 @@
    - Access token 10 мин. Refresh token эргэлддэг, хугацаа 8 цаг.
    - Гарын үсгийн (ES256, ECDSA P-256) ба шифрлэлтийн түлхүүр нь X.509 сертификат хэлбэрээр runtime secret-ээс (`/run/secrets`, [02-architecture.md](../02-architecture.md) §10.4) ачаалагдана. Тэдгээр DB-д хадгалагдахгүй.
    - 90 хоног тутам солигдоно. Солихдоо шинэ сертификатыг хуучинтай зэрэг бүртгэнэ: шинэ токеныг шинэ түлхүүрээр гаргана, хуучнаар нь ≥ 8 цаг (refresh token-ий хугацаа) шалгасаар байна. Дараа нь хуучныг хасна.
-   - ASP.NET Core Data Protection-ийн түлхүүрийн цагираг (cookie ба session ticket-ийн шифрлэлт) `platform.data_protection_key`-д X.509-ээр шифрлэгдэж хадгалагдана.
+   - ASP.NET Core Data Protection-ийн түлхүүрийн цагираг (cookie ба session ticket-ийн шифрлэлт) `identity.data_protection_key`-д (тенантгүй, RLS-гүй, [DECISIONS](../DECISIONS.md) D-K7) X.509-ээр шифрлэгдэж хадгалагдана.
 3. **BFF загвар:**
    - SPA-д зөвхөн `__Host-erp` cookie очно (`HttpOnly`, `Secure`, `SameSite=Strict`).
    - Токен сервер талд хадгалагдана: `identity.user_session` (`ITicketStore`, Data Protection-оор шифрлэсэн). `erp-api` олон instance-тэй тул санах ойн session хэрэглэхгүй.

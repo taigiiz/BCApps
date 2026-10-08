@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Integration + golden tests against a real PostgreSQL (env ERP_TEST_DB; default: local socket, port 55432, user erp,
+       database erp_skeleton_test). The database is dropped and re-created from db/ by Erp.Migrator on every run. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Npgsql" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Erp.Api/Erp.Api.csproj" />
+    <ProjectReference Include="../../src/Erp.Migrator/Erp.Migrator.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Golden scenarios (16-test-strategy.md §11): copied next to the test binary. -->
+    <None Include="../Golden/**/*.json" LinkBase="Golden" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

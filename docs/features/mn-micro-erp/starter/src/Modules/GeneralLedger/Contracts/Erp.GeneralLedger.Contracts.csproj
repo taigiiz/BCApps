@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Public contract of the posting engine (05-posting-engine.md §5.1): other modules build PostingDocuments and implement
+       ILedgerWriter / IReversibleLedger / IJournalVatHandler; GL never references them (dependency inversion, ADR-0011). -->
+  <ItemGroup>
+    <ProjectReference Include="../../../BuildingBlocks/Erp.BuildingBlocks.Domain/Erp.BuildingBlocks.Domain.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tax adapters of the posting engine: journal VAT handler, VAT entry writer / reversal (the only code that INSERTs tax.vat_entry). -->
+  <ItemGroup>
+    <ProjectReference Include="../Contracts/Erp.Tax.Contracts.csproj" />
+    <ProjectReference Include="../Domain/Erp.Tax.Domain.csproj" />
+    <ProjectReference Include="../../GeneralLedger/Contracts/Erp.GeneralLedger.Contracts.csproj" />
+    <ProjectReference Include="../../../BuildingBlocks/Erp.BuildingBlocks.Infrastructure/Erp.BuildingBlocks.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="**/Sql/*.sql" />
+  </ItemGroup>
+</Project>

@@ -2451,7 +2451,7 @@ Webhook (R2, 14 §11.2): `vat_return_period.status_changed` (`{ id, status, prev
 |---|---|---|---|---|
 | `tax.vat_threshold.check` | Өдөр бүр 06:00 Asia/Ulaanbaatar, компани тус бүр | §5.14; түвшин өөрчлөгдсөн бол outbox | 3, timeout 5 мин | R1 (CR-TAX-11) |
 | `tax.vat_return.export` | Хүсэлтээр (`:export`) | §5.12 | 3, timeout 2 мин | R1 (CR-TAX-11) |
-| `tax.vat_invariant.check` | Шөнө бүр (02 §8.8-ийн шөнийн шалгалтын нэг алхам) | BR-TAX-82: дансны үлдэгдэл ↔ VAT entry; зөрвөл 02 §8.8-ийн `ops.consistency_issue` (P2; схемд хараахан алга — 02-ын эзэмшил) ба Owner-т мэдэгдэл | 1 | R1 (02 §8.8-ийн job-д нэмнэ) |
+| `tax.vat_invariant.check` | Шөнө бүр (02 §8.8-ийн шөнийн шалгалтын нэг алхам) | BR-TAX-82: дансны үлдэгдэл ↔ VAT entry; зөрвөл 02 §8.8-ийн журмаар (`platform.fn_integrity_report`-ийн шалгалт, үр дүн `integration.job_run`-д; тусдаа `ops` хүснэгт байхгүй) P2 alert ба Owner-т мэдэгдэл | 1 | R1 (02 §8.8-ийн job-д нэмнэ) |
 | `tax.calendar.reminder` | Өдөр бүр 09:00 | Хугацаа хүртэл 7, 3, 1 хоног үлдсэн мөрөнд мэдэгдэл (BR-TAX-110) | 1 | R1 · Should (платформын мэдэгдлийн job-оор) |
 
 ### 9.5 Ажиглалт
@@ -2471,7 +2471,7 @@ Webhook (R2, 14 §11.2): `vat_return_period.status_changed` (`{ id, status, prev
 | Endpoint | Эрх | Хувилбар | Тайлбар |
 |---|---|---|---|
 | `GET /tax-parameters`, `GET /tax-parameters/{paramCode}?date=` | AUTHENTICATED (глобал) | R1 | BR-TAX-11; хариунд `status`, `confidence`, `legalBasis`, `sourceUrl`, `isVerified` |
-| `GET/POST/PATCH/DELETE /vat-business-posting-groups`, `/vat-product-posting-groups` | `TABLE tax.vat_bus_posting_group`, `tax.vat_prod_posting_group` | R1 | BR-TAX-03 (устгах хамгаалалт) |
+| `GET/POST/PATCH/DELETE /vat-bus-posting-groups`, `/vat-prod-posting-groups` (14 §15.1-ийн нэр; R1 OpenAPI-д `GET` л) | `TABLE tax.vat_bus_posting_group`, `tax.vat_prod_posting_group` | R1 | BR-TAX-03 (устгах хамгаалалт) |
 | `GET/POST/PATCH/DELETE /vat-posting-setups` | `TABLE tax.vat_posting_setup` | R1 | BR-TAX-01…06; `ETag` |
 | `GET /vat-entries`, `GET /vat-entries/{entryNo}` | `TABLE tax.vat_entry R` | R1 | Шүүлт: `vatDateFrom/To`, `entryType`, `vatReturnPeriodId`, `periodScope`, `closed`, `deductibleConfirmed`, `vatBus`, `vatProd`, `vatCategory`, `documentNo`, `entryNoFrom` |
 | `GET /input-vat/unconfirmed` (07 BR-PUR-52) | `TABLE tax.vat_entry R` | R1 | BR-TAX-50; Tax-ийн `IInputVatService.ListUnconfirmedAsync` |
@@ -2490,7 +2490,7 @@ Webhook (R2, 14 §11.2): `vat_return_period.status_changed` (`{ id, status, prev
 | `GET /reports/vat-ebarimt-reconciliation?periodId=` | `REPORT rpt.vat_return` | R1 | §5.13 |
 | `GET/POST/PATCH /vat-statement-templates`, `/vat-statement-names`, `/vat-statement-lines` | `TABLE tax.vat_statement_*` | R1 · Could (R1-д seed загварыг зөвхөн унших) | BR-TAX-65 |
 | `GET /tax/vat-threshold?asOf=` | `REPORT rpt.vat_threshold` (CR-TAX-09; тэр хүртэл `REPORT rpt.vat_return`) | R1 | §5.14 |
-| `GET /tax/calendar?from=&to=` | `TABLE tax.tax_parameter R` | R1 · Should | §5.18 |
+| `GET /tax/calendar?from=&to=` | AUTHENTICATED (глобал лавлах `tax.tax_parameter`, 14 §15.1-ийн `GET /tax-parameters`-тэй ижил) | R1 · Should | §5.18 |
 | `GET/POST/PATCH /city-tax-codes`, `GET/PATCH /city-tax-setup`, `GET /city-tax-entries`, `GET /reports/city-tax?periodId=` | `TABLE tax.city_tax_*`, `REPORT rpt.vat_return` | R2 | §5.15 |
 | `GET/POST /company-tax-profiles` (effective-dated) | `ERP_SETUP` | R2 | CR-TAX-04; BR-TAX-97, -102 |
 | `GET /reports/simplified-vat?periodId=` | `REPORT rpt.vat_return` | R2 · Could | §5.16 |
@@ -2766,7 +2766,7 @@ GS-VAT-001…012 нь [16 §12.4](./16-test-strategy.md)-ийн каталоги
 | CR-TAX-09 | Эрхийн объект (`mn_00_catalogs.sql`, `mn_60_security.sql`): `ACTION tax.vat.reopen` (`ERP_PERIOD_REOPEN`, Owner), `ACTION tax.vat_return.export` (`ERP_VAT`), `REPORT rpt.vat_threshold` (`ERP_VAT`, `ERP_FIN_REPORTS`), `REPORT rpt.cit_helper` (R2). `ERP_VAT`-ийн `TABLE tax.vat_entry` `Rm` → `Rim` (`:close` нь SETTLEMENT, `input-vat:write-off` нь VATADJ entry INSERT хийнэ); R2: `TABLE tax.city_tax_entry` `i` (`ERP_SALES_POST`, `ERP_PURCH_POST`, `ERP_VAT`), `Rm` (`ERP_VAT`). | BR-TAX-51, -73, -79, -95; §10.1 | `tax.vat.settle` + Owner шалгалт; `rpt.vat_return` | Дунд |
 | CR-TAX-10 | `gl.gl_account.cit_treatment text NOT NULL DEFAULT 'NORMAL' CHECK (cit_treatment IN ('NORMAL','NON_DEDUCTIBLE','NON_TAXABLE'))`; seed 8430 = `NON_DEDUCTIBLE`. | BR-TAX-106 | Тохиргооны дансны жагсаалт | Бага (R2) |
 | CR-TAX-11 | `integration.job_definition` seed: `tax.vat_threshold.check` (cron `0 6 * * *` Asia/Ulaanbaatar, `max_attempts 3`), `tax.vat_return.export` (`max_attempts 3`, timeout 120 s; 14 SCR-API-02-той нэг). | BR-TAX-86, -70 | — | Бага |
-| CR-TAX-12 | `COMMENT ON COLUMN tax.vat_statement_line.vat_bus_posting_group / vat_prod_posting_group / vat_category IS '… NULL = any (seed contract)'`. | Z-TAX-10: BC-ийн "хоосон = зөвхөн хоосон"-оос ялгаатай гэрээг схемд баримтжуулах | Энэ баримт | Бага |
+| CR-TAX-12 | `COMMENT ON COLUMN tax.vat_statement_line.vat_bus_posting_group_id / vat_prod_posting_group_id / vat_category IS '… NULL = any (seed contract)'`. | Z-TAX-10: BC-ийн "хоосон = зөвхөн хоосон"-оос ялгаатай гэрээг схемд баримтжуулах | Энэ баримт | Бага |
 | CR-TAX-13 | `legal_parameters.sql`: `cit.simplified_return_rate` (0.01, `unverified`, эх mn-tax §3.3). | BR-TAX-107 (SIMPLIFIED_ANNUAL) кодонд literal бичихгүй (BR-TAX-10) | Горимыг "параметргүй" гэж харуулна | Бага (R2) |
 | CR-TAX-14 | `tax.vat_entry` CHECK нэмэх: `vat_calculation_type <> 'FULL_VAT' OR base = 0`; `entry_type <> 'SALE' OR (non_deductible_base = 0 AND non_deductible_amount = 0)`; `entry_type <> 'SETTLEMENT' OR closed`; `entry_type <> 'PURCHASE' OR vat_calculation_type <> 'FULL_VAT' OR amount = 0 OR (deductible_confirmed AND external_document_no IS NOT NULL AND document_date IS NOT NULL)`. | BR-TAX-24, -25, -46, -62, -73 инвариантыг DB-д | Апп-ын шалгалт | Бага |
 | CR-TAX-15 | Шинэ `tax.vat_return_snapshot` (`id`, `tenant_id`, `company_id`, `vat_return_period_id` FK, `statement_name_code`, `rows jsonb NOT NULL` (`line_no`, `row_no`, `value`, `printed`), `scope_version text`, `sha256 text`, `created_at`, `created_by`; `UNIQUE (company_id, vat_return_period_id)`; append-only — `platform.ledger_guard`-д mutable баганагүй). `:submit` бичнэ. | mn-tax R19 "илгээсэн тайлан бүрийн өөрчлөгдөхгүй бүртгэл"; R2-т загвар засварлах боломжтой болоход илгээсэн утга дахин тооцоогоор өөрчлөгдөх эрсдэл (EC-17) | `audit.security_event.details` (`VAT_PERIOD_SUBMITTED`) | Дунд (R2-ийн загвар засварлахаас өмнө заавал) |
@@ -2834,7 +2834,7 @@ GS-VAT-001…012 нь [16 §12.4](./16-test-strategy.md)-ийн каталоги
 | 17 | Idempotency | `tax.vat_period.closed`/`reopened`-ийн `idempotency_key` хаах → нээх → G/L-гүй дахин хаахад давтагдаж event алга болно | `{rowVersion}`-оор (§9.2) |
 | 18 | Тууштай байдал | 05 BR-PST-36 суурь мөрийн `VatAmount` = бүтэн НӨАТ, энэ баримт = хасагдах НӨАТ | Z-TAX-16 (хасагдах канон, үндэслэлтэй; 05-д засах санал) |
 | 19 | Тууштай байдал | §5.1-ийн гэрээ ба §9.1/§10.1-ийн нэр зөрүү (`PreviewCloseAsync`, `ComputeAsync`, `GetItemsAsync`, `ListUnconfirmedAsync`, `UnconfirmAsync`, `GetPeriodStatusAsync`); параметрийн кэшийн тайлбар §5.2-той зөрсөн | Нэгтгэв |
-| 20 | Тууштай байдал (схем) | `purch.purchase_header`, `gl.gen_journal_line`, `gl.gen_product_posting_group`, `audit.integrity_issue` — схемд байхгүй нэр; эрхийн үсэг `W` (D-I2-д R/I/M/D/X) | `purchase.purchase_header M`, `gl.journal_line I`, `party.gen_prod_posting_group` (CR-TAX-07), 02 §8.8-ийн `ops.consistency_issue` |
+| 20 | Тууштай байдал (схем) | `purch.purchase_header`, `gl.gen_journal_line`, `gl.gen_product_posting_group`, `audit.integrity_issue` — схемд байхгүй нэр; эрхийн үсэг `W` (D-I2-д R/I/M/D/X) | `purchase.purchase_header M`, `gl.journal_line I`, `party.gen_prod_posting_group` (CR-TAX-07), 02 §8.8-ийн `platform.fn_integrity_report` / `integration.job_run` (`ops` схем байхгүй) |
 | 21 | Тууштай байдал | §5.3 RC + НӨАТ төлөгч бус компанид `tax.vat_calc_type_not_allowed`, §8.1 ба OQ-TAX-07-д `tax.company_not_vat_registered` | `tax.company_not_vat_registered` |
 | 22 | Алдааны код | Шинэ дүрмийн код дутуу; `tax.vat_settlement_date_invalid`-ийн BR буруу; `tax.vat_settlement_account_invalid`-ийн нөхцөл BR-TAX-76-тай зөрсөн; `tax.customs_declaration_required` нөхцөл | 4 шинэ код (`tax.vat_account_change_open_entries`, `tax.vat_registered_from_locked`, `tax.vat_deregistration_periods_open` + stale-ийн нөхцөл), бусдыг тааруулав |
 | 23 | Эрх | `ERP_VAT` нь `tax.vat_entry`-д `Rm` л (seed) — `:close` (SETTLEMENT) ба `input-vat:write-off` (VATADJ) INSERT хийнэ; R2 `city_tax_entry`-ийн эрх алга | CR-TAX-09-д нэмэв |
@@ -2844,4 +2844,4 @@ GS-VAT-001…012 нь [16 §12.4](./16-test-strategy.md)-ийн каталоги
 
 **Schema change requests (энэ review-ээр):** CR-TAX-15 шинэ (`tax.vat_return_snapshot`); CR-TAX-09 (ERP_VAT `Rim`, `city_tax_entry` эрх) ба CR-TAX-14 (FULL_VAT CHECK) өргөтгөсөн; CR-TAX-07-ийн хүснэгтийн нэрийг `party.gen_prod_posting_group` болгож засав. SQL файлыг засаагүй.
 
-**Бусад баримтад дагуулж засах (санал):** 05 BR-PST-36/§5.7.2 (Z-TAX-16); 07 BR-PUR-47 ба P14 (FULL_VAT-ын мэдүүлэг заавал, `true`); 14 §15 (`expectedScopeVersion`, `scopeVersion`); 15 UX-VAT-03 (`scopeVersion`-оор харьцуулах); 02 §8.8 (`ops.consistency_issue` хүснэгт схемд).
+**Бусад баримтад дагуулж засах (санал):** 05 BR-PST-36/§5.7.2 (Z-TAX-16); 07 BR-PUR-47 ба P14 (FULL_VAT-ын мэдүүлэг заавал, `true`); 14 §15 (`expectedScopeVersion`, `scopeVersion`); 15 UX-VAT-03 (`scopeVersion`-оор харьцуулах); 02 §8.8 (~~`ops.consistency_issue` хүснэгт схемд~~ — 2026-10-08: 02 §8.8 нь `platform.fn_integrity_report` + `integration.job_run`-ийг хэрэглэдэг болсон).

@@ -43,6 +43,26 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # Sprint 0 bootstrap: the SPA (web/, 18-dev-setup.md section 16 PR 7) does not exist in a repository freshly
+  # copied from starter/. Without this gate the web job, the npm step of supply-chain and the api image fail on
+  # every PR before PR 7, and the required "ci-ok" check blocks all merges. Once web/package-lock.json is
+  # committed the gate is always true and can be deleted (REVIEW-readiness.md B-01).
+  detect:
+    name: detect optional parts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      web: ${{ steps.web.outputs.present }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: web
+        run: |
+          if [ -f web/package-lock.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::web/ (SPA) not in the repository yet - web job, npm supply-chain step and images are skipped."
+          fi
+
+  # ---------------------------------------------------------------------------
   build:
     name: build · format · unit · architecture
     runs-on: ubuntu-24.04
@@ -119,7 +139,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   integration:
-    name: integration (Testcontainers ${{ matrix.pg }})
+    name: integration (${{ matrix.pg }})
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -127,9 +147,25 @@ jobs:
       fail-fast: false
       matrix:
         pg: ["postgres:17", "postgres:18"]
+    services:
+      postgres:
+        image: ${{ matrix.pg }}
+        env:
+          POSTGRES_PASSWORD: postgres   # ephemeral CI container only
+          POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
     env:
-      # Read by Erp.BuildingBlocks.Testing.PostgresFixture; Docker is preinstalled on ubuntu runners.
-      ERP_TEST_PG_IMAGE: ${{ matrix.pg }}
+      # Read by tests/Integration PostgresFixture: drops/creates the database, runs Erp.Migrator migrate + seed (canonical db/),
+      # provisions one company per test with platform.fn_provision_company_mn; the API runs with session role app_user (RLS on).
+      # Sprint 0 skeleton: a service container instead of Testcontainers (ERP_TEST_PG_IMAGE support comes with
+      # Erp.BuildingBlocks.Testing in Sprint 1).
+      ERP_TEST_DB: "host=localhost port=5432 user=postgres password=postgres dbname=erp_skeleton_test"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -139,7 +175,7 @@ jobs:
           cache-dependency-path: "**/packages.lock.json"
       - run: dotnet restore tests/Integration/Erp.Tests.Integration.csproj --locked-mode
       - run: dotnet build tests/Integration/Erp.Tests.Integration.csproj -c "$CONFIGURATION" --no-restore
-      - name: Integration tests (RLS isolation, ledger immutability, gapless numbering, outbox/idempotency, posting)
+      - name: Integration tests (posting engine, numbering, reversal, VAT, RLS, concurrency; golden runner included)
         run: >-
           dotnet test --project tests/Integration/Erp.Tests.Integration.csproj
           -c "$CONFIGURATION" --no-build
@@ -174,13 +210,10 @@ jobs:
           --health-timeout 5s
           --health-retries 30
     env:
-      PGHOST: localhost
-      PGUSER: postgres
-      PGPASSWORD: postgres
-      # When set, the test fixture uses this server instead of starting Testcontainers.
-      # It migrates a template database once (as erp_migrator) and clones it per scenario
-      # (CREATE DATABASE ... TEMPLATE ...); scenarios run as erp_app so RLS is active.
-      ERP_TEST_PG_ADMIN: "Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres"
+      # Sprint 0 skeleton: the golden runner lives in tests/Integration (namespace Erp.Tests.Integration.Golden) and runs the
+      # JSON scenarios of tests/Golden/{Scenarios,Drafts}. Splitting it into tests/Golden/Erp.Tests.Golden.csproj (YAML,
+      # template-database clones, *.actual.yaml / *.diff.md) is Sprint 1 work (18-dev-setup.md §16, PR #10).
+      ERP_TEST_DB: "host=localhost port=5432 user=postgres password=postgres dbname=erp_golden_test"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -188,26 +221,18 @@ jobs:
           dotnet-version: "10.0.x"
           cache: true
           cache-dependency-path: "**/packages.lock.json"
-      - name: Bootstrap roles and databases
-        run: psql -v ON_ERROR_STOP=1 -d postgres -f db/init/01-roles.sql
-      - run: dotnet restore tests/Golden/Erp.Tests.Golden.csproj --locked-mode
-      - run: dotnet build tests/Golden/Erp.Tests.Golden.csproj -c "$CONFIGURATION" --no-restore
-      - name: Golden scenario tests (tests/Golden/Scenarios/**/*.yaml)
+      - name: Validate scenario files against tests/Golden/golden-scenario.schema.json (GS-E001)
+        run: |
+          python3 -m pip install --quiet jsonschema==4.26.0 pyyaml==6.0.3
+          python3 tools/ci/validate-golden.py
+      - run: dotnet restore tests/Integration/Erp.Tests.Integration.csproj --locked-mode
+      - run: dotnet build tests/Integration/Erp.Tests.Integration.csproj -c "$CONFIGURATION" --no-restore
+      - name: Golden scenario tests (tests/Golden/**/GS-*.json)
         run: >-
-          dotnet test --project tests/Golden/Erp.Tests.Golden.csproj
+          dotnet test --project tests/Integration/Erp.Tests.Integration.csproj
           -c "$CONFIGURATION" --no-build
           --results-directory "$TEST_RESULTS/golden"
-          -- --report-xunit-trx
-      - name: Upload golden diffs (expected vs actual G/L, VAT, sub-ledger)
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: golden-diffs
-          path: |
-            tests/Golden/**/*.actual.yaml
-            tests/Golden/**/*.diff.md
-          if-no-files-found: ignore
-          retention-days: 30
+          -- --filter-namespace Erp.Tests.Integration.Golden --report-xunit-trx
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
@@ -246,6 +271,9 @@ jobs:
       PGPASSWORD: postgres
       FRESH_CS: "Host=localhost;Port=5432;Database=erp_fresh;Username=erp_migrator;Password=erp_migrator_local"
       UPGRADE_CS: "Host=localhost;Port=5432;Database=erp_upgrade;Username=erp_migrator;Password=erp_migrator_local"
+      # Bootstrap superuser for the first migrate only (000_extensions_roles.sql creates roles and extensions).
+      FRESH_ADMIN_CS: "Host=localhost;Port=5432;Database=erp_fresh;Username=postgres;Password=postgres"
+      UPGRADE_ADMIN_CS: "Host=localhost;Port=5432;Database=erp_upgrade;Username=postgres;Password=postgres"
       UPGRADE_APP_CS: "Host=localhost;Port=5432;Database=erp_upgrade;Username=erp_app;Password=erp_app_local"
     steps:
       - uses: actions/checkout@v7
@@ -261,6 +289,8 @@ jobs:
       - name: Lint migration files (naming, duplicates, released files are immutable)
         run: |
           set -euo pipefail
+          # Baseline = canonical db/schema/*.sql (DECISIONS D-K1, applied verbatim by Erp.Migrator); later changes are
+          # db/migrations/V####__<module>_<description>.sql (ADR-0014). Released files of both folders never change.
           shopt -s nullglob
           bad=""
           for path in db/migrations/*; do
@@ -275,14 +305,14 @@ jobs:
           prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD^ 2>/dev/null || true)
           echo "PREV_TAG=$prev" >> "$GITHUB_ENV"
           if [ -n "$prev" ]; then
-            changed=$(git diff --name-status "$prev" HEAD -- 'db/migrations/V*.sql' | grep -Ev '^A' || true)
+            changed=$(git diff --name-status "$prev" HEAD -- 'db/migrations/V*.sql' 'db/schema/*.sql' | grep -Ev '^A' || true)
             if [ -n "$changed" ]; then echo "::error::Released migrations must never change (add a new V-file instead):"; echo "$changed"; exit 1; fi
             echo "Previous release: $prev"
           else
             echo "::notice::No previous release tag found - upgrade path is skipped."
           fi
 
-      - name: Bootstrap roles
+      - name: Bootstrap login roles and databases
         run: psql -v ON_ERROR_STOP=1 -d postgres -f db/init/01-roles.sql
 
       - name: Build migrator
@@ -292,13 +322,15 @@ jobs:
         run: |
           set -euo pipefail
           psql -v ON_ERROR_STOP=1 -d postgres -c "CREATE DATABASE erp_fresh OWNER erp_owner"
-          dotnet run --project src/Erp.Migrator -c "$CONFIGURATION" --no-build -- migrate --connection "$FRESH_CS"
-          # verify = checksums, FORCE RLS + rls_<table>__tenant on every tenant table, fail-closed without app.tenant_id,
-          # BYPASSRLS only on erp_dispatch_definer, ledger guard triggers + revoked UPDATE/DELETE/TRUNCATE,
-          # no float/real/double/money columns, amounts on core.amount/core.amount_lcy, rates on core.fx_rate,
-          # no qr_data/lottery columns anywhere.
+          # First run as the bootstrap superuser: it applies db/schema/000_extensions_roles.sql (group roles app_*,
+          # extensions, module schemas); every later script runs SET ROLE app_owner.
+          dotnet run --project src/Erp.Migrator -c "$CONFIGURATION" --no-build -- migrate --connection "$FRESH_ADMIN_CS"
+          # verify = checksums, FORCE RLS + tenant_isolation (+ company_isolation) on every tenant table, fail-closed
+          # without app.tenant_id, BYPASSRLS only on app_rls_bypass, platform.ledger_guard tables have trg_<table>_immutable
+          # + revoked UPDATE/DELETE/TRUNCATE, no float/real/double/money columns, amounts on platform.amount,
+          # rates on platform.exch_rate, no qr_data/lottery columns anywhere (db/tests/catalog_checks.sql).
           dotnet run --project src/Erp.Migrator -c "$CONFIGURATION" --no-build -- verify --connection "$FRESH_CS"
-          # Re-running must be a no-op.
+          # Re-running as erp_migrator (-> app_owner, no superuser) must be a no-op.
           dotnet run --project src/Erp.Migrator -c "$CONFIGURATION" --no-build -- migrate --connection "$FRESH_CS"
 
       - name: Path B - previous release snapshot (schema + posted demo data) -> upgrade -> verify
@@ -308,7 +340,7 @@ jobs:
           git worktree add "$RUNNER_TEMP/prev" "$PREV_TAG"
           psql -v ON_ERROR_STOP=1 -d postgres -c "CREATE DATABASE erp_upgrade OWNER erp_owner"
           prev="$RUNNER_TEMP/prev"
-          dotnet run --project "$prev/src/Erp.Migrator" -c "$CONFIGURATION" -- migrate --connection "$UPGRADE_CS"
+          dotnet run --project "$prev/src/Erp.Migrator" -c "$CONFIGURATION" -- migrate --connection "$UPGRADE_ADMIN_CS"
           dotnet run --project "$prev/src/Erp.Migrator" -c "$CONFIGURATION" -- seed --set demo --connection "$UPGRADE_CS"
           # Demo drafts are posted through the posting engine (never by SQL), so the ledger tables hold real rows.
           dotnet run --project "$prev/tools/Erp.DevTools" -c "$CONFIGURATION" -- demo-post --connection "$UPGRADE_APP_CS"
@@ -334,6 +366,8 @@ jobs:
   # ---------------------------------------------------------------------------
   web:
     name: web (lint · typecheck · i18n · test · build)
+    needs: detect
+    if: needs.detect.outputs.web == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -374,6 +408,7 @@ jobs:
   # ---------------------------------------------------------------------------
   supply-chain:
     name: SBOM · vulnerabilities · licences · secrets
+    needs: detect
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -404,11 +439,13 @@ jobs:
             -o Markdown -fo artifacts/licenses/nuget-licenses.md
 
       - uses: actions/setup-node@v7
+        if: needs.detect.outputs.web == 'true'
         with:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: npm licences + audit (production dependencies)
+        if: needs.detect.outputs.web == 'true'
         working-directory: web
         run: |
           set -euo pipefail
@@ -443,6 +480,7 @@ jobs:
   # ---------------------------------------------------------------------------
   image:
     name: image (${{ matrix.target }})
+    # Skipped (not failed) while the web job is skipped: the api image copies the SPA build into wwwroot.
     needs: [build, integration, golden, migrations, web, supply-chain]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -531,7 +569,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [build, integration, golden, migrations, web, supply-chain, image, codeql]
+    needs: [detect, build, integration, golden, migrations, web, supply-chain, image, codeql]
     runs-on: ubuntu-24.04
     steps:
       - name: Fail if any required job failed or was cancelled

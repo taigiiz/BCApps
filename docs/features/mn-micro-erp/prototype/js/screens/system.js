@@ -5,25 +5,39 @@
   'use strict';
   var ERP = window.ERP, ui = ERP.ui, app = ERP.app;
 
-  var SCREEN_ROUTE = { shell: 'home', home: 'home', 'sales-invoices': 'sales-invoices', 'sales-invoice': 'sales-invoice', 'posted-invoice': 'posted-invoice',
-    'purchase-invoices': 'purchase-invoices', checks: 'checks', gl: 'coa', 'sales-ar': 'customers', 'cash-bank': 'cash', 'reports-tax': 'financial-statements' };
+  // note group (ERP.notes.register screen key) → route of the screen that shows it; a key that is itself a route maps to itself
+  var SCREEN_ROUTE = { shell: 'home', gl: 'coa', 'sales-ar': 'customers', 'cash-bank': 'cash', 'reports-tax': 'financial-statements' };
+  function routeOf(key) { return SCREEN_ROUTE[key] || (app.screens[key] ? key : null); }
 
+  var notesFilter = '';
+  function noteText(n) { return [n.id, n.title, n.what, n.why, n.bc, n.rules.join(' '), n.data.join(' '), n.doc.map(function (d) { return d.file + ' ' + (d.section || ''); }).join(' ')].join(' ').toLowerCase(); }
   function renderNotes(el) {
-    var groups = ERP.notes.byScreen().filter(function (g) { return g.notes.length; });
-    var total = groups.reduce(function (s, g) { return s + g.notes.length; }, 0);
-    var html = '<div class="page-head"><div class="title-wrap"><h1>Тайлбарын жагсаалт</h1></div><span class="small muted" data-note="notes.list">' + total + ' тайлбар · ' + groups.length + ' бүлэг</span></div>';
+    var all = ERP.notes.byScreen().filter(function (g) { return g.notes.length; });
+    var total = all.reduce(function (s, g) { return s + g.notes.length; }, 0);
+    var q = notesFilter.trim().toLowerCase();
+    var groups = all.map(function (g) { return { screen: g.screen, title: g.title, notes: q ? g.notes.filter(function (n) { return noteText(n).indexOf(q) >= 0; }) : g.notes }; }).filter(function (g) { return g.notes.length; });
+    var shown = groups.reduce(function (s, g) { return s + g.notes.length; }, 0);
+    var html = '<div class="page-head"><div class="title-wrap"><h1>Тайлбарын жагсаалт</h1></div><span class="small muted" data-note="notes.list">' + total + ' тайлбар · ' + all.length + ' бүлэг</span></div>';
+    html += '<form class="row" id="notes-form" role="search"><label for="notes-filter" class="small">Шүүх</label><input class="input" type="search" id="notes-filter" placeholder="Дүрэм (BR-SAL-22), хүснэгт (gl.gl_entry), BC объект, үг…" value="' + ui.esc(notesFilter) + '" style="width:min(100%,420px)">' +
+      (q ? '<span class="small muted">' + shown + ' / ' + total + ' тайлбар</span>' : '') + '</form>';
+    html += '<nav class="chips" aria-label="Бүлгүүд">' + groups.map(function (g) { return '<a class="chip" href="#notes" data-jump="ng-' + ui.esc(g.screen) + '">' + ui.esc(g.title.split(' (')[0].split(' — ')[0]) + ' · ' + g.notes.length + '</a>'; }).join('') + '</nav>';
+    if (!groups.length) html += '<div class="card"><div class="card-body"><p class="empty">"' + ui.esc(notesFilter) + '"-д тохирох тайлбар алга. Дүрмийн ID-г бүтнээр нь (жишээ нь D-E3) эсвэл хүснэгтийн нэрийг оруулна уу.</p></div></div>';
     groups.forEach(function (g) {
-      var route = SCREEN_ROUTE[g.screen];
-      html += '<section class="card"><div class="card-head"><h2>' + ui.esc(g.title) + '</h2>' + (route && app.screens[route] ? '<a class="small" href="#' + route + '">Дэлгэц нээх ›</a>' : '') + '</div><div class="card-body flush"><div class="table-wrap"><table class="grid-table"><thead><tr><th>Тайлбар</th><th>Юу хийдэг вэ</th><th>Дүрэм</th><th>Баримт</th></tr></thead><tbody>' +
+      var route = routeOf(g.screen);
+      html += '<section class="card" id="ng-' + ui.esc(g.screen) + '"><div class="card-head"><h2>' + ui.esc(g.title) + '</h2>' + (route && app.screens[route] ? '<a class="small" href="#' + route + '">Дэлгэц нээх ›</a>' : '') + '</div><div class="card-body flush"><div class="table-wrap"><table class="grid-table notes-table"><thead><tr><th>Тайлбар</th><th>Юу хийдэг вэ</th><th>Дүрэм</th><th>Баримт</th></tr></thead><tbody>' +
         g.notes.map(function (n) {
           return '<tr><td><button class="btn ghost sm" type="button" data-open-note="' + n.id + '" id="nl-' + n.id.replace(/[^\w-]/g, '_') + '">' + ui.esc(n.title) + '</button><div class="xs muted code">' + n.id + '</div></td>' +
-            '<td class="small" style="max-width:52ch">' + n.what + '</td>' +
+            '<td class="small" style="max-width:52ch">' + n.what + '<div class="xs muted" style="margin-top:4px">BC: ' + ui.esc(n.bc) + '</div></td>' +
             '<td><div class="chips">' + n.rules.map(function (r) { return '<span class="chip rule">' + ui.esc(r) + '</span>'; }).join('') + '</div></td>' +
-            '<td class="small">' + n.doc.map(function (d) { return '<a href="' + ui.esc(ERP.notes.link(d)) + '" target="_blank" rel="noopener">' + ui.esc(d.file) + (d.section ? ' §' + ui.esc(d.section.split(' ')[0]) : '') + '</a>'; }).join('<br>') + '</td></tr>';
+            '<td class="small">' + n.doc.map(function (d) { return '<a href="' + ui.esc(ERP.notes.link(d)) + '" target="_blank" rel="noopener">' + ui.esc(d.file) + (d.section ? ' §' + ui.esc(d.section.split(' ')[0].replace(/\.$/, '')) : '') + '</a>'; }).join('<br>') + '</td></tr>';
         }).join('') + '</tbody></table></div></div></section>';
     });
     el.innerHTML = html;
     ui.$$('[data-open-note]', el).forEach(function (b) { b.addEventListener('click', function () { app.openNote(b.getAttribute('data-open-note')); }); });
+    var f = ui.$('#notes-filter');
+    ui.$('#notes-form').addEventListener('submit', function (ev) { ev.preventDefault(); });
+    f.addEventListener('input', function () { notesFilter = f.value; var pos = f.selectionStart; renderNotes(el); app.decorateNotes(); var n = ui.$('#notes-filter'); n.focus(); n.setSelectionRange(pos, pos); });
+    ui.$$('[data-jump]', el).forEach(function (a) { a.addEventListener('click', function (ev) { ev.preventDefault(); var t = document.getElementById(a.getAttribute('data-jump')); if (t) { t.scrollIntoView({ block: 'start' }); var h = t.querySelector('h2'); if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); } } }); });
   }
 
   function renderChecks(el) {

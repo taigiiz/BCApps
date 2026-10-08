@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "id": "GS-GL-016",
+  "title": "Тэнцээгүй ваучер татгалзах (хуулийн дугаар зарцуулахгүй)",
+  "description": "16-test-strategy.md §12.3 GS-GL-016. Тэнцээгүй ваучер юу ч бичихгүй, GJ цувралын дугаар зарцуулахгүй; дараагийн тэнцсэн ваучер GJ-2026-00001 авна.",
+  "area": "GL",
+  "release": "R1",
+  "rules": "NOW",
+  "refs": ["FR-GL-007", "D-C5", "D-C7", "INV-08"],
+  "tags": ["sprint0-skeleton"],
+  "signedOffBy": [
+    { "name": "ledger-owners (Sprint 0 skeleton)", "role": "LEDGER_OWNER", "date": "2026-10-08", "note": "Draft: amounts copied from the catalog (16 §12.3). Needs ACCOUNTING_ADVISOR sign-off before moving to Scenarios/." }
+  ],
+  "setup": { "baseline": "BASE-VAT", "companies": [ { "key": "C1" } ] },
+  "steps": [
+    {
+      "id": "s1",
+      "title": "7213 Дт 1 000 / 2650 Кт 900 - тэнцээгүй",
+      "at": "2026-03-10T09:00",
+      "as": "acc",
+      "company": "C1",
+      "action": "journal.post",
+      "input": {
+        "lines": [
+          { "documentNo": "J-000001", "account": "7213", "amount": "1000.00", "description": "Бичиг хэрэг" },
+          { "documentNo": "J-000001", "account": "2650", "amount": "-900.00" }
+        ]
+      },
+      "expectOutcome": { "status": "ERROR", "http": 422, "codes": ["gl.voucher_unbalanced"], "bodyContains": { "$.errors[0].details.difference": "100.00" } },
+      "expect": { "noRowsWritten": true, "numbering": [ { "series": "GJ", "year": 2026, "lastNo": null } ] }
+    },
+    {
+      "id": "s2",
+      "title": "7213 Дт 1 000 / 2650 Кт 1 000 - тэнцсэн",
+      "at": "2026-03-10T09:05",
+      "as": "acc",
+      "company": "C1",
+      "action": "journal.post",
+      "input": {
+        "lines": [
+          { "documentNo": "J-000001", "account": "7213", "amount": "1000.00", "description": "Бичиг хэрэг" },
+          { "documentNo": "J-000001", "account": "2650", "amount": "-1000.00" }
+        ]
+      },
+      "expectOutcome": { "status": "OK", "http": 201 },
+      "expect": {
+        "glEntries": [
+          { "transaction": "T1", "account": "7213", "dr": "1000.00", "documentNo": "GJ-2026-00001", "postingDate": "2026-03-10", "sourceCode": "GENJNL" },
+          { "transaction": "T1", "account": "2650", "cr": "1000.00", "documentNo": "GJ-2026-00001", "postingDate": "2026-03-10", "sourceCode": "GENJNL" }
+        ],
+        "numbering": [ { "series": "GJ", "year": 2026, "lastNo": "GJ-2026-00001" } ]
+      }
+    }
+  ],
+  "expect": {
+    "balances": [
+      { "account": "7213", "asOf": "2026-03-31", "dr": "1000.00" },
+      { "account": "2650", "asOf": "2026-03-31", "cr": "1000.00" }
+    ]
+  }
+}

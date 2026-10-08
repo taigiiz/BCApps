@@ -36,7 +36,7 @@ jobs:
       AUTHOR: ${{ github.event.pull_request.user.login }}
       # Posting engine + ledger, posting code of every module, FX revaluation, tax rules, gapless numbering,
       # eBarimt adapter, money type + ERP0001 analyzer, SQL migrations + migrator, accountant-signed golden scenarios.
-      SENSITIVE: '^(src/Modules/(GeneralLedger|Tax|EBarimt)/|src/Modules/[^/]+/[^/]+/(.+/)?(Posting|Revaluation)/|src/Modules/Platform/[^/]+/Numbering/|src/BuildingBlocks/Erp\.BuildingBlocks\.Domain/Monetary/|tools/Erp\.Analyzers/|db/migrations/|src/Erp\.Migrator/|tests/Golden/Scenarios/)'
+      SENSITIVE: '^(src/Modules/(GeneralLedger|Tax|EBarimt)/|src/Modules/[^/]+/[^/]+/(.+/)?(Posting|Revaluation)/|src/Modules/Platform/[^/]+/Numbering/|src/BuildingBlocks/Erp\.BuildingBlocks\.Domain/Monetary/|tools/Erp\.Analyzers/|db/migrations/|db/schema/|db/init/|src/Erp\.Migrator/|tests/Golden/Scenarios/)'
       REQUIRED: "2"
     steps:
       - name: Merge queue - approvals were checked on the pull request

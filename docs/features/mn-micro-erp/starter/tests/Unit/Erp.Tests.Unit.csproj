@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Unit + property tests (no database). xUnit v3, Shouldly and coverage come from Directory.Build.props (Erp.Tests.*). -->
+  <ItemGroup>
+    <PackageReference Include="FsCheck.Xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/BuildingBlocks/Erp.BuildingBlocks.Domain/Erp.BuildingBlocks.Domain.csproj" />
+    <ProjectReference Include="../../src/BuildingBlocks/Erp.BuildingBlocks.Api/Erp.BuildingBlocks.Api.csproj" />
+    <ProjectReference Include="../../src/Modules/GeneralLedger/Domain/Erp.GeneralLedger.Domain.csproj" />
+    <ProjectReference Include="../../src/Modules/Tax/Domain/Erp.Tax.Domain.csproj" />
+  </ItemGroup>
+</Project>

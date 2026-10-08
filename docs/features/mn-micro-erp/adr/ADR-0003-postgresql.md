@@ -24,12 +24,12 @@
 ## Шийдвэр
 
 1. **PostgreSQL 18-ийг** сонгоно. Провайдер зөвхөн 17 санал болговол 17-г хүлээн зөвшөөрнө. **DDL нь 16+-тай нийцнэ.**
-   - **`uuidv7()`-г шууд дуудахгүй.** `core.fn_uuid_v7()` wrapper ашиглана. PG18-д доод талдаа `uuidv7()` дуудна, 16/17-д plpgsql хэрэгжүүлэлт ажиллана. Application ихэнх id-г `Guid.CreateVersion7()`-оор өөрөө үүсгэнэ.
+   - **`uuidv7()`-г DDL-д шууд дуудахгүй.** UUIDv7-г application `Guid.CreateVersion7()`-оор үүсгэнэ (D-C8). Канон DDL-ийн `DEFAULT gen_random_uuid()` нь зөвхөн гараар/seed-ээр оруулах мөрийн нөөц ([db/schema](../db/schema/)).
    - **`WITHOUT OVERLAPS` / `PERIOD`-ийн оронд** `EXCLUDE USING gist (... WITH =, valid_during WITH &&)` (`btree_gist`) ашиглана.
    - **Virtual generated column-ийн оронд** `STORED` хэрэглэнэ, эсвэл view-ээр тооцно.
    - CI нь migration ба integration test-ийг **17 ба 18** дээр ажиллуулна. Шөнө бүр 16 дээр мөн ажиллуулна.
-2. **Модуль бүр өөрийн схемтэй.** Нийтлэг SQL объект (domain, guard функц, helper) `core` схемд байна. Модулийн схемүүд: `platform`, `identity`, `audit`, `integration`, `quartz`, `currency`, `gl`, `tax`, `ebarimt`, `parties`, `inventory`, `fixed_assets`, `cash_bank`, `sales`, `purchases`, `reporting`, `ops`.
-3. **Extension:** `btree_gist`, `pg_trgm` (кирилл хайлт), `pg_stat_statements`. Өөр extension нэмэх бол ADR бичнэ. `pgcrypto` хэрэггүй: PG11-ээс хойш `sha256()` суурилсан, AES шифрлэлтийг application хийнэ.
+2. **Модуль бүр өөрийн схемтэй** (канон: [000_extensions_roles.sql](../db/schema/000_extensions_roles.sql), [DECISIONS](../DECISIONS.md) D-B3/D-K1). Модулийн схемүүд: `platform`, `gl`, `tax`, `party`, `sales`, `purchase`, `bank`, `fx`, `fa`, `inv`, `rpt`, `ebarimt`, `integration`, `audit`, `identity` (D-K7). Нийтлэг SQL объект (domain `platform.amount`, контекст функц, guard функц, counter) `platform` схемд байна; тусдаа `core`/`ops` схем байхгүй. Quartz.NET-ийн ADO store нь `quartz` схемд ([ADR-0018](./ADR-0018-background-jobs-quartz.md)).
+3. **Extension** (канон 000 файл): `pgcrypto` (`digest()` — dimension set ба request hash), `btree_gist` (EXCLUDE constraint), `pg_trgm` (кирилл хайлт), `btree_gin` (`company_id` + trigram GIN индекс); мониторингт `pg_stat_statements` (`shared_preload_libraries`). Өөр extension нэмэх бол ADR бичнэ. AES шифрлэлтийг application хийнэ.
 4. **PostgreSQL-ийг дараах үүрэгт давхар ашиглана:**
    - queue (outbox, `SKIP LOCKED`, `LISTEN/NOTIFY`);
    - scheduler store (Quartz ADO);

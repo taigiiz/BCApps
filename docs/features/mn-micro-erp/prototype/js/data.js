@@ -415,12 +415,12 @@
     ['*', 'SERVICES', '5110', '5190', '7200', '7200', '6110'],
     ['*', 'FA', '8600', null, '1660', null, null],
     ['*', 'MISC', '8200', null, '7200', null, null],
-    ['DOMESTIC', 'GOODS', '5100', '5190', '6100', '6190', '6100'],
-    ['DOMESTIC', 'SERVICES', '5110', '5190', '7200', '7200', '6110'],
+    ['DOMESTIC', 'GOODS', '5100', '5190', '6100', '6190', '6100', '5190'],
+    ['DOMESTIC', 'SERVICES', '5110', '5190', '7200', '7200', '6110', '5190'],
     ['DOMESTIC', 'FA', '8600', null, '1660', null, null],
     ['DOMESTIC', 'MISC', '8200', null, '7200', null, null],
-    ['EXPORT', 'GOODS', '5120', '5190', '6100', '6190', '6100'],
-    ['EXPORT', 'SERVICES', '5120', '5190', '7200', '7200', '6110'],
+    ['EXPORT', 'GOODS', '5120', '5190', '6100', '6190', '6100', '5190'],
+    ['EXPORT', 'SERVICES', '5120', '5190', '7200', '7200', '6110', '5190'],
     ['EXPORT', 'FA', '8600', null, '1660', null, null],
     ['EXPORT', 'MISC', '8200', null, '7200', null, null],
     ['RELATED', 'GOODS', '5130', '5190', '6100', '6190', '6100'],
@@ -429,27 +429,28 @@
     ['RELATED', 'MISC', '8200', null, '7200', null, null]
   ];
 
-  // VAT Posting Setup: [vat bus, vat prod, calc type, vat category, %, eBarimt taxType, taxProductCode, sales VAT acc, purchase VAT acc, reverse-charge acc]
+  // VAT Posting Setup: [vat bus, vat prod, calc type, vat category, %, eBarimt taxType, taxProductCode, sales VAT acc, purchase VAT acc, reverse-charge acc,
+  //  vat identifier] — identifier = the document grouping key of D-E3 / BR-TAX-18 (seed: VAT10, VAT0, EXEMPT, NOVAT, RC10, CUSTOMS)
   var VAT_POSTING_SETUP = [
-    ['DOMESTIC', 'VAT10', 'NORMAL', 'VAT10', 10, 'VAT_ABLE', null, '2300', '1300', null],
-    ['DOMESTIC', 'VAT0', 'NORMAL', 'VAT0', 0, 'VAT_ZERO', 'TBD', '2300', '1300', null],
-    ['DOMESTIC', 'EXEMPT', 'NORMAL', 'EXEMPT', 0, 'VAT_FREE', 'TBD', '2300', '1300', null],
-    ['DOMESTIC', 'NOVAT', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null],
-    ['DOMESTIC', 'CUSTOMS_VAT', 'FULL_VAT', 'VAT10', 10, 'VAT_ABLE', null, '2300', '1300', null],
-    ['EXPORT', 'VAT10', 'NORMAL', 'VAT0', 0, 'VAT_ZERO', 'TBD', '2300', '1300', null],
-    ['EXPORT', 'VAT0', 'NORMAL', 'VAT0', 0, 'VAT_ZERO', 'TBD', '2300', '1300', null],
-    ['EXPORT', 'EXEMPT', 'NORMAL', 'EXEMPT', 0, 'VAT_FREE', 'TBD', '2300', '1300', null],
-    ['EXPORT', 'NOVAT', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null],
-    ['IMPORT', 'VAT10', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null],
-    ['IMPORT', 'VAT0', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null],
-    ['IMPORT', 'EXEMPT', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null],
-    ['IMPORT', 'NOVAT', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null],
-    ['IMPORT', 'IMPORT_SERVICE', 'REVERSE_CHARGE', 'VAT10', 10, 'VAT_ABLE', null, '2300', '1300', '2305'],
-    ['IMPORT', 'CUSTOMS_VAT', 'FULL_VAT', 'VAT10', 10, 'VAT_ABLE', null, '2300', '1300', null],
-    ['NONREG', 'VAT10', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null],
-    ['NONREG', 'VAT0', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null],
-    ['NONREG', 'EXEMPT', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null],
-    ['NONREG', 'NOVAT', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null]
+    ['DOMESTIC', 'VAT10', 'NORMAL', 'VAT10', 10, 'VAT_ABLE', null, '2300', '1300', null, 'VAT10'],
+    ['DOMESTIC', 'VAT0', 'NORMAL', 'VAT0', 0, 'VAT_ZERO', 'TBD', '2300', '1300', null, 'VAT0'],
+    ['DOMESTIC', 'EXEMPT', 'NORMAL', 'EXEMPT', 0, 'VAT_FREE', 'TBD', '2300', '1300', null, 'EXEMPT'],
+    ['DOMESTIC', 'NOVAT', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null, 'NOVAT'],
+    ['DOMESTIC', 'CUSTOMS_VAT', 'FULL_VAT', 'VAT10', 10, 'VAT_ABLE', null, '2300', '1300', null, 'CUSTOMS'],
+    ['EXPORT', 'VAT10', 'NORMAL', 'VAT0', 0, 'VAT_ZERO', 'TBD', '2300', '1300', null, 'VAT0'],
+    ['EXPORT', 'VAT0', 'NORMAL', 'VAT0', 0, 'VAT_ZERO', 'TBD', '2300', '1300', null, 'VAT0'],
+    ['EXPORT', 'EXEMPT', 'NORMAL', 'EXEMPT', 0, 'VAT_FREE', 'TBD', '2300', '1300', null, 'EXEMPT'],
+    ['EXPORT', 'NOVAT', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null, 'NOVAT'],
+    ['IMPORT', 'VAT10', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null, 'NOVAT'],
+    ['IMPORT', 'VAT0', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null, 'NOVAT'],
+    ['IMPORT', 'EXEMPT', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null, 'NOVAT'],
+    ['IMPORT', 'NOVAT', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null, 'NOVAT'],
+    ['IMPORT', 'IMPORT_SERVICE', 'REVERSE_CHARGE', 'VAT10', 10, 'VAT_ABLE', null, '2300', '1300', '2305', 'RC10'],
+    ['IMPORT', 'CUSTOMS_VAT', 'FULL_VAT', 'VAT10', 10, 'VAT_ABLE', null, '2300', '1300', null, 'CUSTOMS'],
+    ['NONREG', 'VAT10', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null, 'NOVAT'],
+    ['NONREG', 'VAT0', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null, 'NOVAT'],
+    ['NONREG', 'EXEMPT', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null, 'NOVAT'],
+    ['NONREG', 'NOVAT', 'NORMAL', 'NOVAT', 0, 'NOT_VAT', null, '2300', '1300', null, 'NOVAT']
   ];
 
   ERP.data = {
@@ -565,7 +566,7 @@
     // eBarimt merchant setup (ebarimt.ebarimt_setup / ebarimt_pos) — STAGING-like values, fictional
     ebarimtSetup: {
       enabled: true, environment: 'STAGING', merchantTin: '00000000099', districtCode: '2501', branchNo: '001', posNo: '001',
-      defaultClassificationCode: '6202000',
+      defaultClassificationCode: '8316200',      // БҮНА (CPC 2.1 based): computer systems management services
       posapiInstance: { name: 'posapi-01 (жишээ)', leftLotteries: 4820, lastSendData: '2026-10-08 07:12' }
     },
 
@@ -591,18 +592,21 @@
       { no: 'V00004', name: 'Бөөний Техник Хангамж ХХК', kind: 'LEGAL', tin: '00000000914', vpg: 'DOMESTIC', genBus: 'DOMESTIC', vatBus: 'DOMESTIC', terms: 'NET30', method: 'BANK', template: 'DOMESTIC_VAT' }
     ],
 
-    // Items (R1: SERVICE / NON_INVENTORY only, D-G5). classificationCode = БҮНА 7-digit code (plausible, fictional
-    // selection); barcode = in-store GS1 prefix 2xx with a valid EAN-13 check digit.
+    // Items (R1: SERVICE / NON_INVENTORY only, D-G5). bunaa = eBarimt classificationCode: 7-digit БҮНА product code, which is
+    // built on the UN CPC (5-digit subclass + 2) — not the ISIC/ҮАНА activity code of the company. Selection (to be checked
+    // against the eBarimt reference list): 87130 repair of computers, 83162 computer systems management, 83142 IT design and
+    // development for networks, 83151 website hosting, 4526x input units, 4527x storage units, 4529x parts and accessories,
+    // 92900 other education and training. barcode = in-store GS1 prefix 2xx with a valid EAN-13 check digit.
     items: [
-      { no: 'I00001', name: 'Компьютер засвар үйлчилгээ', type: 'SERVICE', uom: 'HOUR', price: '60000', piv: false, genProd: 'SERVICES', vatProd: 'VAT10', bunaa: '9511000', barcode: null, barcodeType: 'UNDEFINED', taxProductCode: null },
-      { no: 'I00002', name: 'IT дэмжлэгийн сарын гэрээ', type: 'SERVICE', uom: 'MONTH', price: '1600000', piv: false, genProd: 'SERVICES', vatProd: 'VAT10', bunaa: '6202000', barcode: null, barcodeType: 'UNDEFINED', taxProductCode: null },
-      { no: 'I00003', name: 'Сүлжээ суурилуулалт', type: 'SERVICE', uom: 'SERVICE', price: '950000', piv: false, genProd: 'SERVICES', vatProd: 'VAT10', bunaa: '4321000', barcode: null, barcodeType: 'UNDEFINED', taxProductCode: null },
-      { no: 'I00004', name: 'Вэб хостинг (сар)', type: 'SERVICE', uom: 'MONTH', price: '90000', piv: false, genProd: 'SERVICES', vatProd: 'VAT10', bunaa: '6311000', barcode: null, barcodeType: 'UNDEFINED', taxProductCode: null },
+      { no: 'I00001', name: 'Компьютер засвар үйлчилгээ', type: 'SERVICE', uom: 'HOUR', price: '60000', piv: false, genProd: 'SERVICES', vatProd: 'VAT10', bunaa: '8713000', barcode: null, barcodeType: 'UNDEFINED', taxProductCode: null },
+      { no: 'I00002', name: 'IT дэмжлэгийн сарын гэрээ', type: 'SERVICE', uom: 'MONTH', price: '1600000', piv: false, genProd: 'SERVICES', vatProd: 'VAT10', bunaa: '8316200', barcode: null, barcodeType: 'UNDEFINED', taxProductCode: null },
+      { no: 'I00003', name: 'Сүлжээ суурилуулалт', type: 'SERVICE', uom: 'SERVICE', price: '950000', piv: false, genProd: 'SERVICES', vatProd: 'VAT10', bunaa: '8314200', barcode: null, barcodeType: 'UNDEFINED', taxProductCode: null },
+      { no: 'I00004', name: 'Вэб хостинг (сар)', type: 'SERVICE', uom: 'MONTH', price: '90000', piv: false, genProd: 'SERVICES', vatProd: 'VAT10', bunaa: '8315100', barcode: null, barcodeType: 'UNDEFINED', taxProductCode: null },
       { no: 'I00005', name: 'Утасгүй хулгана', type: 'NON_INVENTORY', uom: 'PCS', price: '32000', piv: true, genProd: 'GOODS', vatProd: 'VAT10', bunaa: '4526000', barcode: '2000000000015', barcodeType: 'GS1', taxProductCode: null },
       { no: 'I00006', name: 'USB гар', type: 'NON_INVENTORY', uom: 'PCS', price: '49500', piv: true, genProd: 'GOODS', vatProd: 'VAT10', bunaa: '4526000', barcode: '2000000000022', barcodeType: 'GS1', taxProductCode: null },
       { no: 'I00007', name: 'USB флаш 64GB', type: 'NON_INVENTORY', uom: 'PCS', price: '18700', piv: true, genProd: 'GOODS', vatProd: 'VAT10', bunaa: '4527000', barcode: '2000000000039', barcodeType: 'GS1', taxProductCode: null },
       { no: 'I00008', name: 'Принтерийн хор', type: 'NON_INVENTORY', uom: 'PCS', price: '99000', piv: true, genProd: 'GOODS', vatProd: 'VAT10', bunaa: '4529000', barcode: '2000000000046', barcodeType: 'GS1', taxProductCode: null },
-      { no: 'I00009', name: 'Компьютерийн анхан шатны сургалт', type: 'SERVICE', uom: 'SERVICE', price: '350000', piv: false, genProd: 'SERVICES', vatProd: 'EXEMPT', bunaa: '8549000', barcode: null, barcodeType: 'UNDEFINED', taxProductCode: '305' }
+      { no: 'I00009', name: 'Компьютерийн анхан шатны сургалт (тусгай зөвшөөрөлтэй)', type: 'SERVICE', uom: 'SERVICE', price: '350000', piv: false, genProd: 'SERVICES', vatProd: 'EXEMPT', bunaa: '9290000', barcode: null, barcodeType: 'UNDEFINED', taxProductCode: '305' }
     ],
 
     // Draft sales invoices (sales.sales_header OPEN) — editable in the prototype
@@ -614,7 +618,7 @@
       { no: 'DSI-000036', docType: 'INVOICE', customer: 'C00004', documentDate: '2026-10-08', postingDate: '2026-10-08',
         note: 'FR-SAL-003 AC1-ийн бөөрөнхийлөлтийн жишээ (3 × 333.335, хөнгөлөлт 10%) ба дансны мөр',
         lines: [{ type: 'ITEM', no: 'I00001', qty: '3', price: '333.335', disc: '10', description: 'Засвар үйлчилгээ (жишээ үнэ)' },
-          { type: 'GL_ACCOUNT', no: '8100', qty: '1', price: '50000', description: 'Тоног төхөөрөмжийн түрээс' }], createdBy: 'U2' }
+          { type: 'GL_ACCOUNT', no: '8100', qty: '1', price: '50000', description: 'Компьютерийн тоног төхөөрөмжийн түрээс', classificationCode: '7312400' }], createdBy: 'U2' }
     ],
     draftCounters: { SI_DRAFT: 36, SC_DRAFT: 3, PI_DRAFT: 14, JNL_DRAFT: 52 },
 
@@ -638,7 +642,7 @@
   var src = [];
   function add(o) { src.push(o); return o; }
   function I(no, qty, extra) { var l = { type: 'ITEM', no: no, qty: String(qty) }; for (var k in extra || {}) l[k] = extra[k]; return l; }
-  function G(acc, qty, price, desc) { return { type: 'GL_ACCOUNT', no: acc, qty: String(qty), price: price, description: desc }; }
+  function G(acc, qty, price, desc, code) { var l = { type: 'GL_ACCOUNT', no: acc, qty: String(qty), price: price, description: desc }; if (code) l.classificationCode = code; return l; }
 
   // Opening balances at go-live (D-D7): receivables and payables per document
   add({ t: 'journal', id: 'OB1', date: '2026-01-01', series: 'OB', source: 'OPENING', reason: 'OPENING', desc: 'Эхний үлдэгдэл 2026.01.01',
@@ -678,7 +682,7 @@
     ['S18', '2026-07-06', 'C00001', [I('I00002', 1)]],
     ['S19', '2026-07-20', 'C00003', [I('I00008', 15)]],
     ['S20', '2026-08-04', 'C00001', [I('I00002', 1), I('I00003', 1)]],
-    ['S21', '2026-08-18', 'C00002', [I('I00001', 10), G('8100', 1, '50000', 'Тоног төхөөрөмжийн түрээс (8-р сар)')]],
+    ['S21', '2026-08-18', 'C00002', [I('I00001', 10), G('8100', 1, '50000', 'Компьютерийн тоног төхөөрөмжийн түрээс (8-р сар)', '7312400')]],
     ['S22', '2026-08-27', 'C00006', [I('I00005', 4), I('I00007', 4)]],
     ['S23', '2026-09-03', 'C00001', [I('I00002', 1)]],
     ['S24', '2026-09-12', 'C00004', [I('I00002', 1), I('I00001', 6), I('I00003', 1)]],
@@ -746,25 +750,28 @@
     ['2026-09-10', 'GOLOMT01', 'C00002', null, 'S21']
   ].forEach(function (r) { add({ t: 'receipt', date: r[0], bank: r[1], cust: r[2], amount: r[3], appliesTo: r[4] }); });
 
-  // Vendor payments
+  // Vendor payments. 6th column = МГТ category override on the bank entry (BR-RPT-73, 10 §5.14): a payment to 2100 would
+  // otherwise land in 1.2.3 "бараа материал" — rent and internet are 1.2.4, fuel 1.2.5, the laptop (P7, 1630) is investing 2.2.1
   [
     ['2026-01-20', 'KHAN01', 'V00004', '1320000.00', 'OB-V00004'],
-    ['2026-01-16', 'KHAN01', 'V00001', null, 'P1'],
+    ['2026-01-16', 'KHAN01', 'V00001', null, 'P1', 'OP_OPERATING_EXP'],
     ['2026-02-12', 'KHAN01', 'V00004', null, 'P2'],
-    ['2026-02-20', 'GOLOMT01', 'V00002', null, 'P3'],
-    ['2026-03-16', 'KHAN01', 'V00003', null, 'P4'],
-    ['2026-04-14', 'KHAN01', 'V00001', null, 'P5'],
+    ['2026-02-20', 'GOLOMT01', 'V00002', null, 'P3', 'OP_OPERATING_EXP'],
+    ['2026-03-16', 'KHAN01', 'V00003', null, 'P4', 'OP_FUEL_TRANSPORT'],
+    ['2026-04-14', 'KHAN01', 'V00001', null, 'P5', 'OP_OPERATING_EXP'],
     ['2026-05-18', 'KHAN01', 'V00004', null, 'P6'],
-    ['2026-05-20', 'KHAN01', 'V00004', null, 'P7'],
-    ['2026-05-27', 'GOLOMT01', 'V00002', null, 'P8'],
-    ['2026-06-24', 'KHAN01', 'V00003', null, 'P9'],
-    ['2026-07-15', 'KHAN01', 'V00001', null, 'P10'],
+    ['2026-05-20', 'KHAN01', 'V00004', null, 'P7', 'INV_FA_BUY'],
+    ['2026-05-27', 'GOLOMT01', 'V00002', null, 'P8', 'OP_OPERATING_EXP'],
+    ['2026-06-24', 'KHAN01', 'V00003', null, 'P9', 'OP_FUEL_TRANSPORT'],
+    ['2026-07-15', 'KHAN01', 'V00001', null, 'P10', 'OP_OPERATING_EXP'],
     ['2026-08-19', 'KHAN01', 'V00004', null, 'P11'],
-    ['2026-08-25', 'GOLOMT01', 'V00002', null, 'P12']
-  ].forEach(function (r) { add({ t: 'vendorPayment', date: r[0], bank: r[1], vend: r[2], amount: r[3], appliesTo: r[4] }); });
+    ['2026-08-25', 'GOLOMT01', 'V00002', null, 'P12', 'OP_OPERATING_EXP']
+  ].forEach(function (r) { add({ t: 'vendorPayment', date: r[0], bank: r[1], vend: r[2], amount: r[3], appliesTo: r[4], cf: r[5] || null }); });
 
   // Payroll journal import (PAYROLLJNL, R2 import format; amounts computed outside the ERP):
-  // 2 employees, gross 1 800 000; employee НДШ 207 000, ХХОАТ 159 300, net 1 433 700; employer НДШ 225 000.
+  // 2 employees × gross 900 000 = 1 800 000. Employee НДШ 11.5 % = 103 500 each (207 000); ХХОАТ 10 % × (900 000 − 103 500)
+  // = 79 650 less the monthly tax credit 18 000 for income 500 001–1 000 000 (pit.credit_table_monthly) = 61 650 each (123 300);
+  // net 1 800 000 − 207 000 − 123 300 = 1 469 700; employer НДШ 12.5 % = 225 000 (si.employer_rate*, risk class 1).
   var months = ['01', '02', '03', '04', '05', '06', '07', '08', '09'];
   var mdays = { '01': 31, '02': 28, '03': 31, '04': 30, '05': 31, '06': 30, '07': 31, '08': 31, '09': 30 };
   months.forEach(function (m) {
@@ -773,16 +780,16 @@
       lines: [
         { acc: '7201', amt: '1800000.00', desc: 'Цалингийн зардал' },
         { acc: '7202', amt: '225000.00', desc: 'НДШ (ажил олгогч)' },
-        { acc: '2200', amt: '-1433700.00', desc: 'Олгох цалин' },
-        { acc: '2340', amt: '-159300.00', desc: 'ХХОАТ суутгасан' },
+        { acc: '2200', amt: '-1469700.00', desc: 'Олгох цалин' },
+        { acc: '2340', amt: '-123300.00', desc: 'ХХОАТ суутгасан (хөнгөлөлтийн дараа)' },
         { acc: '2350', amt: '-432000.00', desc: 'НДШ (ажилтан + ажил олгогч)' }
       ] });
   });
   // Salary and tax payments for Jan–Aug (September's are paid in October)
   months.slice(0, 8).forEach(function (m, i) {
     var nm = months[i + 1];
-    add({ t: 'bankGl', date: '2026-' + nm + '-05', bank: 'KHAN01', acc: '2200', amount: '-1433700.00', desc: 'Цалин олгосон: ' + Number(m) + '-р сар' });
-    add({ t: 'bankGl', date: '2026-' + nm + '-09', bank: 'KHAN01', acc: '2340', amount: '-159300.00', desc: 'ХХОАТ төлсөн: ' + Number(m) + '-р сар' });
+    add({ t: 'bankGl', date: '2026-' + nm + '-05', bank: 'KHAN01', acc: '2200', amount: '-1469700.00', desc: 'Цалин олгосон: ' + Number(m) + '-р сар' });
+    add({ t: 'bankGl', date: '2026-' + nm + '-09', bank: 'KHAN01', acc: '2340', amount: '-123300.00', desc: 'ХХОАТ төлсөн: ' + Number(m) + '-р сар' });
     add({ t: 'bankGl', date: '2026-' + nm + '-09', bank: 'KHAN01', acc: '2350', amount: '-432000.00', desc: 'НДШ төлсөн: ' + Number(m) + '-р сар' });
   });
   // Bank fees (8300, finance cost) — monthly on Хаан, quarterly on Голомт
@@ -809,8 +816,10 @@
   add({ t: 'transfer', date: '2026-06-30', from: 'CASH01', to: 'KHAN01', amount: '400000.00', desc: 'Касс → Хаан банк тушаалт' });
   add({ t: 'transfer', date: '2026-08-31', from: 'CASH01', to: 'KHAN01', amount: '300000.00', desc: 'Касс → Хаан банк тушаалт' });
 
-  // Quarterly depreciation, entered manually in R1 (FA module is R2): 7260 Дт / 1690 Кт
-  [['2026-03-31', '531250.00'], ['2026-06-30', '531250.00'], ['2026-09-30', '631250.00']].forEach(function (d, i) {
+  // Quarterly depreciation, entered manually in R1 (FA module is R2): 7260 Дт / 1690 Кт, straight line, 4-year (48-month) book life.
+  // Opening computers 8 500 000 / 16 quarters = 531 250 per quarter. Laptop P7 (2 400 000, in use 2026-05-08) is depreciated from
+  // the 1st of the next month (D-G4): 2 400 000 / 48 = 50 000 per month → Q2 June 50 000, Q3 150 000.
+  [['2026-03-31', '531250.00'], ['2026-06-30', '581250.00'], ['2026-09-30', '681250.00']].forEach(function (d, i) {
     add({ t: 'journal', id: 'DEP' + (i + 1), date: d[0], series: 'GJ', source: 'GENJNL', desc: 'Элэгдэл ' + (i + 1) + '-р улирал (гар журнал)',
       lines: [{ acc: '7260', amt: d[1], desc: 'Үндсэн хөрөнгийн элэгдэл' }, { acc: '1690', amt: '-' + d[1], desc: 'Хуримтлагдсан элэгдэл' }] });
   });

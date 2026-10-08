@@ -88,6 +88,82 @@ check('МГТ: cash at end = ledger cash, X = 0', mgt.values.cur['CHK'] === 0 &&
 const ag = E.reports.aging('customer');
 check('AR aging total = CUE-16 total receivables', ag.parties.reduce((s, p) => s + p.total, 0) === cue['CUE-16'].value, fmt(cue['CUE-16'].value));
 
+// ---------------------------------------------------------------- 4b. accounting review (Mongolian accountant / BC consultant)
+check('VAT identifier comes from the seed setup (RC10, CUSTOMS ≠ VAT10; D-E3, BR-TAX-18)',
+  E.setup.vatSetup('IMPORT', 'IMPORT_SERVICE').identifier === 'RC10' && E.setup.vatSetup('DOMESTIC', 'CUSTOMS_VAT').identifier === 'CUSTOMS' &&
+  E.setup.vatSetup('EXPORT', 'VAT10').identifier === 'VAT0' && E.setup.vatSetup('DOMESTIC', 'VAT10').identifier === 'VAT10');
+c = calc(false, [{ type: 'GL_ACCOUNT', no: '5110', qty: '1', price: '1000.05' }, { type: 'GL_ACCOUNT', no: '5110', qty: '0', price: '5' }]);
+check('Zero line (CLA = 0) is not grouped and gets VAT 0 (BR-TAX-22)', c.groups.length === 1 && c.lines[1].vatAmount === 0 && c.vatAmount === 10001);
+// account determination against mn_30_posting.sql / mn_20_tax.sql
+const gps = (b, p) => E.setup.genPostingSetup(b, p);
+check('General posting setup = seed (DOMESTIC GOODS 5100/6100, SERVICES 5110/7200, EXPORT GOODS 5120, RELATED 5130, * fallback)',
+  gps('DOMESTIC', 'GOODS').sales === '5100' && gps('DOMESTIC', 'GOODS').purch === '6100' && gps('DOMESTIC', 'SERVICES').sales === '5110' &&
+  gps('DOMESTIC', 'SERVICES').purch === '7200' && gps('EXPORT', 'GOODS').sales === '5120' && gps('RELATED', 'SERVICES').sales === '5130' && gps('NOGROUP', 'MISC').sales === '8200');
+check('Receivables / payables / VAT accounts = seed (1200, 2100, 2300, 1300, reverse charge 2305)',
+  E.setup.receivablesAccount('DOMESTIC') === '1200' && E.setup.payablesAccount('DOMESTIC') === '2100' && E.setup.payablesAccount('CUSTOMS') === '2365' &&
+  E.setup.vatSetup('DOMESTIC', 'VAT10').salesAcc === '2300' && E.setup.vatSetup('DOMESTIC', 'VAT10').purchAcc === '1300' && E.setup.vatSetup('IMPORT', 'IMPORT_SERVICE').reverseAcc === '2305');
+// every posted sales line went to the account of the setup
+const badAcc = [];
+E.sales.postedInvoices().concat(E.sales.postedCreditMemos()).forEach((p) => p.lines.forEach((l) => {
+  if (l.type === 'ITEM') { const it = E.setup.item(l.no); if (l.account !== gps(p.genBus, it.genProd).sales) badAcc.push(p.no + '/' + l.lineNo); }
+}));
+check('Every posted item line hit the General Posting Setup sales account (D-F1)', badAcc.length === 0, badAcc.join(', '));
+// each sales voucher: revenue + VAT = receivable
+const badVch = [];
+E.sales.postedInvoices().forEach((p) => {
+  const g = S.glEntries.filter((e) => e.transactionNo === p.transactionNo);
+  const ar = g.filter((e) => e.account === '1200').reduce((x, e) => x + e.amount, 0);
+  const vat = g.filter((e) => e.account === '2300').reduce((x, e) => x + e.amount, 0);
+  if (ar !== p.amountInclVat || vat !== -p.vatAmount || g.reduce((x, e) => x + e.amount, 0) !== 0) badVch.push(p.no);
+});
+check('Sales vouchers: Дт 1200 = НӨАТ-тэй дүн, Кт 2300 = баримтын НӨАТ, Σ = 0', badVch.length === 0, badVch.join(', '));
+// AR / AP per party = aging = G/L
+const custSum = {}; S.dcle.forEach((d) => { custSum[d.customer] = (custSum[d.customer] || 0) + d.amount; });
+const agC = E.reports.aging('customer');
+check('AR per customer: Σ detailed = aging total; Σ = 1200', agC.parties.every((p) => p.total === custSum[p.party]) &&
+  Object.values(custSum).reduce((a, b) => a + b, 0) === E.reports.glBalance('1200'));
+const agV = E.reports.aging('vendor');
+check('AP aging total = 2100 balance', agV.parties.reduce((a, p) => a + p.total, 0) === E.reports.glBalance('2100'), fmt(E.reports.glBalance('2100')));
+// Form A
+check('СБТ 2.2.7 (end) = 3400 opening + ОДТ 22: current-year result sits in equity', -sbt.values.end['2.2.7'] === 2277500000 + -odt.values.cur['22'], fmt(-sbt.values.end['2.2.7']));
+check('ОДТ: 2 (өртөг) shown positive, 3 = 1 − 2, 18 = 3 + other lines', odt.displayValue(odt.rows.find((r) => r.code === '2'), 'cur') > 0 &&
+  -odt.values.cur['3'] === -odt.values.cur['1'] - odt.values.cur['2']);
+check('МГТ: vendor payment overrides (BR-RPT-73): laptop in 2.2.1, rent/internet in 1.2.4, fuel in 1.2.5',
+  mgt.values.cur['2.2.1'] === -264000000 && mgt.values.cur['1.2.5'] === -42900000 && mgt.values.cur['1.2.4'] < -700000000, fmt(mgt.values.cur['2.2.1']) + ' / ' + fmt(mgt.values.cur['1.2.4']) + ' / ' + fmt(mgt.values.cur['1.2.5']));
+check('МГТ 1 + 2 + 3 + 4 + X = 7 − 6', mgt.values.cur['5'] === mgt.values.cur['7'] - mgt.values.cur['6']);
+// mock data plausibility
+check('Payroll: ХХОАТ after the monthly credit (2 × (10 % × (900 000 − 103 500) − 18 000) = 123 300); net 1 469 700',
+  E.reports.glBalance('2340') === -12330000 && E.reports.glBalance('2200') === -146970000 && E.reports.glBalance('2350') === -43200000);
+check('Depreciation: 4-year life, laptop from 2026-06-01 → 1690 = −(2 125 000 + 531 250 + 581 250 + 681 250)', E.reports.glBalance('1690') === -391875000, fmt(E.reports.glBalance('1690')));
+check('ТТД / регистр are obviously fake (00000…) and 11 / 7 digits', [ERP.data.company].concat(ERP.data.customers.filter((x) => x.tin), ERP.data.vendors)
+  .every((x) => /^0{6}\d{5}$/.test(x.tin)) && /^0{4}\d{3}$/.test(ERP.data.company.registrationNo));
+const isic = ['9511', '6202', '4321', '6311', '8549', '6920'];
+const allItems = E.ebarimt.documents().filter((d) => d.lines).flatMap((d) => d.lines);
+check('eBarimt classificationCode: 7 digits, БҮНА (CPC-based) not ISIC activity codes; rental line 7312400',
+  allItems.every((l) => /^\d{7}$/.test(l.classificationCode) && isic.indexOf(l.classificationCode.slice(0, 4)) < 0) && allItems.some((l) => l.classificationCode === '7312400'));
+// eBarimt JSON rules (12 §5, TYP-02, MAP-01, MAP-24)
+const ebBad = [];
+E.ebarimt.documents().forEach((d) => {
+  const r = d.operation === 'DELETE' ? null : E.ebarimt.buildRequest(d);
+  if (!r) return;
+  const p = E.sales.getPosted(d.sourceNo);
+  if (r.type === 'B2B_RECEIPT' && !(/^\d{11}$/.test(r.customerTin) && r.consumerNo === '')) ebBad.push(d.id + ' B2B tin');
+  if (r.type === 'B2C_RECEIPT' && r.customerTin !== null) ebBad.push(d.id + ' B2C tin');
+  if (r.type === 'B2B_RECEIPT' && E.setup.customer(p.customer).kind !== 'LEGAL') ebBad.push(d.id + ' B2B individual');
+  const order = ['VAT_ABLE', 'VAT_ZERO', 'VAT_FREE', 'NOT_VAT'];
+  r.receipts.forEach((x, i) => {
+    if (x.customerTin !== null) ebBad.push(d.id + ' receipt customerTin');
+    if (i && order.indexOf(x.taxType) <= order.indexOf(r.receipts[i - 1].taxType)) ebBad.push(d.id + ' order');
+    x.items.forEach((it) => {
+      if (x.taxType === 'VAT_ABLE' ? it.taxProductCode !== null : !(it.taxProductCode && it.totalVAT === 0)) ebBad.push(d.id + ' taxProductCode/VAT');
+      if (!(it.qty > 0 && it.unitPrice > 0 && it.totalVAT >= 0 && it.totalVAT <= it.totalAmount)) ebBad.push(d.id + ' AMT-12');
+    });
+  });
+  if (!/^001\d{6}$/.test(r.billIdSuffix)) ebBad.push(d.id + ' billIdSuffix');
+  if (d.sourceType === 'SALES_INVOICE' && (r.totalAmount * 100 !== p.amountInclVat || Math.round(r.totalVAT * 100) !== p.vatAmount)) ebBad.push(d.id + ' AMT-05');
+});
+check('eBarimt JSON: B2B tin / B2C consumerNo, receipt order and taxType split, taxProductCode only off VAT_ABLE, AMT-05/12', ebBad.length === 0, ebBad.join(', '));
+
 // ---------------------------------------------------------------- 5. posting behaviour
 const before = JSON.stringify(S.counters);
 const pv = E.sales.preview(draft36);
@@ -134,6 +210,40 @@ check('Reversing an invoice transaction is refused (use a credit memo, D-D5)', !
 const conf = E.purchases.confirmInputVat(E.purchases.list().find((p) => !p.deductibleConfirmed && p.ddtd).no);
 check('Confirm input VAT with the registered ДДТД (BR-TAX-49)', conf.ok && E.home.cues()['CUE-14'].count === 1);
 for (const c2 of E.invariants()) check('[after posting] ' + c2.id, c2.pass, c2.detail);
+
+// ---------------------------------------------------------------- 5b. application / unapply detail (06 §5.13–5.14), VAT scope (08 §5.9)
+const cleOf = (no) => E.state().cle.find((e) => e.entryNo === no);
+const pay2 = E.payments.receipt({ date: '2026-10-08', bank: 'KHAN01', cust: 'C00004', amount: '500000.00' });
+const pe2 = E.state().cle[E.state().cle.length - 1];
+const otherCust = E.sales.postedInvoices().find((p) => p.customer === 'C00003' && E.sales.paymentStatus(p).remaining > 0);
+let ax = E.ledger.applyCustomer(pe2.entryNo, [otherCust.cleEntryNo], '2026-10-08');
+check('Applying a payment to another customer\'s invoice is refused (INV-27)', pay2.ok && !ax.ok && ax.errors.some((e) => e.code === 'party.application_customer_mismatch'));
+ax = E.ledger.applyCustomer(pe2.entryNo, [target.cleEntryNo], '2026-10-07');
+check('Application dated before the payment is refused (BR-AR-27)', !ax.ok && ax.errors.some((e) => e.code === 'party.application_date_before_entries'));
+ax = E.ledger.applyCustomer(pe2.entryNo, [{ entryNo: target.cleEntryNo, amount: 30000000 }], '2026-10-08');
+const apRows = E.state().dcle.filter((d) => d.applicationNo === ax.applicationNo);
+check('Capped application 300 000.00: two detailed rows ±300 000, transaction_no NULL, payment remaining −200 000',
+  ax.ok && ax.applied === 30000000 && apRows.length === 2 && apRows.every((d) => d.transactionNo === null && Math.abs(d.amount) === 30000000) && pe2.remaining === -20000000);
+const un2 = E.ledger.unapplyCustomer(ax.applicationNo, '2026-10-08');
+const mirrors = E.state().dcle.filter((d) => d.unappliedOf && apRows.some((r) => r.entryNo === d.unappliedOf));
+check('Unapply: mirror rows with a new application no, −amount, transaction_no NULL; originals point to them (BR-AR-44/45)',
+  un2.ok && mirrors.length === 2 && mirrors.every((m) => m.applicationNo === un2.undoApplicationNo && m.applicationNo !== ax.applicationNo && m.transactionNo === null && m.unapplied) &&
+  apRows.every((r) => r.unapplied && mirrors.some((m) => m.entryNo === r.unappliedByEntryNo)) && pe2.remaining === -50000000 && cleOf(target.cleEntryNo).remaining === target.amountInclVat);
+check('Unapplying the same application twice is refused', !E.ledger.unapplyCustomer(ax.applicationNo, '2026-10-08').ok);
+// VAT settlement preview must not touch live entries; settled period keeps its entries; a late confirmation goes to the next open return
+const liveClosed = () => E.vat.entries().filter((e) => e.closed).length;
+const before2 = liveClosed();
+const pvs = E.vat.settle('2026-09', '2026-09-30', { preview: true });
+check('VAT settlement preview leaves the live VAT entries untouched (ROLLBACK)', pvs.ok && liveClosed() === before2);
+const st = E.vat.settle('2026-09', '2026-09-30');
+const sep = E.reports.vatReturn('2026-09');
+check('Close September VAT: settlement = ТТ-03а row 14, period CLOSED, 2310 credited', st.ok && st.net === sep.values['14'] && E.vat.periods().find((p) => p.period === '2026-09').status === 'CLOSED', fmt(st.net));
+const p13 = E.purchases.list().find((p) => !p.ddtd);
+const cf13 = E.purchases.confirmInputVat(p13.no, '000000000914202609120915420001084');
+const oct = E.reports.vatReturn('2026-10'), sep2 = E.reports.vatReturn('2026-09');
+check('Input VAT confirmed after its month was closed is deducted in the next open return (BR-TAX-49, 08 §5.9)',
+  cf13.ok && oct.values['8'] === -p13.vatAmount && sep2.values['14'] === sep.values['14'], 'Oct row 8 ' + fmt(oct.values['8']));
+for (const c3 of E.invariants()) check('[after review scenarios] ' + c3.id, c3.pass, c3.detail);
 
 // ---------------------------------------------------------------- 6. explanation notes → real spec headings
 const headingCache = {};

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "GS-GL-024",
+  "title": "Компанийн posting-ийн цонх бүх бичилтэд үйлчилнэ",
+  "description": "Sprint 0 skeleton variant of GS-GL-019: the window 2026-03-01..2026-03-31 comes from the company profile instead of a settings.update step (no settings API yet).",
+  "area": "GL",
+  "release": "R1",
+  "rules": "NOW",
+  "refs": ["FR-GL-023", "D-D3"],
+  "tags": ["sprint0-skeleton"],
+  "signedOffBy": [
+    { "name": "ledger-owners (Sprint 0 skeleton)", "role": "LEDGER_OWNER", "date": "2026-10-08", "note": "Draft derived from GS-GL-019. Needs ACCOUNTING_ADVISOR sign-off before moving to Scenarios/." }
+  ],
+  "setup": {
+    "baseline": "BASE-VAT",
+    "companies": [ { "key": "C1", "profile": { "allowPostingFrom": "2026-03-01", "allowPostingTo": "2026-03-31" } } ]
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "at": "2026-03-02T09:00",
+      "as": "owner",
+      "company": "C1",
+      "action": "journal.post",
+      "input": { "lines": [ { "documentNo": "J-000001", "postingDate": "2026-02-28", "account": "7210", "balAccount": "2650", "amount": "100.00" } ] },
+      "expectOutcome": { "status": "ERROR", "http": 422, "codes": ["gl.posting_date_outside_window"] },
+      "expect": { "noRowsWritten": true }
+    },
+    {
+      "id": "s2",
+      "at": "2026-03-02T09:05",
+      "as": "owner",
+      "company": "C1",
+      "action": "journal.post",
+      "input": { "lines": [ { "documentNo": "J-000002", "postingDate": "2026-03-01", "account": "7210", "balAccount": "2650", "amount": "100.00" } ] },
+      "expectOutcome": { "status": "OK", "http": 201 },
+      "expect": { "numbering": [ { "series": "GJ", "year": 2026, "lastNo": "GJ-2026-00001" } ] }
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- SPRINT 0 STUB: background host (outbox dispatcher + Quartz jobs come in Sprint 1, ADR-0018). Only /health/live today,
+       so deploy/docker/Dockerfile and ci.yml can already build and publish it. -->
+</Project>

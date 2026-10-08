@@ -1,8 +1,8 @@
 <!--
   PR гарчиг: Conventional Commits хэлбэрээр, англиар.  Жишээ:  feat(sales): post sales invoice with VAT 10%
   Төрөл: feat | fix | refactor | perf | test | docs | build | ci | chore | revert
-  Scope = модулийн нэр: platform, gl, tax, parties, sales, purchases, cashbank, currency, fa, inventory,
-          reporting, ebarimt, integration, web, db, ci
+  Scope = модулийн PostgreSQL схемийн нэр (db/schema, DECISIONS D-K1): platform, gl, tax, party, sales, purchase,
+          bank, fx, fa, inv, rpt, ebarimt, integration, audit, identity, web, db, ci
   Дүрэм: 18-dev-setup.md §8 (git workflow), §9 (Definition of Done).
 -->
 
@@ -33,11 +33,11 @@ BC лавлагаа (хэрэв BC логикийг дагасан бол): <!--
 - [ ] Дебет = Кредит (transaction бүрт) ба trial balance = 0 гэдгийг тест баталгаажуулсан
 
 **Өгөгдлийн сан**
-- [ ] Шинэ migration нь `db/migrations/V####__<module>_<description>.sql`, толгой коммент бөглөсөн (`-- Module · Ticket · Expand/contract · Rollback`); `CREATE INDEX CONCURRENTLY` тусдаа `-- migrator: no-transaction` файлд; өмнө merge хийгдсэн migration-д хүрээгүй
+- [ ] Шинэ migration нь `db/migrations/V####__<module>_<description>.sql` (baseline = канон `db/schema/*.sql`, хэзээ ч засахгүй; дараагийн өөрчлөлт зөвхөн V файлаар), толгой коммент бөглөсөн (`-- Module · Ticket · Expand/contract · Rollback`); `CREATE INDEX CONCURRENTLY` тусдаа `-- migrator: no-transaction` файлд; өмнө merge хийгдсэн migration-д хүрээгүй
 - [ ] Expand → contract дараалал (хуучин app хувилбар шинэ схем дээр ажиллана)
-- [ ] Шинэ хүснэгт: `tenant_id`, `company_id`, `core.fn_apply_tenant_rls(...)` (RLS `ENABLE` + `FORCE` + `rls_<table>__tenant` + grant); дүн `core.amount`/`core.amount_lcy`, ханш `core.fx_rate`
-- [ ] Шинэ ledger хүснэгт: `core.fn_make_append_only(...)` (guard trigger, UPDATE/DELETE/TRUNCATE хураасан); INSERT зөвхөн posting engine / `ILedgerWriter<T>`-ээр; засвар зөвхөн reversal-аар
-- [ ] Хууль ёсны дугаар зөвхөн posting transaction доторх counter-оос (gapless)
+- [ ] Шинэ хүснэгт: `tenant_id`, `company_id`, RLS `ENABLE` + `FORCE` + `tenant_isolation` (+ RESTRICTIVE `company_isolation`) + `app_user` grant (fail-closed `platform.current_tenant_id()`); дүн `platform.amount`, нэгжийн үнэ `platform.unit_amount`, тоо `platform.quantity`, ханш `platform.exch_rate`; master data-д `trg_<table>_audit` (`audit.fn_row_change`)
+- [ ] Шинэ ledger хүснэгт: `platform.ledger_guard` мөр + `trg_<table>_immutable`/`_no_truncate` (`platform.fn_guard_immutable`) + `trg_<table>_before_insert` (`platform.fn_ledger_before_insert`), `app_user`/`app_worker`/`app_readonly`-оос UPDATE/DELETE/TRUNCATE хураасан; `entry_no` нь `platform.fn_next_entry_no` (IDENTITY биш); INSERT зөвхөн posting engine / `ILedgerWriter<T>`-ээр; засвар зөвхөн reversal-аар (storno биш, D-C3)
+- [ ] Хууль ёсны дугаар зөвхөн posting transaction доторх `platform.fn_next_document_no`-оос (gapless, D-C7)
 
 **Аюулгүй байдал ба хувийн мэдээлэл**
 - [ ] Команд бүрт permission шалгасан; өөр tenant/company-ийн өгөгдөл харагдахгүйг тест баталгаажуулсан

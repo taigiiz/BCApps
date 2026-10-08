@@ -176,7 +176,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .label-caps { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
 /* ---------- app shell ---------- */
@@ -225,10 +225,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: sticky; top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px)); align-self: flex-start;
   height: calc(100vh - var(--topbar-h)); overflow-y: auto;
 }
-.nav-group { margin-bottom: 6px; }
+.nav-group { margin-bottom: 2px; }
 .nav-group > .nav-head {
   display: flex; align-items: center; justify-content: space-between; width: 100%;
-  padding: 6px 10px; border: 0; background: none; cursor: pointer; text-align: left;
+  padding: 4px 10px; border: 0; background: none; cursor: pointer; text-align: left;
   font-weight: 600; font-size: var(--fs-sm); color: var(--ink);
   border-radius: var(--radius);
 }
@@ -239,7 +239,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav-items { list-style: none; margin: 0; padding: 0 0 0 6px; }
 .nav-items a {
   display: flex; align-items: center; gap: 8px; justify-content: space-between;
-  padding: 5px 10px; border-radius: var(--radius); color: var(--ink-2); text-decoration: none; font-size: var(--fs-sm);
+  padding: 3px 10px; border-radius: var(--radius); color: var(--ink-2); text-decoration: none; font-size: var(--fs-sm);
 }
 .nav-items a:hover { background: var(--surface-2); color: var(--ink); }
 .nav-items a[aria-current="page"] { background: var(--accent-soft); color: var(--ink); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
@@ -300,6 +300,8 @@ hr.rule { border: 0; border-top: 1px solid var(--rule); margin: 4px 0; }
   font-weight: 600; font-size: var(--fs-sm);
 }
 .intro > summary::-webkit-details-marker { display: none; }
+.intro > summary { white-space: nowrap; }
+.intro > summary > .muted { white-space: normal; min-width: 0; }
 .intro > summary .chev { transition: transform .15s; color: var(--ink-3); }
 .intro[open] > summary .chev { transform: rotate(90deg); }
 .intro .intro-body { padding: 0 14px 12px; display: grid; gap: 6px; max-width: 78ch; color: var(--ink-2); }
@@ -379,7 +381,7 @@ textarea.input { height: auto; padding: 6px 8px; }
 .kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; font-size: var(--fs-sm); }
 .kv dt { color: var(--ink-3); }
 .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-.totals { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 18px; margin-left: auto; min-width: min(100%, 340px); font-size: var(--fs-md); }
+.totals { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 18px; margin-left: auto; width: min(100%, 420px); font-size: var(--fs-md); }
 .totals dt { color: var(--ink-2); }
 .totals dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .totals .grand { font-weight: 700; font-size: var(--fs-lg); border-top: 1px solid var(--rule-strong); border-bottom: 3px double var(--rule-strong); padding-block: 4px; }
@@ -435,7 +437,19 @@ textarea.input { height: auto; padding: 6px 8px; }
 body:not(.notes-on) .hotspot { display: none; }
 body.notes-on [data-note] { outline: 1px dashed transparent; }
 body.notes-on [data-note].note-focus { outline-color: var(--hotspot-bg); outline-offset: 3px; }
+/* a hotspot on a checkbox label would cover the end of its text: leave room for the badge */
+body.notes-on .has-note > .checkbox, body.notes-on .checkbox.has-note { padding-right: 14px; }
 td.has-note, th.has-note { position: relative; }
+/* hotspots inside clipping containers (table scrollers, tab strips) sit inside the box, not on its corner */
+th.has-note > .hotspot, td.has-note > .hotspot { top: 2px; right: 2px; }
+.tabs.has-note > .hotspot { top: 6px; right: 2px; }
+body.notes-on .tabs.has-note { padding-right: 28px; }
+/* right-aligned amounts: reserve a strip above the first figure for the badge so it never covers a number */
+body.notes-on .totals.has-note { padding-top: 16px; }
+.totals.has-note > .hotspot { top: -4px; right: -4px; }
+/* short inline labels: leave room for the badge after the text */
+body.notes-on .sample-chip.has-note, body.notes-on .col-legend > .has-note { padding-right: 16px; }
+body.notes-on .col-legend > .has-note > .hotspot { top: -11px; right: -6px; }
 
 .note-panel {
   position: sticky; top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px)); align-self: flex-start;
@@ -528,4 +542,17 @@ pre.json .z { color: var(--ink-3); }
   .topbar { gap: 8px; }
   .tb-btn .tb-label { display: none; }
   .totals { min-width: 0; width: 100%; }
+  .cues { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .cue { min-height: 0; }
+}
+
+/* ---------- #notes page: group jump links ---------- */
+nav.chips a.chip { font-family: var(--font-sans); font-size: var(--fs-xs); color: var(--accent); text-decoration: none; padding: 2px 8px; }
+nav.chips a.chip:hover { border-color: var(--accent); }
+body.notes-on .page-head > span.has-note { padding-right: 16px; }
+/* #notes: on a phone each note is a stacked block instead of a 4-column table */
+@media (max-width: 640px) {
+  .notes-table thead { display: none; }
+  .notes-table tr { display: block; padding: 10px 12px; border-bottom: 1px solid var(--rule); }
+  .notes-table td { display: block; border: 0; padding: 3px 0; max-width: none !important; }
 }

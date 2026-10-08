@@ -22,13 +22,14 @@
 
 ## Шийдвэр
 
-1. **Тайлангийн өгөгдлийг SQL-ээр** гаргана: модуль бүрийн published view (`<schema>.v_*`) ба `reporting`-ийн функцүүд.
+1. **Тайлангийн өгөгдлийг SQL-ээр** гаргана: модуль бүрийн published view (`<schema>.v_*`) ба `rpt` схемийн функцүүд ([920_views.sql](../db/schema/920_views.sql): `rpt.v_trial_balance_base`, `rpt.fn_trial_balance`, `party.fn_customer_aging` г.м.).
    - Query нь `REPEATABLE READ READ ONLY` transaction-д ажиллана.
-   - Үлдэгдлийн тайланд `gl.account_period_balance` проекцыг ашиглана.
+   - Үлдэгдлийн тайланд `gl.v_gl_account_period_balance` view-ийг ашиглана (тусдаа проекцын хүснэгтгүй).
 2. **Санхүүгийн тайлангийн загвар өгөгдөл байна:**
-   - `reporting.statement_template` (`code`, `version`, `valid_from`);
-   - `reporting.statement_template_line` (мөрийн код, нэр mn/en, тооцоолох төрөл, тэмдэг);
-   - `reporting.account_line_mapping` (данс → мөр, МГТ-ийн ангилал, ӨӨТ-ийн бүрэлдэхүүн).
+   - `rpt.statement_line` (Маягт А/Б-ийн мөрийн код, глобал каталог) ба `rpt.cash_flow_category` (МГТ-ийн ангилал);
+   - данс → мөр: `gl.gl_account.statement_line_id`, `cash_flow_category_id`;
+   - BC Account Schedule-ийн загвар: `rpt.fin_report_row_definition`, `rpt.fin_report_row`, `rpt.fin_report_column_definition`, `rpt.fin_report_column`, `rpt.financial_report`;
+   - хадгалсан тайлан: `rpt.statement_snapshot` (append-only, DRAFT → FINAL) ([120_rpt.sql](../db/schema/120_rpt.sql)).
 
    Order 361-ийн шинэ хувилбар гарвал шинэ загварын хувилбар нэмнэ. Код өөрчлөгдөхгүй. Үе хаахын өмнө бүх posting дансны харгалзааг шалгана (REQ-ACC-10).
 3. **PDF: QuestPDF.**
@@ -42,7 +43,7 @@
    - Маягт А-ийн XLSX.
 
    100 000-аас олон мөртэй экспортыг OpenXML SDK-ийн streaming-ээр хийнэ.
-5. **Синхрон эсвэл async.** 10 s-ээс удаан гэж тооцоолсон тайлан `reporting.report_job` болж async ажиллана. Үр дүн object storage-д хадгалагдаж, мэдэгдэл ирнэ. SLO-г [02-architecture.md](../02-architecture.md) §13-аас үзнэ үү.
+5. **Синхрон эсвэл async.** 10 s-ээс удаан гэж тооцоолсон тайлан async job (`integration.job_definition.code = 'rpt.report.export'`, гүйлт `integration.job_run`) болж ажиллана. Үр дүн object storage-д хадгалагдаж, мэдэгдэл ирнэ. SLO-г [02-architecture.md](../02-architecture.md) §13-аас үзнэ үү.
 6. **Архивын PDF.** QuestPDF-ийн PDF/A-г техникийн туршилтаар (veraPDF-ээр validate) шалгана.
    - Нийцвэл архивын багцад PDF/A ашиглана.
    - Нийцэхгүй бол энгийн PDF + SHA-256 manifest + PAdES гарын үсгээр хангаж, нөхцөлийг нээлттэй асуудалд бүртгэнэ.

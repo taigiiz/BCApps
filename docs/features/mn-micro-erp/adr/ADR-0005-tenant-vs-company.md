@@ -25,10 +25,10 @@
    - Нэг ТТД, нэг eBarimt мерчант.
    - Өөрийн дансны төлөвлөгөө, санхүүгийн жил ба үе, дугаарын цуврал, татварын профайл, posting setup, ledger.
    - Хүснэгт: `platform.company (tenant_id, id)`.
-3. **Мөрийн багана.** Бизнесийн мөр бүр `tenant_id` **ба** `company_id`-тэй байна. Компани хоорондын FK үүсэхгүй: composite FK нь `(tenant_id, company_id, x_id)` хэлбэртэй.
-4. **Хэрэглэгч глобал** (`identity.user`).
-   - Тенант бүрт `platform.membership` бүртгэлээр гишүүн болно.
-   - Компани бүрд `platform.member_company_role`-оор role авна. BC мөн permission set-ийг компаниар оноодог.
+3. **Мөрийн багана.** Бизнесийн мөр бүр `tenant_id` **ба** `company_id`-тэй байна. Компани хоорондын FK үүсэхгүй: composite FK нь `(company_id, x_id) → x (company_id, id)` хэлбэртэй, `(tenant_id, company_id) → platform.company (tenant_id, id)` ([db/schema](../db/schema/)).
+4. **Хэрэглэгч глобал** (`platform.app_user`; нэвтрэх мэдээлэл нь тенантгүй `identity.user_credential`, D-K7).
+   - Тенант бүрт `platform.tenant_membership` бүртгэлээр гишүүн болно.
+   - Компани бүрд `platform.user_company_role`-оор role авна (`company_id` NULL = тенантын бүх компани). BC мөн permission set-ийг компаниар оноодог.
    - Нэвтэрсний дараа идэвхтэй тенантаа сонгоно (cookie-ийн claim `erp_tid`). Компани нь URL-д байна: `/api/v1/companies/{companyId}/…`.
    - Ингэснээр гэрээт нягтлан нэг нэвтрэлтээр олон тенантад ажиллана.
 5. **Багцын хязгаар:**

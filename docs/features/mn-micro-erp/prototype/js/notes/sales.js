@@ -14,6 +14,24 @@
       data: ['sales.sales_header.no', 'sales.sales_invoice_header.no', 'platform.number_series_counter'],
       doc: [{ file: SAL, section: '4.9 Ноорогийн төлөв ба жагсаалт' }, { file: '05-posting-engine.md', section: '4.4 Дугаарлалт' }]
     },
+    'sales.draft-list': {
+      title: 'Ноорогийн жагсаалт',
+      what: 'Батлаагүй нэхэмжлэхүүд. "Нийт дүн ≈" нь ноорогийн одоогийн мөрүүдээс тооцсон урьдчилсан дүн — бүртгэлд юу ч бичигдээгүй. Мөр дээр дарж ноорогийг нээн засна, батлахад жагсаалтаас алга болж "Батлагдсан" таб руу шилжинэ.',
+      why: 'Ноорог нь зөвхөн ажлын хуудас: ерөнхий дэвтэр, НӨАТ, авлагад нөлөөлөхгүй тул устгаж, засаж болно (BR-SAL-08). Хуулийн дугаар батлах хүртэл олгогдохгүй.',
+      bc: 'Sales Invoices list (Page 9301) — Sales Header (Table 36), Document Type = Invoice, Status = Open.',
+      rules: ['BR-SAL-01', 'BR-SAL-08', 'BR-SAL-90', 'FR-SAL-001', 'FR-SAL-014'],
+      data: ['sales.sales_header.no', 'sales.sales_header.status', 'sales.sales_header.amount_including_vat'],
+      doc: [{ file: SAL, section: '4.9 Ноорогийн төлөв ба жагсаалт' }, { file: SAL, section: '5.2 Ноорог үүсгэх ба засах' }]
+    },
+    'sales.cm-list': {
+      title: 'Батлагдсан кредит нот',
+      what: 'Буцаалт эсвэл үнийн хөнгөлөлтөөр нэхэмжлэхийг залруулсан баримтууд (SC-2026-#####). Мөр бүр эх нэхэмжлэх ба шалтгаантай; батлахад орлого, НӨАТ-ыг буцааж, авлагын эх нэхэмжлэхэд автоматаар тулгагдана. "+ Кредит нот" нь нэхэмжлэхээс мөр хуулж шинэ кредит нот үүсгэнэ.',
+      why: 'Батлагдсан нэхэмжлэхийг засаж, устгаж болохгүй — алдааг зөвхөн тусдаа баримтаар (кредит нот) залруулна. Шалтгаан заавал, eBarimt-д эх баримттай холбоотой засвар/буцаалт илгээгдэнэ.',
+      bc: 'Posted Sales Credit Memos (Page 144) — Sales Cr.Memo Header (Table 114); Codeunit 80 Sales-Post, Applies-to Doc. No.',
+      rules: ['D-F6', 'BR-SAL-60', 'BR-SAL-61', 'BR-SAL-63', 'BR-SAL-65', 'FR-SAL-007'],
+      data: ['sales.sales_cr_memo_header.no', 'sales.sales_cr_memo_header.applies_to_doc_no', 'sales.sales_cr_memo_header.reason_code_id'],
+      doc: [{ file: SAL, section: '4.7 Кредит нот' }, { file: SAL, section: '5.11 Кредит нот батлах' }]
+    },
     'sales.posted-list': {
       title: 'Төлбөр ба eBarimt-ийн хоёр төлөв',
       what: 'Батлагдсан мөр бүр хоёр тэмдэгтэй: төлбөрийн төлөв (Төлөгдөөгүй / Хэсэгчлэн / Төлөгдсөн / Хугацаа хэтэрсэн) ба eBarimt-ийн төлөв (Бүртгэгдсэн / Хүлээгдэж буй / Алдаа / UNKNOWN / Засварлагдсан). Мөр дарж баримтыг нээнэ.',

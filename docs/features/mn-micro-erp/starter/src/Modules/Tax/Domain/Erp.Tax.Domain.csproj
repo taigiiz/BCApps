@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Pure VAT arithmetic (08-tax-vat-mn.md §6, 05-posting-engine.md §6.4). -->
+  <ItemGroup>
+    <ProjectReference Include="../../../BuildingBlocks/Erp.BuildingBlocks.Domain/Erp.BuildingBlocks.Domain.csproj" />
+  </ItemGroup>
+</Project>

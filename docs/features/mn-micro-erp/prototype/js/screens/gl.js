@@ -111,9 +111,9 @@
         '<td>' + (e.reversed ? ui.pill('CORRECTED', e.reversedByTx ? 'Буцаагдсан → #' + e.reversedByTx : 'Буцаалт') : '') + '</td></tr>';
     }).join('');
     var cols = 8 + (o.noAccount ? 0 : 2) + (o.running ? 1 : 0) + (o.noTx ? 0 : 1);
-    return '<div class="table-wrap"><table class="grid-table"><thead><tr><th>' + (o.relative ? '№ (харьцангуй)' : 'Entry №') + '</th><th>Огноо</th><th>Баримт №</th>' +
+    return '<div class="table-wrap"><table class="grid-table"><thead><tr><th>' + (o.relative ? '№ (харьцангуй)' : 'Бичилт №') + '</th><th>Огноо</th><th>Баримт №</th>' +
       (o.noAccount ? '' : '<th>Данс</th><th>Нэр</th>') + '<th>Тайлбар</th><th class="num">Дебит</th><th class="num">Кредит</th>' + (o.running ? '<th class="num">Өссөн үлдэгдэл</th>' : '') +
-      '<th>Source</th>' + (o.noTx ? '' : '<th>Гүйлгээ</th>') + '<th>Төлөв</th></tr></thead><tbody>' +
+      '<th title="Source code (эх сурвалжийн код)">Эх код</th>' + (o.noTx ? '' : '<th>Гүйлгээ</th>') + '<th>Төлөв</th></tr></thead><tbody>' +
       (body || '<tr><td colspan="' + cols + '" class="empty">Бичилт алга</td></tr>') + '</tbody>' +
       (o.noTotal || !entries.length ? '' : '<tfoot><tr><td colspan="' + (o.noAccount ? 4 : 6) + '">Σ ' + entries.length + ' мөр' + (sd === sc ? ' · Дт = Кт ✓' : '') + '</td>' + ui.moneyCell(sd) + ui.moneyCell(sc) + '<td colspan="' + (cols - (o.noAccount ? 6 : 8)) + '"></td></tr></tfoot>') +
       '</table></div>';
@@ -400,8 +400,8 @@
     ];
     var e2 = nextDraftNo();
     JNL.lines['PAYMENT.BANK'] = [
-      mkLine(E().dates.addDays(t, -3), e2, 'GL', '2200', 'Цалин олгосон: 9-р сар', '1433700.00', ''),
-      mkLine(E().dates.addDays(t, -3), e2, 'BANK', 'KHAN01', 'Цалин олгосон: 9-р сар', '', '1433700.00')
+      mkLine(E().dates.addDays(t, -3), e2, 'GL', '2200', 'Цалин олгосон: 9-р сар', '1469700.00', ''),
+      mkLine(E().dates.addDays(t, -3), e2, 'BANK', 'KHAN01', 'Цалин олгосон: 9-р сар', '', '1469700.00')
     ];
     var f2 = nextDraftNo();
     JNL.lines['PAYMENT.CASH'] = [
@@ -915,7 +915,7 @@
       opt('reversible', 'Буцааж болох (нээлттэй үе, журналаас)', filter === 'reversible') + opt('session', 'Энэ сессийн журнал ба буцаалт', filter === 'session') + opt('all', 'Бүх гүйлгээ', filter === 'all') + '</select></div>' +
       '<div class="field grow"><label for="tx-q">Хайх (баримт №, тайлбар, source)</label><input class="input" id="tx-q" type="search" value="' + ui.esc(ctx.glTxQ || '') + '" autocomplete="off"></div></form></div></div>';
     html += '<div class="card"><div class="card-head"><h2>Гүйлгээ (gl_transaction)</h2><span class="small muted">' + list.length + ' олдлоо' + (list.length > shown.length ? ', эхний ' + shown.length + ' харуулав' : '') + '</span></div><div class="card-body flush"><div class="table-wrap"><table class="grid-table"><thead><tr>' +
-      '<th>Гүйлгээ №</th><th>Огноо</th><th>Баримт №</th><th>Source</th><th>Тайлбар</th><th class="num">Дүн (Σ Дт)</th><th>Үе</th><th>Төлөв</th></tr></thead><tbody>' +
+      '<th>Гүйлгээ №</th><th>Огноо</th><th>Баримт №</th><th title="Source code (эх сурвалжийн код)">Эх код</th><th>Тайлбар</th><th class="num">Дүн (Σ Дт)</th><th>Үе</th><th>Төлөв</th></tr></thead><tbody>' +
       (shown.map(function (t) {
         var amt = S.glEntries.filter(function (e) { return e.transactionNo === t.transactionNo; }).reduce(function (s, e) { return s + dr(e.amount); }, 0);
         var p = E().periods.of(t.postingDate);

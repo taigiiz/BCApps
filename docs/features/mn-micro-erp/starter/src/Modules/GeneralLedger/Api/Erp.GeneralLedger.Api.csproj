@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Minimal API endpoints of the G/L module (Map<M>Endpoints). References Application + Contracts only (rule 4: no Infrastructure). -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Application/Erp.GeneralLedger.Application.csproj" />
+    <ProjectReference Include="../Contracts/Erp.GeneralLedger.Contracts.csproj" />
+    <ProjectReference Include="../../../BuildingBlocks/Erp.BuildingBlocks.Api/Erp.BuildingBlocks.Api.csproj" />
+  </ItemGroup>
+</Project>

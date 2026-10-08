@@ -20,13 +20,13 @@
 ## Шийдвэр
 
 1. **Transactional outbox.**
-   - Гадаад нөлөө бүрийг posting ба бизнесийн transaction-д `integration.outbox_message` мөр болгон бичнэ: eBarimt, имэйл, integration event, компанийн job.
+   - Гадаад нөлөө бүрийг posting ба бизнесийн transaction-д `integration.outbox` мөр (`topic`, `payload`, `idempotency_key`, `max_attempts`) болгон бичнэ: eBarimt, имэйл, integration event, компанийн job ([140_integration_audit.sql](../db/schema/140_integration_audit.sql)).
    - Dispatcher нь commit-ийн дараа `FOR UPDATE SKIP LOCKED`-ээр мөрийг авч илгээнэ. Ажиллах эхлэлийг `LISTEN/NOTIFY` эсвэл 2 s polling өгнө ([ADR-0018](./ADR-0018-background-jobs-quartz.md)).
-   - Тенант хоорондын claim-ийг SECURITY DEFINER функц хийнэ.
-2. **Мессежийн төрөл бүрд retry бодлого** ([02-architecture.md](../02-architecture.md) §9.1):
-   - `NONE`: `ebarimt.receipt.create`, `ebarimt.receipt.void`;
-   - `STANDARD`: GET, имэйл, event.
-3. **Inbox.** Consumer `integration.inbox_message (consumer, message_id)`-ийг handler-ийн transaction-д бичнэ. Ингэснээр at-least-once хүргэлт нэг удаагийн нөлөө болно.
+   - Тенант хоорондын claim-ийг SECURITY DEFINER функц `integration.fn_claim_outbox` (`app_rls_bypass` эзэмшинэ, EXECUTE зөвхөн `app_worker`) хийнэ.
+2. **`topic` бүрд retry бодлого** ([02-architecture.md](../02-architecture.md) §9.1):
+   - retry-гүй (`max_attempts = 1`, D-I6): `ebarimt.receipt.send` (`POST` ба `DELETE /rest/receipt`, `ebarimt_document.operation`-оор ялгана);
+   - стандарт: GET (`ebarimt.send_data`, `ebarimt.info_poll`), имэйл, event.
+3. **Inbox.** Consumer `integration.inbox (tenant_id, source, message_id)` UNIQUE мөрийг handler-ийн transaction-д бичнэ. Ингэснээр at-least-once хүргэлт нэг удаагийн нөлөө болно.
 4. **API idempotency.**
    - Бүх command-д `Idempotency-Key` заавал байна.
    - `integration.idempotency_key (tenant_id, key)` UNIQUE хүснэгтэд `request_hash`, төлөв, хариуг бизнесийн өөрчлөлттэй **ижил transaction**-д хадгална.
@@ -35,18 +35,19 @@
 5. **eBarimt-ийн дүрэм:**
    - **Retry-гүй.** `POST /rest/receipt` ба `DELETE /rest/receipt`-ийн HttpClient-д resilience handler **бүртгэхгүй**. Architecture test үүнийг шалгана.
    - **Далд retry-гүй.** Энэ client тусдаа `SocketsHttpHandler`-тэй, холболтыг дахин ашиглахгүй (`PooledConnectionLifetime = TimeSpan.Zero`, хүсэлт бүрд `ConnectionClose = true`). Reuse хийсэн холболт тасрахад handler хүсэлтийг дотооддоо дахин илгээж болзошгүйг ингэж хаана ([02-architecture.md](../02-architecture.md) §9.2).
-   - **Илгээхийн өмнө** `SENDING` ба `attempt_started_at`-ийг тусдаа transaction-д commit хийнэ.
-   - **Төлөвийн шилжилт:**
+   - **Илгээхийн өмнө** `ebarimt.ebarimt_document.status = 'SENT'` (in-flight), `attempt_count = 1`, `last_attempt_at`-ийг тусдаа transaction-д commit хийнэ (`CHECK (attempt_count <= max_attempts …)`).
+   - **Төлөвийн шилжилт** (канон төлөв: `PENDING`, `SENT`, `SUCCESS`, `ERROR`, `UNKNOWN`, `CANCELLED`; [12-ebarimt-integration.md](../12-ebarimt-integration.md) §9):
+     - амжилттай (ДДТД) → `SUCCESS`;
      - timeout, тасалдал, 5xx, эсвэл lease дууссан → `UNKNOWN`;
-     - PosAPI баталгаажуулалтын алдаа → `REJECTED`;
-     - **TCP холболт тогтоогдоогүй** (`ConnectCallback`-ийн wrapper баталсан, хүсэлт сүлжээнд гараагүй) → мөр `PENDING` руу буцаж дахин dispatch хийгдэнэ. Энэ нь сүлжээнд гарсан POST-ийг давтах биш. Сүлжээнд гарсан POST-ийг хэзээ ч автоматаар дахин илгээхгүй.
-   - **UNKNOWN-ийг оператор шийднэ:** "бүртгэгдсэн" (ДДТД оруулна) эсвэл "бүртгэгдээгүй" (шинэ `billIdSuffix`-тэй шинэ хүсэлт). Шийдвэр бүр аудитын логт бичигдэнэ.
-   - **`billIdSuffix`.** `ebarimt.pos_counter` нь posting transaction-д олгогдоно, **өдөр бүр тэглэгдэхгүй**. Утга = `posNo` (3) + `seq mod 10^6` (6 орон). DB-ийн UNIQUE constraint давхардлаас хамгаална.
-   - **`qrData` ба `lottery`** нь `PrintOnly<string>` төрөлтэй. Зөвхөн синхрон HTTP хариуны `PrintPayload`-д л байна. Хадгалахгүй газрууд: outbox payload, `ebarimt.receipt`, лог, trace, кэш, browser storage. Canary тест үүнийг шалгана ([ADR-0020](./ADR-0020-observability-otel-redaction.md)).
-   - **POS (`SYNC_FIRST`).** Commit хийсний дараа API процесс мөрийг id-аар шууд авч илгээнэ (`integration.fn_claim_outbox_by_id`). Мөр `next_attempt_at = now() + 30 s`-тэй бичигдсэн тул worker 30 s-ээс өмнө авахгүй. Нэхэмжлэх асинхрон явна.
-   - **Дараалал.** Засварын баримт (`inactiveId`) эх баримт SENT болсны дараа илгээгдэнэ (`depends_on_id`).
+     - PosAPI баталгаажуулалтын алдаа → `ERROR`;
+     - **TCP холболт тогтоогдоогүй** (`ConnectCallback`-ийн wrapper баталсан, хүсэлт сүлжээнд гараагүй) → `ERROR` (баримт үүсээгүй нь тодорхой); дахин илгээхдээ **шинэ** баримт (шинэ `billIdSuffix`) үүсгэнэ. Сүлжээнд гарсан POST-ийг хэзээ ч автоматаар дахин илгээхгүй.
+   - **UNKNOWN-ийг оператор шийднэ** (`ebarimt.unknown.resolve` эрх): "бүртгэгдсэн" (ДДТД оруулна → `SUCCESS` + `resolved_*`) эсвэл "бүртгэгдээгүй" (`CANCELLED` + шинэ `billIdSuffix`-тэй шинэ хүсэлт). Шийдвэр бүр аудитын логт бичигдэнэ.
+   - **`billIdSuffix`** ([DECISIONS](../DECISIONS.md) D-K4). `ebarimt.fn_next_bill_seq(ebarimt_pos_id)` нь `ebarimt.pos_counter`-оос posting transaction-д олгоно, **хэзээ ч reset хийгдэхгүй**. `bill_id_suffix = bill_seq % 10^6`; илгээх утга = `posNo` (3) + 6 орон. `UNIQUE (company_id, ebarimt_pos_id, bill_seq)` ба `UNIQUE (company_id, ebarimt_pos_id, bill_date, bill_id_suffix)` давхардлаас хамгаална.
+   - **`qrData` ба `lottery`** нь `PrintOnly<string>` төрөлтэй. Зөвхөн синхрон HTTP хариуны `PrintPayload`-д л байна. Хадгалахгүй газрууд: outbox payload, `ebarimt.ebarimt_document` (JSON багана бүр `integration.fn_has_forbidden_ebarimt_keys` CHECK-тэй), лог, trace, кэш, browser storage. Canary тест үүнийг шалгана ([ADR-0020](./ADR-0020-observability-otel-redaction.md)).
+   - **POS (`SYNC_FIRST`).** Commit хийсний дараа API процесс мөрийг тенантын контекст дотор id-аар шууд авч (`UPDATE integration.outbox SET status = 'PROCESSING' … WHERE id = $1 AND status = 'PENDING'`) илгээнэ; SECURITY DEFINER функц хэрэггүй. Мөр `available_at = now() + 30 s`-тэй бичигдсэн тул worker 30 s-ээс өмнө авахгүй. Нэхэмжлэх асинхрон явна.
+   - **Дараалал.** Засварын баримт (`inactiveId`) эх баримт `SUCCESS` болсны дараа илгээгдэнэ (outbox `depends_on_id`, `ebarimt_document.replaces_document_id`).
    - **Илгээхийн өмнөх шалгалт.** Нийлбэрийн гинж, `taxType`, `taxProductCode`, `classificationCode` 7 орон, B2B/B2C талбар зэргийг шалгана ([02-architecture.md](../02-architecture.md) §9.2).
-6. **Posting ба eBarimt салангид.** eBarimt-ийн алдаа posting-ийг rollback хийхгүй. Баримт "eBarimt: хүлээгдэж буй / тодорхойгүй / татгалзсан" төлөвтэй харагдана. 48 цагаас дээш SENT болоогүй баримтын тайлан гарна. Энэ нь 72 цагийн хязгаараас өмнө анхааруулна.
+6. **Posting ба eBarimt салангид.** eBarimt-ийн алдаа posting-ийг rollback хийхгүй. Баримт "eBarimt: хүлээгдэж буй / тодорхойгүй / татгалзсан" төлөвтэй харагдана. 48 цагаас дээш `SUCCESS` болоогүй баримтын тайлан гарна (`ebarimt.overdue_check` job). Энэ нь 72 цагийн хязгаараас өмнө анхааруулна.
 
 ## Үр дагавар
 

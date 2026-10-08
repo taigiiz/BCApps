@@ -18,6 +18,10 @@ coverage/
 *.cobertura.xml
 !tests/**/fixtures/*.cobertura.xml
 
+# Properties/launchSettings.json (ports 5100/5200, no secrets) IS committed (18-dev-setup.md §16 PR #2);
+# re-included here because some parent repositories ignore it.
+!**/Properties/launchSettings.json
+
 # NuGet
 .nuget/packages/
 *.nupkg

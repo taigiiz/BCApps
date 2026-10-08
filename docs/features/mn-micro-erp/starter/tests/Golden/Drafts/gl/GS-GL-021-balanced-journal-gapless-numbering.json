@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "GS-GL-021",
+  "title": "Тэнцсэн журнал: хуулийн дугаар огнооны дарааллаар, завсаргүй",
+  "description": "Sprint 0 skeleton scenario (not yet in the 16 §12 catalog). Нэг run-д 3 ваучер (оролтын дараалал өөр): дугаар нь (огноо, баримтын №) дарааллаар GJ-2026-00001..3 (BR-PST-27); дараагийн run GJ-2026-00004. G/L-ийн тэмдэгтэй дүн, дебит/кредит багана (D-C3).",
+  "area": "GL",
+  "release": "R1",
+  "rules": "NOW",
+  "refs": ["FR-GL-006", "D-C3", "D-C5", "D-C7", "INV-08"],
+  "tags": ["sprint0-skeleton"],
+  "signedOffBy": [
+    { "name": "ledger-owners (Sprint 0 skeleton)", "role": "LEDGER_OWNER", "date": "2026-10-08", "note": "Draft. Needs ACCOUNTING_ADVISOR sign-off and a catalog entry (16 §12.3) before moving to Scenarios/." }
+  ],
+  "setup": { "baseline": "BASE-VAT", "companies": [ { "key": "C1" } ] },
+  "steps": [
+    {
+      "id": "s1",
+      "title": "Гурван ваучер нэг run-д (оролт: 03-12, 03-10, 03-11)",
+      "at": "2026-03-12T10:00",
+      "as": "acc",
+      "company": "C1",
+      "action": "journal.post",
+      "input": {
+        "lines": [
+          { "documentNo": "J-000002", "postingDate": "2026-03-12", "account": "7213", "balAccount": "2650", "amount": "50000.00", "description": "Бичиг хэрэг" },
+          { "documentNo": "J-000001", "postingDate": "2026-03-10", "account": "7210", "balAccount": "2650", "amount": "1500000.00", "description": "3-р сарын оффисын түрээс" },
+          { "documentNo": "J-000003", "postingDate": "2026-03-11", "account": "7212", "balAccount": "2650", "amount": "30000.00", "description": "Интернэт" }
+        ]
+      },
+      "expectOutcome": { "status": "OK", "http": 201, "bodyContains": { "$.vouchers[0].draftDocumentNo": "J-000001", "$.vouchers[1].draftDocumentNo": "J-000003" } },
+      "capture": { "rentTx": "$.vouchers[0].transactionNo" },
+      "expect": {
+        "glEntries": [
+          { "transaction": "T1", "account": "7210", "dr": "1500000.00", "documentNo": "GJ-2026-00001", "postingDate": "2026-03-10" },
+          { "transaction": "T1", "account": "2650", "cr": "1500000.00", "documentNo": "GJ-2026-00001", "postingDate": "2026-03-10" },
+          { "transaction": "T2", "account": "7212", "dr": "30000.00", "documentNo": "GJ-2026-00002", "postingDate": "2026-03-11" },
+          { "transaction": "T2", "account": "2650", "cr": "30000.00", "documentNo": "GJ-2026-00002", "postingDate": "2026-03-11" },
+          { "transaction": "T3", "account": "7213", "dr": "50000.00", "documentNo": "GJ-2026-00003", "postingDate": "2026-03-12" },
+          { "transaction": "T3", "account": "2650", "cr": "50000.00", "documentNo": "GJ-2026-00003", "postingDate": "2026-03-12" }
+        ],
+        "numbering": [ { "series": "GJ", "year": 2026, "lastNo": "GJ-2026-00003" } ]
+      }
+    },
+    {
+      "id": "s2",
+      "title": "Дараагийн run",
+      "at": "2026-03-13T10:00",
+      "as": "acc",
+      "company": "C1",
+      "action": "journal.post",
+      "input": { "lines": [ { "documentNo": "J-000004", "account": "7230", "balAccount": "2650", "amount": "120000.00", "description": "Аудитын үйлчилгээ" } ] },
+      "expectOutcome": { "status": "OK", "http": 201 },
+      "expect": {
+        "glEntries": [
+          { "transaction": "T1", "account": "7230", "dr": "120000.00", "documentNo": "GJ-2026-00004" },
+          { "transaction": "T1", "account": "2650", "cr": "120000.00", "documentNo": "GJ-2026-00004" }
+        ],
+        "numbering": [ { "series": "GJ", "year": 2026, "lastNo": "GJ-2026-00004" } ]
+      }
+    }
+  ],
+  "expect": {
+    "balances": [
+      { "account": "2650", "asOf": "2026-03-31", "cr": "1700000.00" },
+      { "account": "7210", "asOf": "2026-03-09", "zero": true }
+    ],
+    "trialBalance": {
+      "from": "2026-03-01",
+      "to": "2026-03-31",
+      "rows": [ { "account": "2650", "periodDr": "0.00", "periodCr": "1700000.00", "closingCr": "1700000.00" } ],
+      "totals": { "periodDr": "1700000.00", "periodCr": "1700000.00" }
+    }
+  }
+}

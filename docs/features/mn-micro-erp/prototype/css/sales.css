@@ -1,7 +1,7 @@
 /* css/sales.css — sales invoice list, draft editor, posted invoice, receipt preview (js/screens/sales.js). Tokens only. */
 .lines-grid td { padding: 4px 6px; }
 .lines-grid td .input, .lines-grid td .select { height: 30px; }
-.lines-grid td:nth-child(1) { min-width: 86px; }
+.lines-grid td:nth-child(1) { min-width: 104px; }
 .lines-grid td:nth-child(2) { min-width: 190px; }
 .lines-grid td:nth-child(3) { min-width: 180px; }
 .lines-grid td:nth-child(4) { min-width: 70px; }

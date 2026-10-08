@@ -21,40 +21,47 @@
 
 ## Шийдвэр
 
-1. **Хуулийн параметр глобал** (`tax.ref_legal_parameter`, `tenant_id`-гүй):
+1. **Хуулийн параметр глобал** (`tax.tax_parameter`, `tenant_id`-гүй; канон: [040_tax.sql](../db/schema/040_tax.sql), seed [legal_parameters.sql](../db/seed/legal_parameters.sql), [DECISIONS](../DECISIONS.md) D-E7):
 
    ```sql
-   CREATE TABLE tax.ref_legal_parameter (
-       id            uuid PRIMARY KEY,
-       param_code    text NOT NULL,          -- 'VAT_STANDARD_RATE', 'VAT_REG_THRESHOLD', 'VAT_SIMPLIFIED_DEEMED_SHARE', ...
-       valid_during  daterange NOT NULL,     -- [from, to)
-       value_numeric numeric(38,18),
-       value_json    jsonb,                  -- шатлал (CIT bands, PIT bands)
-       source_ref    text NOT NULL,          -- хууль, зүйл заалт, URL
-       confidence    text NOT NULL CHECK (confidence IN ('CONFIRMED','UNVERIFIED')),
-       created_at    timestamptz NOT NULL DEFAULT now(),
-       EXCLUDE USING gist (param_code WITH =, valid_during WITH &&)
+   CREATE TABLE tax.tax_parameter (
+       id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+       param_code     text NOT NULL CHECK (param_code ~ '^[a-z0-9_]+(\.[a-z0-9_]+)+$'),  -- 'vat.standard_rate', 'vat.registration_threshold_mandatory', ...
+       description    text NOT NULL,
+       value_numeric  numeric,
+       value_text     text,
+       unit           text NOT NULL,                 -- ratio, MNT, years, months, flag, url, ...
+       applies_to     text,
+       effective_from date NOT NULL,
+       effective_to   date,                          -- NULL = хугацаагүй
+       legal_basis    text,                          -- хууль, зүйл заалт
+       source_url     text,
+       confidence     text NOT NULL DEFAULT 'medium' CHECK (confidence IN ('high','medium','low')),
+       status         text NOT NULL DEFAULT 'unverified' CHECK (status IN ('verified','unverified','superseded')),
+       created_at     timestamptz NOT NULL DEFAULT now(),
+       CHECK (value_numeric IS NOT NULL OR value_text IS NOT NULL),
+       CHECK (effective_to IS NULL OR effective_to >= effective_from),
+       EXCLUDE USING gist (param_code WITH =, daterange(effective_from, effective_to, '[]') WITH &&)
    );
    ```
 
-   - `btree_gist` нь PG18-ийн `PRIMARY KEY (param_code, valid_during WITHOUT OVERLAPS)`-ийн 16+-тай нийцтэй орлуулга.
-   - Утгыг migration (`V…__ref_tax_legal_parameters.sql`) эсвэл платформын админ (эрхтэй, аудиттай) оруулна.
-2. **Компанийн огноотой профайл** (`tax.company_tax_profile`, `valid_during`-тэй):
-   - НӨАТ-ын статус (`NONE` / `STANDARD` / `SIMPLIFIED`) ба давтамж;
-   - НХАТ төлөгч эсэх ба дүүрэг;
-   - ААНОАТ-ын горим (`STANDARD` / `ONE_PERCENT` / `CREDIT_90` / `SIMPLIFIED_ANNUAL` = ТТ-02(ХГ) хялбаршуулсан жилийн тайлан). Enum код зөвхөн латин үсэгтэй байна: кирилл "Х", "Г" нь латин "X"-тэй андуурагдаж, CHECK ба харьцуулалтыг эвддэг;
-   - хасагдсан салбар;
-   - тайлагналын хүрээ (`IFRS_SME` / `IFRS`).
+   - `btree_gist` нь PG18-ийн `PRIMARY KEY (param_code, … WITHOUT OVERLAPS)`-ийн 16+-тай нийцтэй орлуулга.
+   - Утгыг migration (seed `legal_parameters.sql`-ийн загвараар) эсвэл платформын админ (эрхтэй, аудиттай) оруулна. `app_user` зөвхөн SELECT.
+2. **Компанийн огноотой профайл** (`tax.company_tax_profile`, `valid_from`/`valid_to`, `EXCLUDE` давхцалгүй):
+   - НӨАТ-ын статус `vat_status` (`NOT_REGISTERED` / `STANDARD` / `SIMPLIFIED`, `simplified_base`) ба давтамж `vat_return_frequency`;
+   - НХАТ-ын тохиргоо (`tax.city_tax_setup`, R2);
+   - ААНОАТ-ын горим `cit_regime` (`STANDARD` / `CREDIT_90` / `ONE_PERCENT` / `SIMPLIFIED_ANNUAL` = ТТ-02(ХГ) хялбаршуулсан жилийн тайлан). Enum код зөвхөн латин үсэгтэй байна: кирилл "Х", "Г" нь латин "X"-тэй андуурагдаж, CHECK ба харьцуулалтыг эвддэг;
+   - хасагдсан салбар (`excluded_activity_code`).
 
-   Boolean биш, огноотой мөрүүд байна (REQ-ACC-22).
-3. **Татварын код** (`tax.tax_code`) нь `valid_during` ба хувьтай. Хувийн өөрчлөлт = шинэ мөр. BC-ийн "VAT Rate Change" хэрэгсэл хэрэггүй.
-4. **Хайлтын түлхүүр.** `ILegalParameterProvider.GetAsync(code, asOf)` нь `(value, parameter_id)` буцаана.
+   Boolean биш, огноотой мөрүүд байна (REQ-ACC-22). `tax.fn_sync_company_vat_status` нь `vat_registered` cache-ийг профайлтай уялдуулна.
+3. **НӨАТ-ын хувь** нь VAT Posting Setup (`tax.vat_posting_setup`: `vat_bus_posting_group` × `vat_prod_posting_group`, D-E1) дээр; хуулийн стандарт хувь `tax.tax_parameter` (`vat.standard_rate`)-д огноотой. Хувийн өөрчлөлтийг шинэ параметр мөрөөр ба setup-ийг шинэчлэх migration-оор хийнэ; BC-ийн "VAT Rate Change" хэрэгсэл хэрэггүй.
+4. **Хайлтын түлхүүр.** `ILegalParameterProvider.GetAsync(code, asOf)` нь `(value, parameter_id)` буцаана (`effective_from <= asOf AND (effective_to IS NULL OR asOf <= effective_to)`).
    - `asOf` нь **posting огноо** эсвэл үеийн татварт **үеийн эхлэл** ([mn-tax.md](../research/mn-tax.md) R1).
-5. **Тооцоололд хувилбарыг хадгална.** Тооцоолол бүр ашигласан параметрийн id-г хадгална:
-   - `tax.vat_entry.tax_code_id` ба `rate` (snapshot);
-   - `fa_depreciation_book.tax_life_param_id`;
-   - `vat_settlement.parameter_ids`.
-6. **Маргаантай огноо.** Маргаантай огноотой утгыг (400 саяын босго) **хоёр хувилбараар** бэлтгэж, `confidence = 'UNVERIFIED'` гэж тэмдэглэнэ. Эцсийн хуулийн текст батлагдсаны дараа migration-ээр `valid_during`-ийг тогтооно. Код өөрчлөгдөхгүй.
+5. **Тооцоололд хувилбарыг хадгална.** Тооцоолол бүр ашигласан утгыг snapshot хийнэ:
+   - `tax.vat_entry.vat_percent`, `vat_bus_posting_group`, `vat_prod_posting_group` (snapshot);
+   - `fa.fa_class.tax_life_param_code` → `fa.depreciation_run_line`-ийн параметрийн snapshot;
+   - `tax.vat_return_snapshot` (НӨАТ-ын тайлангийн тооцоолсон үр дүн).
+6. **Маргаантай огноо.** Маргаантай огноотой утгыг (400 саяын босго; D-K5-аар 2027-07-01) **хоёр хувилбараар** бэлтгэж, `status = 'unverified'` (`confidence`-ийг тохируулж) гэж тэмдэглэнэ. Эцсийн хуулийн текст батлагдсаны дараа migration-ээр `effective_from`/`effective_to`-ийг тогтооно. Код өөрчлөгдөхгүй.
 7. **Тайлангийн маягтын хувилбар** (ТТ-03а, Маягт А) мөн `valid_from`-той өгөгдөл байна ([ADR-0019](./ADR-0019-reporting-questpdf-closedxml.md)).
 
 ## Үр дагавар

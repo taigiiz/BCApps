@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Npgsql plumbing: TenantSession (BEGIN + platform.fn_set_context), transaction runner, business calendar, embedded SQL. -->
+  <ItemGroup>
+    <ProjectReference Include="../Erp.BuildingBlocks.Application/Erp.BuildingBlocks.Application.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+</Project>

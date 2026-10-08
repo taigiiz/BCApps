@@ -21,7 +21,7 @@
 ## Шийдвэр
 
 1. **Posting синхрон.** HTTP хүсэлтийн дотор нэг DB transaction-д явагдана. Background queue-гаар posting хийхгүй.
-2. **Компанийн posting түгжээ.** `core.fn_lock_company_posting(tenant_id, company_id)` нь `pg_advisory_xact_lock(hashtextextended('post:' || tenant_id || ':' || company_id, 0))`-ийг дуудна.
+2. **Компанийн posting түгжээ.** `platform.fn_lock_company_posting(tenant_id, company_id)` ([010_platform.sql](../db/schema/010_platform.sql)) нь `pg_advisory_xact_lock(hashtextextended('post:' || tenant_id || ':' || company_id, 0))`-ийг дуудна.
    - Нэг компанийн posting-ууд цуваа ажиллана.
    - Өөр компаниуд зэрэг ажиллана.
 3. **Ижил түгжээ авдаг үйлдлүүд:**

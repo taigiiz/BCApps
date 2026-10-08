@@ -1331,7 +1331,7 @@ PostingVoucher BuildRevalVoucher(Currency cur, DateOnly date, decimal fD, List<R
 
 ### 5.17 Хамгаалалт ба run буцаах (FR-FX-010)
 
-1. **Хамгаалалт** (BR-FX-53) нь Bank (`BankLedgerWriter.ValidateLockedAsync`) ба Parties writer-т (CLE/VLE мөр, тулгалт) хоёуланд: `line.currency ≠ null && line.posting_date ≤ currency.last_date_adjusted` → `fx.posting_before_last_revaluation` (`{ currency, lastDateAdjusted }`).
+1. **Хамгаалалт** (BR-FX-53) нь Bank (`BankLedgerWriter.ValidateLockedAsync`) ба Parties writer-т (CLE/VLE мөр, тулгалт) хоёуланд: `line.currency ≠ null && line.posting_date ≤ fx.currency.last_date_adjusted` → `fx.posting_before_last_revaluation` (`{ currency, lastDateAdjusted }`).
 2. **Run буцаах** `POST /exch-rate-adjustments/{runNo}:reverse` `{ reasonCodeId }`: BR-FX-54 нөхцөл; толин ваучер(ууд) эх огноогоор (үе нээлттэй, эс бөгөөс 422 `gl.period_closed` — хаалттай үеийн run-ийг буцаахгүй), Parties-д `FxAdjustmentDetailedLine` (ижил төрөл, `Lcy = −delta`), Bank-д `Revaluation` BLE (`amount_lcy = −delta`), register/ledger entry-ийн сөрөг мөр (`document_no` = буцаалтын ваучер), `adjusted_currency_factor` ба `last_date_adjusted` сэргээх.
 
 ### 5.18 Transaction хил, түгжээ, idempotency (хураангуй)
@@ -2065,7 +2065,7 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 
 | Систем | Хувилбар | Чиглэл | Механизм |
 |---|---|---|---|
-| Монголбанк (`www.mongolbank.mn`) | R2 | Татах | Job `fx.mongolbank_rates` (SYSTEM), `IOfficialRateSource`, `integration.integration_attempt`-д endpoint/статус/хугацаа (body-гүй), retry `max_attempts = 5` |
+| Монголбанк (`www.mongolbank.mn`) | R2 | Татах | Job `fx.mongolbank_rates` (SYSTEM), `IOfficialRateSource`, `integration.job_run` ба OTel span-д endpoint/статус/хугацаа (body-гүй; `integration_attempt` хүснэгт байхгүй — 02 "Нэрийн харгалзаа", db/README), retry `max_attempts = 5` |
 | Банкны файл (Хаан, Голомт, …) | R1 | Импорт | Object storage → parser (§5.7) |
 | Банкны corporate API (Хаан, Голомт, ХХБ) | R3 | Татах | `bank.statement.pull` (outbox, retry 3), `platform.tenant_secret` |
 | QPay merchant v2 | R3 | Нэхэмжлэх үүсгэх, `payment/check`, callback → `integration.inbox (source = 'QPAY')` | Callback-ийг зөвхөн trigger гэж үзэж `payment/check`-ээр баталгаажуулна (I-11); `ebarimt_issuer = ERP` анхдагч (давхар eBarimt-аас сэргийлэх) |
