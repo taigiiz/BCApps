@@ -248,6 +248,7 @@ CREATE TABLE audit.posting_log (
     entry_count      integer CHECK (entry_count >= 0),          -- G/L entries written
     started_at       timestamptz NOT NULL,
     finished_at      timestamptz NOT NULL DEFAULT now(),
+    created_at       timestamptz NOT NULL DEFAULT now(),   -- required by the shared ledger before-insert guard (REVIEW-readiness B-03)
     created_by       uuid DEFAULT platform.current_user_id(),
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
     CHECK (status <> 'SUCCEEDED' OR gl_register_no IS NOT NULL OR posting_type IN ('APPLICATION','UNAPPLICATION'))

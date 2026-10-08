@@ -24,6 +24,7 @@ CREATE TABLE identity.user_credential (
     last_totp_step         bigint,                            -- replay protection (RFC 6238 time step already used)
     recovery_code_hashes   text[],                            -- hashed one-time recovery codes
     password_changed_at    timestamptz,
+    email_confirmed_at     timestamptz,                       -- NULL = e-mail not yet verified (13 §5.3, CR-03; REVIEW-readiness B-03)
     created_at             timestamptz NOT NULL DEFAULT now(),
     updated_at             timestamptz
 );
