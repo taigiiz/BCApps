@@ -2749,6 +2749,8 @@ GS-VAT-001…012 нь [16 §12.4](./16-test-strategy.md)-ийн каталоги
 
 ## 12. Schema change requests
 
+> **Төлөв (2026-10-08):** эдгээр хүсэлтийн шийдвэр, эцсийн нэрийг [db/CHANGE_REQUESTS.md](db/CHANGE_REQUESTS.md)-ээс үзнэ. Хүссэнээс ялгаатай: CR-TAX-03: `tax.tax_setup` нь `id` PK + `UNIQUE (company_id)`. CR-TAX-05: `customs_declaration_id` нь `purchase_header`, `purch_inv_header`-т мөн. CR-TAX-07: `party.gen_prod_posting_group.exclude_from_vat_turnover`. CR-TAX-11: job код `tax.vat_threshold.check`.
+
 Энэ баримт `db/` файлыг засахгүй; доорх хүсэлтийг схемийн эзэн ([db/README](./db/README.md), D-K1) шийднэ. Хүсэлт хэрэгжих хүртэлх түр шийдлийг "Түр" баганад.
 
 | ID | Хүснэгт / өөрчлөлт | Шалтгаан | Түр | Ач холбогдол |

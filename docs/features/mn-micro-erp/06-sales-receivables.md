@@ -2332,6 +2332,8 @@ Golden бүр: `expect` нь G/L, VAT, CLE, detailed (`entry_type`, `application
 
 ## 12. Schema change requests
 
+> **Төлөв (2026-10-08):** эдгээр хүсэлтийн шийдвэр, эцсийн нэрийг [db/CHANGE_REQUESTS.md](db/CHANGE_REQUESTS.md)-ээс үзнэ. Хүссэнээс ялгаатай: SCR-SAL-04: `fn_ledger_update`-ийг өөрчлөхгүй, тусдаа `party.fn_edit_ledger_entry(table, entry_no, jsonb)` (зөвхөн `due_date`, `on_hold`, аудиттай). SCR-SAL-08: `ux_cust_ledger_entry__doc_no` нь `source_code <> 'OPENING' AND NOT reversed` мөрт.
+
 `db/` файлыг энэ баримт өөрчлөөгүй. Доорх хүсэлтийг schema-ийн эзэмшигч migration-оор хэрэгжүүлнэ.
 
 | ID | Өөрчлөлт | Шалтгаан | Ач холбогдол |

@@ -2543,6 +2543,8 @@ Scenario бүр: (1) seed + урьдчилсан нөхцөл, (2) команд,
 
 ## 12. Schema change requests
 
+> **Төлөв (2026-10-08):** эдгээр хүсэлтийн шийдвэр, эцсийн нэрийг [db/CHANGE_REQUESTS.md](db/CHANGE_REQUESTS.md)-ээс үзнэ. Хүссэнээс ялгаатай: CR-PST-01..05 хэрэгжсэн. CR-PST-06: шинэ SQLSTATE-ийн оронд `ERP01` хэвээр, DETAIL-д `gl.period_not_found`, `gl.period_closed`, `gl.period_locked`, `gl.posting_date_outside_window`.
+
 | # | Хүснэгтийн өөрчлөлт | Шалтгаан | Ач холбогдол |
 |---|---|---|---|
 | CR-PST-01 | `gl.gl_transaction.corrects_transaction_no bigint NULL` (FK `(company_id, corrects_transaction_no)` → `gl.gl_transaction`, индекс `ix_gl_transaction__corrects`) ба `gl.journal_line.corrects_transaction_no bigint NULL`; engine журналын мөрөөс ваучерт дамжуулна | FR-GL-014: хаалттай үеийн залруулгыг эх гүйлгээтэй холбох; одоо `comment` JSON-оор түр холбоно (§5.11), тайлан/аудитын хайлт индексгүй | Дунд |

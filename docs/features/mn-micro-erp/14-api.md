@@ -1247,6 +1247,8 @@ Idempotency-Key: 3e2d1c0b-aaaa-4bbb-8ccc-0d0e0f101112
 
 ## 20. Схемийн өөрчлөлтийн хүсэлт (SCR)
 
+> **Төлөв (2026-10-08):** эдгээр хүсэлтийн шийдвэр, эцсийн нэрийг [db/CHANGE_REQUESTS.md](db/CHANGE_REQUESTS.md)-ээс үзнэ. Хүссэнээс ялгаатай: SCR-API-05: `undone boolean`-ийн оронд `undone_at`/`undone_by`/`undo_reason_code_id` + `bank.fn_mark_account_statement_undone` (09 SCR-BNK-02). Ledger entry-ийн засвар: `party.fn_edit_ledger_entry`.
+
 Энэ баримт SQL-ийг засаагүй. Доорх хүсэлтийг `db/schema`-г эзэмшигч (D-K1) migration-оор хэрэгжүүлнэ.
 
 | ID | Тэргүүлэх | Хувилбар | Өөрчлөлт | Шалтгаан |

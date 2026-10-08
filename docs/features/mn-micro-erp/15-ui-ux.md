@@ -2322,6 +2322,8 @@ Wireframe нь бүтэц, талбарын дараалал, үйлдлийг �
 
 ## 18. Schema өөрчлөлтийн хүсэлт (SCR-UI)
 
+> **Төлөв (2026-10-08):** эдгээр хүсэлтийн шийдвэр, эцсийн нэрийг [db/CHANGE_REQUESTS.md](db/CHANGE_REQUESTS.md)-ээс үзнэ. Хүссэнээс ялгаатай: SCR-UI-07: `logo_attachment_id`, `stamp_attachment_id` (`platform.attachment`). SCR-UI-05: бүтэн REVOKE-ийн оронд баганын SELECT (`base_url`, `operator_tin`-гүй). SCR-UI-10 (нөхцөлт) татгалзсан.
+
 Энэ баримт `db/` файлыг засаагүй. Доорх хүсэлтийг schema эзэмшигч шийднэ. Эрэмбээр (High → Low → нөхцөлт) жагсаав.
 
 | ID | Эрэмбэ | Өөрчлөлт | Шалтгаан |

@@ -2598,6 +2598,8 @@ export function clerk() {
 
 ## 20. Schema өөрчлөлтийн хүсэлт
 
+> **Төлөв (2026-10-08):** эдгээр хүсэлтийн шийдвэр, эцсийн нэрийг [db/CHANGE_REQUESTS.md](db/CHANGE_REQUESTS.md)-ээс үзнэ. Хүссэнээр хэрэгжсэн: SCR-T01..T06 (`rpt.fn_trial_balance` 5 аргументтай, `platform.fn_integrity_report`, `platform.number_allocation` + `v_number_series_gap`, `tax_parameter_id`, `posting_log`-ийн хэмжүүр, `fn_provision_company_mn(..., p_as_of)`).
+
 Энэ баримт `db/schema/*.sql`-ийг засаагүй. Доорх өөрчлөлтийг схемийн эзэн хийнэ.
 
 | ID | Эрэмбэ | Өөрчлөлт | Шалтгаан |

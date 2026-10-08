@@ -2263,6 +2263,8 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 
 ## 12. Schema change requests
 
+> **Төлөв (2026-10-08):** эдгээр хүсэлтийн шийдвэр, эцсийн нэрийг [db/CHANGE_REQUESTS.md](db/CHANGE_REQUESTS.md)-ээс үзнэ. Хүссэнээс ялгаатай: SCR-FX-01: `currency_factor`-ийн CHECK нь `abs(currency_factor * exchange_rate - 1) <= 1e-12` хүлцэлтэй. SCR-BNK-02: `undone boolean` байхгүй, `undone_at IS NULL` = идэвхтэй.
+
 | ID | Өөрчлөлт | Шалтгаан | Эрэмбэ |
 |---|---|---|---|
 | SCR-BNK-01 | `bank.counterparty_account_map (id, tenant_id, company_id, account_no_norm text NOT NULL, party_type text CHECK IN ('CUSTOMER','VENDOR'), party_id uuid NOT NULL, source text CHECK IN ('LEARNED','MANUAL'), times_confirmed int NOT NULL DEFAULT 1, last_seen_at timestamptz, created_*, row_version, UNIQUE (company_id, account_no_norm, party_type, party_id))` + RLS + индекс `(company_id, account_no_norm)`. Батлахад сурна (BR-BNK-72); `party.vendor_bank_account`-тай хамт харьцагчийг таних эх | Харилцагчийн банкны данс хадгалах хүснэгт схемд байхгүй тул хуулгын `counterparty_account`-аар харилцагчийг `FULLY` таних боломжгүй; GS-REC-001 L1 (HIGH: данс + дугаар + дүн) үүнээс хамаарна; эс бөгөөс ихэнх орлого MEDIUM болж гараар батлах шаардлагатай | High (R1) |

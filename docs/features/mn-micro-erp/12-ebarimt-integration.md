@@ -2026,6 +2026,8 @@ Stub PosAPI (`posapi-mock`) дээр integration тест; дүнгийн шал
 
 ## 26. Schema өөрчлөлтийн хүсэлт (SQL-ийг энэ баримт өөрчлөхгүй)
 
+> **Төлөв (2026-10-08):** эдгээр хүсэлтийн шийдвэр, эцсийн нэрийг [db/CHANGE_REQUESTS.md](db/CHANGE_REQUESTS.md)-ээс үзнэ. Хүссэнээс ялгаатай: SCR-03-ийн B2B DELETE хэсэг ба SCR-13 (нөхцөлт) татгалзсан. SCR-07: `fn_instance_merchant_counts()`-ийн EXECUTE `app_user`-т (wizard). SCR-10: `auto_confirm_imported` default true. SCR-12: `chain_status`.
+
 | ID | Ач холбогдол | Өөрчлөлт | Шалтгаан |
 |---|---|---|---|
 | SCR-01 | Өндөр | `ebarimt.ebarimt_document`-д snapshot багана: `branch_no char(3)`, `pos_no text`, `district_code char(4)`, `posapi_instance_id uuid` (→ `posapi_instance`); immutable tuple-д (`trg_ebarimt_document_guard`) нэмэх. Шинэ хүснэгт `ebarimt.ebarimt_document_payment (id, tenant_id, company_id, ebarimt_document_id, line_no, code CHECK (CASH/PAYMENT_CARD/BANK_TRANSFER/BANK_TRANSFER_QPAY), status CHECK (PAID/PAY/REVERSED/ERROR), paid_amount platform.amount, exchange_code text, data jsonb CHECK (NOT integration.fn_has_forbidden_ebarimt_keys(data)))` — append-only (`ledger_guard`) | `request_sha256`-ийг мастер өгөгдлөөс хамааралгүй дахин угсрах (AMT-22), аудит, UNKNOWN-ийг зөв instance дээр шалгах, мерчантыг instance хооронд шилжүүлсний дараах түүх |

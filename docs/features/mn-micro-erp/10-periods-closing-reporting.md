@@ -2300,6 +2300,8 @@ Override-гүй: `FIN_BORROWINGS` (3.1.1 "Зээл авсан") −900,000 (бу
 
 ## 12. Schema change requests
 
+> **Төлөв (2026-10-08):** эдгээр хүсэлтийн шийдвэр, эцсийн нэрийг [db/CHANGE_REQUESTS.md](db/CHANGE_REQUESTS.md)-ээс үзнэ. Хүссэнээс ялгаатай: SCR-RPT-08 (нөхцөлт projection) татгалзсан; SCR-RPT-09-ийг хяналтын хувилбараар (`closing_transaction_no` шаардахгүй).
+
 | ID | Өөрчлөлт | Шалтгаан | Эрэмбэ |
 |---|---|---|---|
 | SCR-RPT-01 | `920_views.sql`: `DROP FUNCTION rpt.fn_trial_balance(date, date, boolean)` (аргумент нэмэгдэж байгаа тул `CREATE OR REPLACE` overload үүсгэж 3 аргументтай дуудлагыг хоёрдмол болгоно), дараа нь `rpt.fn_trial_balance(p_from, p_to, p_include_closing, p_dim1 uuid DEFAULT NULL, p_dim2 uuid DEFAULT NULL)`-ийг §5.9-ийн SQL-ээр үүсгэх (эхний үлдэгдэлд өмнөх бүх хаалтын бичилт; `p_include_closing` зөвхөн `p_to`-ийн хаалтыг; орлого/зардлыг FYS-ээс "тайрахгүй"); `GRANT EXECUTE … TO app_user, app_readonly`; COMMENT. | BR-RPT-11, Z-RPT-09; одоогийнх өмнөх жил хаагдаагүй үед эхний үлдэгдэл тэнцэхгүй, хаалтын дараа 3500 буруу (16 SCR-T01, seed §12 #9, GS-CLOSE-004) | Өндөр |

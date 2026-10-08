@@ -2153,6 +2153,8 @@ public sealed record SignRequest(Guid TenantId, Guid CompanyId, string DocumentT
 
 ## 21. Схемийн өөрчлөлтийн хүсэлт (schema change requests)
 
+> **Төлөв (2026-10-08):** эдгээр хүсэлтийн шийдвэр, эцсийн нэрийг [db/CHANGE_REQUESTS.md](db/CHANGE_REQUESTS.md)-ээс үзнэ. Хүссэнээс ялгаатай: CR-10: `app_readonly`-оос хасахын оронд шинэ role `app_ops` (`erp_ops_ro → app_ops`), зөвхөн `integration.fn_ops_health()`. CR-14: давхцлын EXCLUDE нь CASHIER-т хамаарахгүй. CR-20 (R3) татгалзсан. Урилгын алдаа `ERI01`.
+
 Энэ баримт `db/schema/*.sql`-ийг засаагүй. Доорх өөрчлөлтийг схемийн эзэн (db/) хийнэ. "Эрэмбэ": High = R1-д заавал, эс бөгөөс аюулгүй байдлын шаардлага биелэхгүй.
 
 | CR | Эрэмбэ | Өөрчлөлт | Шалтгаан |

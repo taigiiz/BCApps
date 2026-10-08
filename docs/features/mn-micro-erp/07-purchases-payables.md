@@ -2531,6 +2531,8 @@ Golden бүр: `expect` нь G/L, VAT entry (`deductible_confirmed`, `supplier_e
 
 ## 12. Schema change requests
 
+> **Төлөв (2026-10-08):** эдгээр хүсэлтийн шийдвэр, эцсийн нэрийг [db/CHANGE_REQUESTS.md](db/CHANGE_REQUESTS.md)-ээс үзнэ. Хүссэнээс ялгаатай: SCR-PUR-07: чөлөөт текст баганын оронд `tax.customs_declaration` + `customs_declaration_id` (08 CR-TAX-05-тай нэгтгэсэн). SCR-PUR-06: `platform.fn_normalize_ext_doc_no` + хэвийнжүүлсэн илэрхийллийн UNIQUE индекс. SCR-PUR-12 (нөхцөлт) татгалзсан. SCR-PUR-14: мөн `NOT reversed`.
+
 `db/` файлыг энэ баримт өөрчлөөгүй. Доорх хүсэлтийг schema-ийн эзэмшигч migration-оор хэрэгжүүлнэ.
 
 | ID | Өөрчлөлт | Шалтгаан | Ач холбогдол |
