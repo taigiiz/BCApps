@@ -49,8 +49,10 @@ BEGIN
     ON CONFLICT (company_id, code) DO NOTHING;
     GET DIAGNOSTICS n = ROW_COUNT; v_rows := v_rows + n;
 
-    INSERT INTO party.gen_prod_posting_group (tenant_id, company_id, code, description, default_vat_prod_posting_group_id)
-    SELECT v_tenant, v_company, v.code, v.descr, vp.id
+    -- FA: sales of fixed assets do not count towards the VAT registration threshold (08 CR-TAX-07)
+    INSERT INTO party.gen_prod_posting_group (tenant_id, company_id, code, description, default_vat_prod_posting_group_id,
+                                              exclude_from_vat_turnover)
+    SELECT v_tenant, v_company, v.code, v.descr, vp.id, v.code = 'FA'
       FROM (VALUES ('GOODS',    'Бараа', 'VAT10'),
                    ('SERVICES', 'Ажил, үйлчилгээ', 'VAT10'),
                    ('FA',       'Үндсэн болон биет бус хөрөнгө', 'VAT10'),

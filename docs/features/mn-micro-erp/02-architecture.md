@@ -1119,7 +1119,7 @@ CREATE POLICY rls_sales_header__tenant ON sales.sales_header
     RETURNING m.tenant_id, m.company_id, m.id, m.message_type $$;
   ```
 - **Боловсруулалт.** Авсан мөр бүрийг `TenantScope.RunAsync(tenantId, companyId, systemActor, …)` боловсруулна. Энэ нь `TenantSession`-ийг ижил `set_config`-оор нээнэ. Аудитын `changed_by` = `system:<job>`, `app.request_id` = `job_run_id`.
-- **Quartz-ийн глобал хуваарь** (fan-out) нь компани бүрд outbox мессеж үүсгэдэг. Жишээ нь `job.depreciation.run` ба `job.vat.threshold_check`. Ингэснээр компани тус бүрд retry ба харагдах байдал тусдаа байна.
+- **Quartz-ийн глобал хуваарь** (fan-out) нь компани бүрд outbox мессеж үүсгэдэг. Жишээ нь `fa.depreciation_reminder` ба `tax.vat_threshold.check` (`integration.job_definition`-ийн код, [db/schema/140_integration_audit.sql](db/schema/140_integration_audit.sql)). Ингэснээр компани тус бүрд retry ба харагдах байдал тусдаа байна.
 - **Урт job.** Нэг transaction ≤ 30 s байна. Илүү урт ажлыг хэсэгчилж хуваана (chunk).
 
 ### 7.7 Тенантын амьдралын мөчлөг

@@ -7,7 +7,9 @@
 --   * platform.permission_set / permission / permission_set_include: SYSTEM permission sets
 --     (tenant_id NULL, is_system = true) that the per-tenant default roles reference (D-I2)
 --
--- Idempotent: every INSERT is ON CONFLICT DO NOTHING (re-running never changes edited rows).
+-- Idempotent: every INSERT is ON CONFLICT DO NOTHING (re-running never changes edited rows). The only UPDATE /
+-- DELETE statements touch SYSTEM rows (tenant_id NULL) and carry the 13 CR-23 moves onto an existing database:
+-- non-assignable sets, rows moved between sets, cash-flow reverse pairs (see db/CHANGE_REQUESTS.md).
 -- Form A line codes follow research/mn-accounting.md §3.3. Only some СБТ codes were confirmed by
 -- search extracts; ОДТ/ӨӨТ/МГТ numbering is a reconstruction of the published Form A layout. All rows
 -- are therefore loaded with verified = false until checked against the official annex of MoF Order 361
@@ -219,6 +221,19 @@ SELECT v.code, v.name, v.name_en, v.activity, v.direction,
   ) AS v(code, name, name_en, activity, direction, line, sort)
 ON CONFLICT (code) DO NOTHING;
 
+-- Reverse-direction pairs (10 SCR-RPT-05): a flow against a category's natural direction is reported on the paired
+-- line instead of the same line with the opposite sign (e.g. a repayment of a loan granted -> 2.1.5, not -2.2.5).
+UPDATE rpt.cash_flow_category c
+   SET reverse_category_id = r.id
+  FROM (VALUES ('FIN_BORROWINGS','FIN_LOAN_REPAYMENTS'), ('FIN_LOAN_REPAYMENTS','FIN_BORROWINGS'),
+               ('INV_LOANS_GIVEN','INV_LOANS_REPAID'),   ('INV_LOANS_REPAID','INV_LOANS_GIVEN'),
+               ('FIN_SHARES_ISSUED','FIN_SHARE_BUYBACK'), ('FIN_SHARE_BUYBACK','FIN_SHARES_ISSUED'),
+               ('INV_FA_BUY','INV_FA_SALE'),             ('INV_FA_SALE','INV_FA_BUY'),
+               ('INV_INTANGIBLE_BUY','INV_INTANGIBLE_SALE'), ('INV_INTANGIBLE_SALE','INV_INTANGIBLE_BUY'),
+               ('INV_INVESTMENT_BUY','INV_INVESTMENT_SALE'), ('INV_INVESTMENT_SALE','INV_INVESTMENT_BUY')) AS v(code, rev)
+  JOIN rpt.cash_flow_category r ON r.code = v.rev
+ WHERE c.code = v.code AND c.reverse_category_id IS NULL;
+
 -- -----------------------------------------------------------------------------
 -- 3. Source codes used by the package (the base catalog is in 010_platform.sql)
 -- -----------------------------------------------------------------------------
@@ -239,7 +254,8 @@ ALTER TABLE platform.permission NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE platform.permission_set_include NO FORCE ROW LEVEL SECURITY;
 
 INSERT INTO platform.permission_set (tenant_id, code, name, name_en, assignable, is_system)
-SELECT NULL, v.code, v.name, v.name_en, true, true
+SELECT NULL, v.code, v.name, v.name_en,
+       v.code NOT IN ('ERP_PERIOD_REOPEN','ERP_SUPER','ERP_SUPPORT_READ','ERP_SUPPORT_WRITE','ERP_SYSTEM_JOB'), true
   FROM (VALUES
     ('ERP_BASIC',          'ERP BASIC - нэвтрэх, лавлах унших',            'Basic access and reference data'),
     ('ERP_READ_ALL',       'ERP READ ALL - бүх өгөгдөл унших',             'Read all data'),
@@ -270,9 +286,27 @@ SELECT NULL, v.code, v.name, v.name_en, true, true
     ('ERP_SECURITY',       'ERP SECURITY - хэрэглэгч, эрх',                'Users and permissions'),
     ('ERP_EBARIMT_OPS',    'ERP EBARIMT OPS',                              'eBarimt operations'),
     ('ERP_AUDIT_READ',     'ERP AUDIT READ',                               'Audit log read'),
-    ('ERP_PII_UNMASK',     'ERP PII UNMASK',                               'Unmask personal data')
+    ('ERP_PII_UNMASK',     'ERP PII UNMASK',                               'Unmask personal data'),
+    -- 13 CR-23 (§6.4): new sets. Not assignable (assignable = false): ERP_PERIOD_REOPEN (D-D3, Owner only through
+    -- ERP_SUPER), ERP_SUPER (built-in OWNER only), ERP_SUPPORT_READ / ERP_SUPPORT_WRITE (support grants only),
+    -- ERP_SYSTEM_JOB (system jobs only).
+    ('ERP_SALES_RETURN',   'ERP SALES RETURN - кредит нот, цуцлалт',        'Sales credit memos and cancellation'),
+    ('ERP_SALES_ANY',      'ERP SALES ANY - бусдын ноорог',                 'Edit other users'' sales drafts'),
+    ('ERP_ARCHIVE',        'ERP ARCHIVE - архивын багц',                    'Download archive packages'),
+    ('ERP_DOC_SIGN',       'ERP DOC SIGN - гарын үсэг',                     'Sign documents'),
+    ('ERP_DOC_APPROVE',    'ERP DOC APPROVE - батлах гарын үсэг',           'Approve-sign documents'),
+    ('ERP_TENANT_ADMIN',   'ERP TENANT ADMIN - компани, тенант',            'Companies, tenant and full export'),
+    ('ERP_SUPER',          'ERP SUPER - бүх эрх (Owner)',                   'All permissions (Owner only)'),
+    ('ERP_SUPPORT_READ',   'ERP SUPPORT READ - дэмжлэг, унших',             'Support access, read'),
+    ('ERP_SUPPORT_WRITE',  'ERP SUPPORT WRITE - дэмжлэг, засах',            'Support access, edit'),
+    ('ERP_SYSTEM_JOB',     'ERP SYSTEM JOB - системийн ажил',               'System jobs (SystemScope)'),
+    ('ERP_EBARIMT_OVERRIDE','ERP EBARIMT OVERRIDE - eBarimt-гүй, цонхны дараах', 'eBarimt override (no receipt, late correction)')
   ) AS v(code, name, name_en)
 ON CONFLICT DO NOTHING;
+-- Re-run on an existing database: ERP_PERIOD_REOPEN became non-assignable (13 CR-23 (9)).
+UPDATE platform.permission_set SET assignable = false
+ WHERE tenant_id IS NULL AND assignable
+   AND code IN ('ERP_PERIOD_REOPEN','ERP_SUPER','ERP_SUPPORT_READ','ERP_SUPPORT_WRITE','ERP_SYSTEM_JOB');
 
 INSERT INTO platform.permission (tenant_id, permission_set_id, object_type, object_name,
                                  read_permission, insert_permission, modify_permission, delete_permission, execute_permission)
@@ -305,6 +339,10 @@ SELECT NULL, s.id, v.otype, v.oname,
     ('ERP_BASIC','TABLE','fx.currency','R'),
     ('ERP_BASIC','TABLE','fx.iso_currency','R'),
     ('ERP_BASIC','TABLE','bank.bank_account','R'),
+    ('ERP_BASIC','TABLE','inv.item_ledger_entry','R'),                 -- item availability (11 SCR-FA-08)
+    ('ERP_BASIC','TABLE','platform.user_preference','RIMD'),           -- own preferences / saved views (RLS: own rows)
+    ('ERP_BASIC','TABLE','platform.saved_view','RIMD'),
+    ('ERP_BASIC','TABLE','platform.user_notification','RM'),
     -- READ ALL: every table (Viewer)
     ('ERP_READ_ALL','TABLE','*','R'),
     -- customers / vendors / items
@@ -327,10 +365,13 @@ SELECT NULL, s.id, v.otype, v.oname,
     ('ERP_SALES_EDIT','TABLE','sales.sales_header','RIMD'),
     ('ERP_SALES_EDIT','TABLE','sales.sales_line','RIMD'),
     ('ERP_SALES_EDIT','ACTION','sales.document.preview','X'),
+    ('ERP_SALES_EDIT','ACTION','sales.document.send','X'),
+    ('ERP_SALES_EDIT','REPORT','rpt.daily_sales','X'),
     ('ERP_SALES_POST','ACTION','sales.invoice.post','X'),
-    ('ERP_SALES_POST','ACTION','sales.creditmemo.post','X'),
     ('ERP_SALES_POST','ACTION','sales.pos.post','X'),
-    ('ERP_SALES_POST','ACTION','sales.invoice.cancel','X'),
+    ('ERP_SALES_POST','ACTION','sales.document.print','X'),
+    ('ERP_SALES_POST','ACTION','platform.attachment.add','X'),
+    ('ERP_SALES_POST','TABLE','tax.city_tax_entry','i'),
     ('ERP_SALES_POST','TABLE','sales.sales_invoice_header','Ri'),
     ('ERP_SALES_POST','TABLE','sales.sales_invoice_line','Ri'),
     ('ERP_SALES_POST','TABLE','sales.sales_cr_memo_header','Ri'),
@@ -340,10 +381,26 @@ SELECT NULL, s.id, v.otype, v.oname,
     ('ERP_SALES_POST','TABLE','gl.gl_entry','i'),
     ('ERP_SALES_POST','TABLE','tax.vat_entry','i'),
     ('ERP_SALES_POST','TABLE','ebarimt.ebarimt_document','Rim'),
+    -- credit memos and cancellation moved out of ERP_SALES_POST (13 CR-23)
+    ('ERP_SALES_RETURN','ACTION','sales.creditmemo.post','X'),
+    ('ERP_SALES_RETURN','ACTION','sales.invoice.cancel','X'),
+    ('ERP_SALES_RETURN','TABLE','sales.sales_cr_memo_header','Ri'),
+    ('ERP_SALES_RETURN','TABLE','sales.sales_cr_memo_line','Ri'),
+    ('ERP_SALES_RETURN','TABLE','sales.cancelled_document','Ri'),
+    ('ERP_SALES_RETURN','TABLE','party.cust_ledger_entry','Ri'),
+    ('ERP_SALES_RETURN','TABLE','party.detailed_cust_ledger_entry','Ri'),
+    ('ERP_SALES_RETURN','TABLE','gl.gl_entry','i'),
+    ('ERP_SALES_RETURN','TABLE','tax.vat_entry','i'),
+    ('ERP_SALES_RETURN','TABLE','ebarimt.ebarimt_document','Rim'),
+    ('ERP_SALES_ANY','ACTION','sales.document.edit_any','X'),
     -- purchase documents
     ('ERP_PURCH_EDIT','TABLE','purchase.purchase_header','RIMD'),
     ('ERP_PURCH_EDIT','TABLE','purchase.purchase_line','RIMD'),
     ('ERP_PURCH_EDIT','TABLE','ebarimt.purchase_receipt','R'),
+    ('ERP_PURCH_EDIT','ACTION','purchase.document.preview','X'),
+    ('ERP_PURCH_POST','ACTION','purchase.invoice.cancel','X'),
+    ('ERP_PURCH_POST','ACTION','platform.attachment.add','X'),
+    ('ERP_PURCH_POST','TABLE','tax.city_tax_entry','i'),
     ('ERP_PURCH_POST','ACTION','purchase.invoice.post','X'),
     ('ERP_PURCH_POST','ACTION','purchase.creditmemo.post','X'),
     ('ERP_PURCH_POST','ACTION','ebarimt.purchase_receipt.import','X'),
@@ -359,6 +416,7 @@ SELECT NULL, s.id, v.otype, v.oname,
     ('ERP_CASH_RECEIPT','ACTION','bank.cash_receipt.post','X'),
     ('ERP_CASH_RECEIPT','TABLE','bank.posted_cash_voucher','Ri'),
     ('ERP_CASH_RECEIPT','TABLE','bank.bank_ledger_entry','Ri'),
+    ('ERP_CASH_RECEIPT','ACTION','platform.attachment.add','X'),
     ('ERP_CASH','ACTION','bank.cash_payment.post','X'),
     ('ERP_CASH','ACTION','bank.cash_count.post','X'),
     ('ERP_BANKING','TABLE','bank.bank_account','RIM'),
@@ -368,6 +426,8 @@ SELECT NULL, s.id, v.otype, v.oname,
     ('ERP_BANKING','TABLE','bank.bank_reconciliation','RIMD'),
     ('ERP_BANKING','TABLE','bank.bank_reconciliation_line','RIMD'),
     ('ERP_BANKING','TABLE','bank.text_to_account_mapping','RIMD'),
+    ('ERP_BANKING','TABLE','bank.counterparty_account_map','RIMD'),
+    ('ERP_BANKING','ACTION','platform.attachment.add','X'),
     ('ERP_BANKING','ACTION','bank.statement.import','X'),
     ('ERP_BANKING','ACTION','bank.payment.post','X'),
     ('ERP_BANKING','ACTION','bank.reconciliation.post','X'),
@@ -376,6 +436,8 @@ SELECT NULL, s.id, v.otype, v.oname,
     ('ERP_JOURNALS_EDIT','TABLE','gl.journal_line','RIMD'),
     ('ERP_JOURNALS_EDIT','TABLE','gl.standard_journal','RIMD'),
     ('ERP_JOURNALS_EDIT','TABLE','gl.standard_journal_line','RIMD'),
+    ('ERP_JOURNALS_EDIT','ACTION','gl.journal.preview','X'),
+    ('ERP_JOURNALS_POST','ACTION','platform.attachment.add','X'),
     ('ERP_JOURNALS_POST','ACTION','gl.journal.post','X'),
     ('ERP_JOURNALS_POST','ACTION','gl.transaction.reverse','X'),
     ('ERP_JOURNALS_POST','ACTION','gl.register.reverse','X'),
@@ -388,18 +450,35 @@ SELECT NULL, s.id, v.otype, v.oname,
     ('ERP_RECEIVABLES','ACTION','party.customer.unapply','X'),
     ('ERP_RECEIVABLES','REPORT','rpt.customer_aging','X'),
     ('ERP_RECEIVABLES','REPORT','rpt.customer_statement','X'),
+    ('ERP_RECEIVABLES','ACTION','party.ledger_entry.edit','X'),
     ('ERP_PAYABLES','TABLE','party.application_draft','RIMD'),
     ('ERP_PAYABLES','ACTION','party.vendor.apply','X'),
     ('ERP_PAYABLES','ACTION','party.vendor.unapply','X'),
     ('ERP_PAYABLES','REPORT','rpt.vendor_aging','X'),
+    ('ERP_PAYABLES','REPORT','rpt.vendor_statement','X'),
+    ('ERP_PAYABLES','ACTION','party.ledger_entry.edit','X'),
     -- inventory / fixed assets (R2)
     ('ERP_INV_EDIT','ACTION','inv.adjustment.post','X'),
     ('ERP_INV_EDIT','ACTION','inv.count.post','X'),
+    ('ERP_INV_EDIT','TABLE','inv.item_journal','RIMD'),                -- 11 SCR-FA-08
+    ('ERP_INV_EDIT','TABLE','inv.item_journal_line','RIMD'),
+    ('ERP_INV_EDIT','TABLE','inv.item_ledger_entry','Ri'),
+    ('ERP_INV_EDIT','TABLE','inv.value_entry','Ri'),
+    ('ERP_INV_EDIT','TABLE','inv.posted_item_journal','Ri'),
+    ('ERP_INV_EDIT','TABLE','inv.posted_item_journal_line','Ri'),
     ('ERP_FA_VIEW','TABLE','fa.fixed_asset','R'),
     ('ERP_FA_VIEW','TABLE','fa.fa_depreciation_book','R'),
     ('ERP_FA_VIEW','TABLE','fa.fa_ledger_entry','R'),
+    ('ERP_FA_VIEW','TABLE','fa.fa_class','R'),
+    ('ERP_FA_VIEW','TABLE','fa.fa_posting_group','R'),
+    ('ERP_FA_VIEW','TABLE','fa.depreciation_book','R'),
+    ('ERP_FA_VIEW','TABLE','fa.depreciation_run','R'),
+    ('ERP_FA_VIEW','TABLE','fa.depreciation_run_line','R'),
     ('ERP_FA_EDIT','TABLE','fa.fixed_asset','RIMD'),
     ('ERP_FA_EDIT','TABLE','fa.fa_depreciation_book','RIMD'),
+    ('ERP_FA_EDIT','TABLE','fa.depreciation_run','RIMD'),
+    ('ERP_FA_EDIT','TABLE','fa.depreciation_run_line','RIMD'),
+    ('ERP_FA_EDIT','ACTION','fa.write_down.post','X'),                -- R3
     ('ERP_FA_EDIT','ACTION','fa.depreciation.run','X'),
     ('ERP_FA_EDIT','ACTION','fa.disposal.post','X'),
     -- reports
@@ -415,11 +494,24 @@ SELECT NULL, s.id, v.otype, v.oname,
     ('ERP_FIN_REPORTS','REPORT','rpt.cash_flow','X'),
     ('ERP_FIN_REPORTS','REPORT','rpt.sales_journal','X'),
     ('ERP_FIN_REPORTS','REPORT','rpt.purchase_journal','X'),
+    ('ERP_FIN_REPORTS','REPORT','rpt.customer_aging','X'),             -- 13 CR-23: Viewer reads these too
+    ('ERP_FIN_REPORTS','REPORT','rpt.vendor_aging','X'),
+    ('ERP_FIN_REPORTS','REPORT','rpt.customer_statement','X'),
+    ('ERP_FIN_REPORTS','REPORT','rpt.vendor_statement','X'),           -- 14 SCR-API-09, 07 SCR-PUR-13
+    ('ERP_FIN_REPORTS','REPORT','rpt.vat_return','X'),
+    ('ERP_FIN_REPORTS','REPORT','rpt.daily_sales','X'),
+    ('ERP_FIN_REPORTS','REPORT','rpt.navigate','X'),
     ('ERP_FIN_REPORTS','ACTION','rpt.export.excel','X'),
     ('ERP_FIN_REPORTS','ACTION','rpt.ebalance.keying_sheet','X'),
     -- VAT
     ('ERP_VAT','TABLE','tax.vat_return_period','RIM'),
-    ('ERP_VAT','TABLE','tax.vat_entry','Rm'),
+    ('ERP_VAT','TABLE','tax.vat_entry','Rim'),                         -- 08 CR-TAX-09 (input VAT write-off, VATADJ)
+    ('ERP_VAT','TABLE','tax.city_tax_entry','Rim'),
+    ('ERP_VAT','TABLE','tax.tax_setup','R'),
+    ('ERP_VAT','TABLE','tax.company_tax_profile','R'),
+    ('ERP_VAT','ACTION','tax.vat_return.export','X'),
+    ('ERP_VAT','REPORT','rpt.vat_threshold','X'),
+    ('ERP_VAT','REPORT','rpt.cit_helper','X'),                          -- R2
     ('ERP_VAT','REPORT','rpt.vat_return','X'),
     ('ERP_VAT','ACTION','tax.vat.settle','X'),
     ('ERP_VAT','ACTION','tax.vat_return.submit','X'),
@@ -431,7 +523,11 @@ SELECT NULL, s.id, v.otype, v.oname,
     ('ERP_PERIOD_CLOSE','ACTION','gl.period.lock','X'),
     ('ERP_PERIOD_CLOSE','ACTION','gl.year.close','X'),
     ('ERP_PERIOD_CLOSE','ACTION','fx.revaluation.run','X'),
+    ('ERP_PERIOD_CLOSE','ACTION','fx.exch_rate_adjustment.post','X'),  -- 09 SCR-BNK-07
+    ('ERP_PERIOD_CLOSE','ACTION','gl.year.create','X'),                -- 14 API
+    ('ERP_PERIOD_CLOSE','REPORT','rpt.period_close_checklist','X'),
     ('ERP_PERIOD_REOPEN','ACTION','gl.period.reopen','X'),
+    ('ERP_PERIOD_REOPEN','ACTION','tax.vat.reopen','X'),               -- 08 CR-TAX-09
     -- setup
     ('ERP_SETUP','ACTION','platform.company.setup','X'),
     ('ERP_SETUP','TABLE','platform.company_setup','RM'),
@@ -484,6 +580,10 @@ SELECT NULL, s.id, v.otype, v.oname,
     ('ERP_SETUP','TABLE','rpt.aging_bucket','RIMD'),
     ('ERP_SETUP','TABLE','ebarimt.ebarimt_setup','RIM'),
     ('ERP_SETUP','TABLE','ebarimt.ebarimt_pos','RIMD'),
+    ('ERP_SETUP','TABLE','bank.text_to_account_mapping','RIMD'),       -- 09 SCR-BNK-07 (T_SETUP)
+    ('ERP_SETUP','TABLE','tax.tax_setup','RM'),                        -- 08 CR-TAX-03
+    ('ERP_SETUP','TABLE','tax.company_tax_profile','RIM'),             -- 08 CR-TAX-04
+    ('ERP_SETUP','TABLE','platform.cue_setup','RIMD'),
     -- security
     ('ERP_SECURITY','ACTION','platform.security.manage','X'),
     ('ERP_SECURITY','ACTION','platform.user.invite','X'),
@@ -496,26 +596,113 @@ SELECT NULL, s.id, v.otype, v.oname,
     ('ERP_SECURITY','TABLE','platform.permission','RIMD'),
     ('ERP_SECURITY','TABLE','platform.permission_set_include','RIMD'),
     ('ERP_SECURITY','TABLE','platform.support_access_grant','RIMD'),
+    ('ERP_SECURITY','TABLE','platform.tenant_invitation','RIMD'),       -- 13 CR-23: new T_SECURITY tables
+    ('ERP_SECURITY','TABLE','platform.integration_client','RIMD'),
+    ('ERP_SECURITY','TABLE','platform.company_signatory','RIMD'),
+    ('ERP_SECURITY','TABLE','platform.tenant_key','RM'),
+    ('ERP_SECURITY','TABLE','audit.security_event','R'),                -- moved from ERP_AUDIT_READ (13 CR-23)
+    ('ERP_SECURITY','TABLE','audit.security_incident','R'),
+    ('ERP_SECURITY','ACTION','platform.webhook.manage','X'),            -- R2, MFA
     -- eBarimt operations, audit, PII
-    ('ERP_EBARIMT_OPS','TABLE','ebarimt.ebarimt_document','RM'),
+    ('ERP_EBARIMT_OPS','TABLE','ebarimt.ebarimt_document','Rm'),       -- status only through ebarimt.unknown.resolve
+    ('ERP_EBARIMT_OPS','ACTION','ebarimt.send_data.trigger','X'),
     ('ERP_EBARIMT_OPS','TABLE','ebarimt.ebarimt_document_event','R'),
     ('ERP_EBARIMT_OPS','ACTION','ebarimt.merchant.register','X'),
     ('ERP_EBARIMT_OPS','ACTION','ebarimt.unknown.resolve','X'),
     ('ERP_AUDIT_READ','TABLE','audit.row_change','R'),
     ('ERP_AUDIT_READ','TABLE','audit.posting_log','R'),
-    ('ERP_AUDIT_READ','TABLE','audit.security_event','R'),
     ('ERP_AUDIT_READ','REPORT','audit.integrity','X'),
-    ('ERP_PII_UNMASK','ACTION','platform.pii.unmask','X')
+    ('ERP_AUDIT_READ','ACTION','audit.export','X'),
+    ('ERP_PII_UNMASK','ACTION','platform.pii.unmask','X'),
+    ('ERP_PII_UNMASK','ACTION','platform.pii.anonymize','X'),
+    -- 13 CR-23 new sets
+    ('ERP_ARCHIVE','ACTION','platform.archive.download','X'),
+    ('ERP_ARCHIVE','TABLE','platform.archive_package','R'),
+    ('ERP_DOC_SIGN','ACTION','platform.document.sign','X'),
+    ('ERP_DOC_SIGN','TABLE','platform.document_signature','R'),
+    ('ERP_DOC_APPROVE','ACTION','platform.document.approve_sign','X'),
+    ('ERP_TENANT_ADMIN','ACTION','platform.company.create','X'),
+    ('ERP_TENANT_ADMIN','ACTION','platform.company.archive','X'),
+    ('ERP_TENANT_ADMIN','ACTION','platform.tenant.manage','X'),
+    ('ERP_TENANT_ADMIN','ACTION','platform.data.export','X'),
+    ('ERP_EBARIMT_OVERRIDE','ACTION','ebarimt.document.override','X'),
+    -- ERP_SUPER: wildcards + the protected objects by name (wildcards never cover them, SEC-AZ-19).
+    -- Ledger tables stay command-only in the application (SEC-AZ-03) whatever the wildcard says.
+    ('ERP_SUPER','TABLE','*','RIMD'),
+    ('ERP_SUPER','ACTION','*','X'),
+    ('ERP_SUPER','REPORT','*','X'),
+    ('ERP_SUPER','TABLE','platform.tenant_membership','RIMD'),
+    ('ERP_SUPER','TABLE','platform.role','RIMD'),
+    ('ERP_SUPER','TABLE','platform.role_permission_set','RIMD'),
+    ('ERP_SUPER','TABLE','platform.permission_set','RIMD'),
+    ('ERP_SUPER','TABLE','platform.permission','RIMD'),
+    ('ERP_SUPER','TABLE','platform.permission_set_include','RIMD'),
+    ('ERP_SUPER','TABLE','platform.user_company_role','RIMD'),
+    ('ERP_SUPER','TABLE','platform.user_setup','RIMD'),
+    ('ERP_SUPER','TABLE','platform.support_access_grant','RIMD'),
+    ('ERP_SUPER','TABLE','platform.tenant_invitation','RIMD'),
+    ('ERP_SUPER','TABLE','platform.integration_client','RIMD'),
+    ('ERP_SUPER','TABLE','platform.company_signatory','RIMD'),
+    ('ERP_SUPER','TABLE','platform.tenant_key','RM'),
+    ('ERP_SUPER','TABLE','audit.row_change','R'),
+    ('ERP_SUPER','TABLE','audit.posting_log','R'),
+    ('ERP_SUPER','TABLE','audit.security_event','R'),
+    ('ERP_SUPER','TABLE','audit.security_incident','R'),
+    -- ERP_SUPPORT_READ (+ includes ERP_BASIC, ERP_READ_ALL; the report rows are copied from ERP_FIN_REPORTS below)
+    ('ERP_SUPPORT_READ','TABLE','audit.row_change','R'),
+    ('ERP_SUPPORT_READ','TABLE','audit.posting_log','R'),
+    ('ERP_SUPPORT_READ','TABLE','audit.security_event','R'),
+    -- ERP_SYSTEM_JOB: system jobs (SystemScope, app_worker); never on a role
+    ('ERP_SYSTEM_JOB','TABLE','*','RIMD'),
+    ('ERP_SYSTEM_JOB','ACTION','*','X'),
+    ('ERP_SYSTEM_JOB','REPORT','*','X')
   ) AS v(set_code, otype, oname, r)
   JOIN platform.permission_set s ON s.tenant_id IS NULL AND s.code = v.set_code
 ON CONFLICT (permission_set_id, object_type, object_name) DO NOTHING;
 
--- Composite sets (BC IncludedPermissionSets): EDIT contains VIEW, CASH contains CASH RECEIPT.
+-- ERP_SUPPORT_READ = financial reports without the Excel export; ERP_SUPPORT_WRITE = the T_SETUP table rows of
+-- ERP_SETUP without the platform.company.setup action (13 §6.4).
+INSERT INTO platform.permission (tenant_id, permission_set_id, object_type, object_name,
+                                 read_permission, insert_permission, modify_permission, delete_permission, execute_permission)
+SELECT NULL, t.id, p.object_type, p.object_name, p.read_permission, p.insert_permission, p.modify_permission,
+       p.delete_permission, p.execute_permission
+  FROM (VALUES ('ERP_FIN_REPORTS','ERP_SUPPORT_READ'), ('ERP_SETUP','ERP_SUPPORT_WRITE')) AS v(src, dst)
+  JOIN platform.permission_set f ON f.tenant_id IS NULL AND f.code = v.src
+  JOIN platform.permission_set t ON t.tenant_id IS NULL AND t.code = v.dst
+  JOIN platform.permission p ON p.permission_set_id = f.id
+ WHERE (v.dst = 'ERP_SUPPORT_READ' AND p.object_name <> 'rpt.export.excel')
+    OR (v.dst = 'ERP_SUPPORT_WRITE' AND p.object_type = 'TABLE')
+ON CONFLICT (permission_set_id, object_type, object_name) DO NOTHING;
+
+-- Re-run on an existing database (13 CR-23): rows that moved to another set.
+DELETE FROM platform.permission p
+ USING platform.permission_set s
+ WHERE p.permission_set_id = s.id AND s.tenant_id IS NULL
+   AND ((s.code = 'ERP_SALES_POST' AND p.object_type = 'ACTION' AND p.object_name IN ('sales.creditmemo.post','sales.invoice.cancel'))
+     OR (s.code = 'ERP_AUDIT_READ' AND p.object_type = 'TABLE' AND p.object_name = 'audit.security_event'));
+UPDATE platform.permission p SET modify_permission = 'I'
+  FROM platform.permission_set s
+ WHERE p.permission_set_id = s.id AND s.tenant_id IS NULL AND s.code = 'ERP_EBARIMT_OPS'
+   AND p.object_type = 'TABLE' AND p.object_name = 'ebarimt.ebarimt_document' AND p.modify_permission = 'Y';
+UPDATE platform.permission p SET insert_permission = 'I'
+  FROM platform.permission_set s
+ WHERE p.permission_set_id = s.id AND s.tenant_id IS NULL AND s.code = 'ERP_VAT'
+   AND p.object_type = 'TABLE' AND p.object_name = 'tax.vat_entry' AND p.insert_permission = 'N';
+
+-- Composite sets (BC IncludedPermissionSets): EDIT contains VIEW, CASH contains CASH RECEIPT, POST contains EDIT,
+-- SALES_RETURN contains SALES_EDIT, DOC_APPROVE contains DOC_SIGN, SUPPORT_WRITE contains SUPPORT_READ (13 §6.4).
 INSERT INTO platform.permission_set_include (tenant_id, permission_set_id, included_permission_set_id)
 SELECT NULL, p.id, c.id
   FROM (VALUES ('ERP_CUSTOMER_EDIT','ERP_CUSTOMER_VIEW'), ('ERP_VENDOR_EDIT','ERP_VENDOR_VIEW'),
                ('ERP_FA_EDIT','ERP_FA_VIEW'), ('ERP_CASH','ERP_CASH_RECEIPT'), ('ERP_SALES_POST','ERP_SALES_EDIT'),
-               ('ERP_PURCH_POST','ERP_PURCH_EDIT'), ('ERP_JOURNALS_POST','ERP_JOURNALS_EDIT')) AS v(parent, child)
+               ('ERP_PURCH_POST','ERP_PURCH_EDIT'), ('ERP_JOURNALS_POST','ERP_JOURNALS_EDIT'),
+               -- 13 CR-23
+               ('ERP_SALES_RETURN','ERP_SALES_EDIT'), ('ERP_DOC_APPROVE','ERP_DOC_SIGN'),
+               ('ERP_SUPPORT_READ','ERP_BASIC'), ('ERP_SUPPORT_READ','ERP_READ_ALL'),
+               ('ERP_SUPPORT_WRITE','ERP_SUPPORT_READ'), ('ERP_SUPPORT_WRITE','ERP_CUSTOMER_EDIT'),
+               ('ERP_SUPPORT_WRITE','ERP_VENDOR_EDIT'), ('ERP_SUPPORT_WRITE','ERP_ITEM_EDIT'),
+               ('ERP_SUPPORT_WRITE','ERP_SALES_EDIT'), ('ERP_SUPPORT_WRITE','ERP_PURCH_EDIT'),
+               ('ERP_SUPPORT_WRITE','ERP_JOURNALS_EDIT')) AS v(parent, child)
   JOIN platform.permission_set p ON p.tenant_id IS NULL AND p.code = v.parent
   JOIN platform.permission_set c ON c.tenant_id IS NULL AND c.code = v.child
 ON CONFLICT (permission_set_id, included_permission_set_id) DO NOTHING;

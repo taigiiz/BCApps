@@ -45,13 +45,16 @@ BEGIN
     -- -------------------------------------------------------------------------
     INSERT INTO rpt.fin_report_row (tenant_id, company_id, row_definition_id, line_no, row_no, description, description_en,
                                     totaling_type, totaling, row_type, show, show_opposite_sign, bold, double_underline,
-                                    indentation, statement_line_id)
+                                    indentation, statement_line_id, rounding_anchor)
     SELECT v_tenant, v_company, d.id, v.line_no, v.row_no, v.descr, v.descr_en,
            CASE v.t WHEN 'F' THEN 'FORMULA' WHEN 'C' THEN 'CASH_FLOW_CATEGORY' ELSE 'POSTING_ACCOUNTS' END,
            v.totaling,
            CASE v.rt WHEN 'B' THEN 'BALANCE_AT_DATE' WHEN 'G' THEN 'BEGINNING_BALANCE' ELSE 'NET_CHANGE' END,
            CASE v.sh WHEN 'Z' THEN 'IF_ANY_COLUMN_NOT_ZERO' WHEN 'N' THEN 'NO' ELSE 'YES' END,
-           v.opp, v.t IN ('H','F'), coalesce((v.def, v.row_no) IN (('SBT','1.3'), ('SBT','2.3'), ('ODT','22'), ('ODT','24'), ('MGT','7')), false), v.ind, sl.id
+           v.opp, v.t IN ('H','F'), coalesce((v.def, v.row_no) IN (('SBT','1.3'), ('SBT','2.3'), ('ODT','22'), ('ODT','24'), ('MGT','7')), false), v.ind, sl.id,
+           -- 10 SCR-RPT-06: rows whose rounded value is forced to the rounded components (totals, roll-forward closings)
+           coalesce((v.def, v.row_no) IN (('SBT','1.3'), ('SBT','2.3'), ('ODT','22'), ('ODT','24'), ('MGT','5'), ('MGT','7'))
+                    OR (v.def = 'OOT' AND v.row_no LIKE '%.9'), false)
       FROM (VALUES
         -- ===== СБТ (SBT) =====
         ('SBT', 10,  NULL,       'ХӨРӨНГӨ',                                               'ASSETS',                              'H', NULL,                          'B','Y',false,0,NULL,NULL),

@@ -40,11 +40,11 @@ SELECT platform.fn_provision_company_mn(:tenant_id, :company_id, 2027);   -- э�
 6. `company.status = 'PROVISIONING'` байсан бол `ACTIVE` болгоно.
 7. Хариу: `{"company_id", "fiscal_year", "rates_as_of", "inserted": {алхам: мөр}, "total_inserted"}`. Хоёр, гурав дахь дуудлага `total_inserted = 0` буцаана. Он заагаагүй давтан дуудлага компанийн **хамгийн эхний байгаа санхүүгийн жилд** тулгуурлана: дараа оны дуудлага эсвэл `go_live_date` өөрчлөгдсөн ч илүү жил, цувралын мөр нээгдэхгүй.
 
-Хууль журмын хувь хэмжээ (`vat.standard_rate`, `city_tax.rate_ub`, `vat.return_due_day`) нь `tax.tax_parameter`-ээс эхний санхүүгийн жилийн эхэн ба өнөөдрийн аль хожуу огноогоор уншигдана. Параметр байхгүй эсвэл `verified` биш бол алдаа өгнө — код дотор хувь хэмжээ бичээгүй (D-E7).
+Хууль журмын хувь хэмжээ (`vat.standard_rate`, `city_tax.rate_ub`, `vat.return_due_day`) нь `tax.tax_parameter`-ээс эхний санхүүгийн жилийн эхэн ба өнөөдрийн аль хожуу огноогоор, эсвэл дөрөв дэх параметр `p_as_of`-оор (16 SCR-T06; тест, хойшлуулсан onboarding) уншигдана. Параметр байхгүй эсвэл `verified` биш бол алдаа өгнө — код дотор хувь хэмжээ бичээгүй (D-E7).
 
 Функц `SECURITY INVOKER` тул дуудагчийн RLS үйлчилнэ (`app_user` хангалттай). Бүх алхам дуудагчийн нэг DB transaction-д явагдана: алдаа гарвал юу ч хадгалагдахгүй, wizard-ийг дахин ажиллуулж болно (FR-PLT-003 AC2).
 
-**Жил бүр:** хуулийн баримтын цуврал жил бүр шинээр эхэлдэг (`reset_yearly`, D-C7) тул тухайн жилийн мөр байхгүй бол дугаар олгохоос татгалзана (`ERN01`), үе байхгүй бол posting хийгдэхгүй (`ERP01`). Шинэ жилийн өмнө (жилийн хаалтын job) дараахыг дуудна:
+**Жил бүр:** хуулийн баримтын цуврал жил бүр шинээр эхэлдэг (`reset_yearly`, D-C7). Багцын цувралууд `yearly_prefix_pattern = 'PREFIX-{YYYY}-'`-тэй тул шинэ оны эхний дугаарлалт тухайн жилийн мөрийг өөрөө үүсгэнэ (05 CR-PST-04; pattern-гүй цувралд мөр байхгүй бол `ERN01`). Харин үе байхгүй бол posting хийгдэхгүй (`ERP01`, DETAIL `gl.period_not_found`) — санхүүгийн жилийг `gl.fiscal_year.ensure_next` job (12-р сарын 1) эсвэл дараах дуудлага нээнэ:
 
 ```sql
 SELECT platform.fn_mn_ensure_number_series(2028), gl.fn_mn_ensure_fiscal_year(2028);  -- idempotent
@@ -399,7 +399,7 @@ VAT Posting Setup = VAT Bus. × VAT Prod. (D-E1, D-E2). Хувь хэмжээ `t
 - **Source code:** 010_platform.sql-ийн 24 код + `PAYROLLJNL` (цалингийн журнал импорт), `CASHCOUNT` (кассын тооллого).
 - **Харилцагчийн загвар:** `B2C` (иргэн, үнэ НӨАТ-тэй, CASH), `B2B` (ААН, NET30), `FOREIGN` (экспорт), `EMPLOYEE`. **Нийлүүлэгчийн загвар:** `DOMESTIC_VAT`, `NONVAT` (NONREG), `FOREIGN` (IMPORT), `CUSTOMS` (гааль: VAT bus IMPORT, нийлүүлэгчийн бүлэг `CUSTOMS` → 2365), `EMPLOYEE`.
 
-**Дугаарын цуврал (D-C7).** Хуулийн баримт: завсаргүй (`gapless`), жил бүр шинээр (`reset_yearly`), гараар дугаар оруулахыг хориглоно, формат `PREFIX-YYYY-#####`; эхний ба дараагийн жилийн мөр үүснэ.
+**Дугаарын цуврал (D-C7).** Хуулийн баримт: завсаргүй (`gapless`), жил бүр шинээр (`reset_yearly`, `yearly_prefix_pattern` `PREFIX-{YYYY}-`), гараар дугаар оруулахыг хориглоно, формат `PREFIX-YYYY-#####`; эхний ба дараагийн жилийн мөр үүснэ, дараагийнх нь эхний дугаарлалтаар автоматаар. `date_order` (BC Date Order) баримтын цувралд true, огнооны дараалал алдагдаж болох ваучерын цувралд (`GJ`, `BR`, `BP`, `OB`, `CL`, `FXA`) false (05 CR-PST-03, 09 SCR-BNK-08).
 
 | Код | Баримт | Жишээ | Төрөл |
 |---|---|---|---|
@@ -410,18 +410,23 @@ VAT Posting Setup = VAT Bus. × VAT Prod. (D-E1, D-E2). Хувь хэмжээ `t
 | `BR` / `BP` | Банкны орлогын / зарлагын ваучер | BR-2026-00001 | завсаргүй, жил бүр |
 | `GJ` | Ерөнхий журналын ваучер | GJ-2026-00001 | завсаргүй, жил бүр |
 | `OB` / `CL` | Эхний үлдэгдэл / жилийн хаалтын ваучер | OB-2026-00001 | завсаргүй, жил бүр |
-| `SI_DRAFT`, `SC_DRAFT`, `PI_DRAFT`, `PC_DRAFT`, `JNL_DRAFT` | Ноорог | DSI-000001, J-000001 | sequence, завсартай байж болно |
+| `FXA` | Ханшийн тэгшитгэлийн ваучер (R2) | FXA-2026-00001 | завсаргүй, жил бүр |
+| `DP` | Элэгдлийн ваучер (R2) | DP-2026-00001 | завсаргүй, жил бүр |
+| `IA` / `IC` | Барааны тохируулгын / тооллогын баримт (R2) | IA-2026-00001 | завсаргүй, жил бүр |
+| `SI_DRAFT`, `SC_DRAFT`, `PI_DRAFT`, `PC_DRAFT`, `JNL_DRAFT`, `IA_DRAFT`, `IC_DRAFT` | Ноорог | DSI-000001, J-000001, DIA-000001 | sequence, завсартай байж болно |
 | `CUST`, `VEND`, `ITEM`, `FA` | Мастер өгөгдөл | C00001 | гараар дугаар зөвшөөрнө |
 
-**Журнал** (template → batch, `posting_no_series` = завсаргүй цуврал): `GENERAL` (GENJNL, GJ) → DEFAULT; `CASH_RECEIPT` (CASHRECJNL, BR) → BANK, CASH (касстай тэнцүүлж МХ-1 `KO` дугаартай); `PAYMENT` (PAYMENTJNL, BP) → BANK, CASH (МХ-2 `KZ`); `OPENING` (OPENING, OB) → DEFAULT (D-D7); `CLOSING` (CLSINCOME, CL) → YEAR_END (D-D4).
+**Журнал** (template → batch, `posting_no_series` = завсаргүй цуврал): `GENERAL` (GENJNL, GJ) → DEFAULT; `CASH_RECEIPT` (CASHRECJNL, BR) → BANK, CASH (касстай тэнцүүлж МХ-1 `KO` дугаартай); `PAYMENT` (PAYMENTJNL, BP) → BANK, CASH (МХ-2 `KZ`); `OPENING` (OPENING, OB) → DEFAULT (D-D7); `CLOSING` (CLSINCOME, CL) → YEAR_END (D-D4); `FA` (ASSETS, FAGLJNL, GJ) → DEFAULT (R2, 11 SCR-FA-05).
 
 **Санхүүгийн жил:** эхний жил ба дараагийн жил, тус бүр 12 нээлттэй сар (`gl.fn_create_fiscal_year`, календарийн жил).
 
-**G/L setup:** хуримтлагдсан ашиг 3400, тайлант үеийн ашиг 3500 (D-D4), бөөрөнхийлөлт 8290, кассын илүүдэл 8240, дутагдал 8440 (D-G1), хэрэгжсэн ханшийн зөрүү 8500, хэрэгжээгүй 8510. Зөвхөн хоосон талбарыг бөглөнө.
+**G/L setup:** хуримтлагдсан ашиг 3400, тайлант үеийн ашиг 3500 (D-D4), бөөрөнхийлөлт 8290, кассын илүүдэл 8240, дутагдал 8440 (D-G1), хэрэгжсэн ханшийн зөрүү 8500, хэрэгжээгүй 8510; анх бөглөхөд `max_vat_difference_allowed = 1.00` (07 SCR-PUR-09). Зөвхөн хоосон талбарыг бөглөнө.
+
+**Татварын тохиргоо** (`tax.fn_mn_seed_tax_setup`, 08 CR-TAX-03/04): НӨАТ-ын тооцоо 2310, хялбаршуулсан НӨАТ-ын олз 8200, ААНОАТ-ын зардал 9100, өглөг 2330, хаалтын журнал `GENERAL`; татварын профайлын эхний мөр — `company_setup.vat_registered`-ээс (`STANDARD` нь `vat_registered_from`-оос, эсвэл `NOT_REGISTERED` эхний оны 01-01-ээс). 8430 (торгууль) `cit_treatment = NON_DEDUCTIBLE`; Gen. Prod. бүлэг `FA` НӨАТ-ын бүртгэлийн босгын эргэлтээс хасагдана (`exclude_from_vat_turnover`).
 
 **Касс:** `CASH01` "Үндсэн касс" (`kind = CASH`, 1100, сөрөг үлдэгдэл хориотой D-G1, МХ-1 `KO`, МХ-2 `KZ`).
 
-**Модулийн тохиргоо:** sales/purchase setup-д цувралууд, inventory setup (`inventory_enabled = false`, R1), eBarimt POS `001` (касстай холбоотой); ТТД ба дүүргийн код байвал `ebarimt_setup` (`enabled = false`, STAGING) — оператор бүртгэлийн дараа асаана. Банкны хуулгын текстийн дүрэм (BC T1251, R-BANK-CASH-29: `debit_account_id` = орлого (дүн > 0), `credit_account_id` = зарлага): "ШИМТГЭЛ" → зарлага 8300 (8300 Дт / 1110 Кт, FR-BNK-012 AC1), "ХАДГАЛАМЖИЙН ХҮҮ"/"ХҮҮНИЙ ОРЛОГО" → орлого 8110.
+**Модулийн тохиргоо:** walk-in харилцагч `C00000` "Иргэн" (INDIVIDUAL, B2C загвараас, хувийн мэдээлэлгүй) ба бэлэн борлуулалтын анхдагч хэлбэр `CASH` (15 SCR-UI-09); sales/purchase setup-д цувралууд, inventory setup (`inventory_enabled = false`, R1), eBarimt POS `001` (касстай холбоотой); ТТД ба дүүргийн код байвал `ebarimt_setup` (`enabled = false`, STAGING) — оператор бүртгэлийн дараа асаана. Банкны хуулгын текстийн дүрэм (BC T1251, R-BANK-CASH-29: `debit_account_id` = орлого (дүн > 0), `credit_account_id` = зарлага): "ШИМТГЭЛ" → зарлага 8300 (8300 Дт / 1110 Кт, FR-BNK-012 AC1), "ХАДГАЛАМЖИЙН ХҮҮ"/"ХҮҮНИЙ ОРЛОГО" → орлого 8110.
 
 ## 8. Тайлан (`mn_50_reports.sql`)
 
@@ -457,17 +462,17 @@ VAT Posting Setup = VAT Bus. × VAT Prod. (D-E1, D-E2). Хувь хэмжээ `t
 
 ## 9. Эрх ба role (`mn_00_catalogs.sql`, `mn_60_security.sql`)
 
-Системийн 30 permission set (`tenant_id IS NULL`, 02-architecture §10.2-ын `ERP …` багцууд): `ERP_BASIC`, `ERP_READ_ALL`, `ERP_CUSTOMER_VIEW/EDIT`, `ERP_VENDOR_VIEW/EDIT`, `ERP_ITEM_EDIT`, `ERP_SALES_EDIT/POST`, `ERP_PURCH_EDIT/POST`, `ERP_CASH_RECEIPT`, `ERP_CASH`, `ERP_BANKING`, `ERP_JOURNALS_EDIT/POST`, `ERP_RECEIVABLES`, `ERP_PAYABLES`, `ERP_INV_EDIT`, `ERP_FA_VIEW/EDIT`, `ERP_FIN_REPORTS`, `ERP_VAT`, `ERP_PERIOD_CLOSE`, `ERP_PERIOD_REOPEN`, `ERP_SETUP`, `ERP_SECURITY`, `ERP_EBARIMT_OPS`, `ERP_AUDIT_READ`, `ERP_PII_UNMASK`. Объект нь `TABLE schema.table` (`*` = бүх хүснэгт) эсвэл `ACTION`/`REPORT` `{module}.{resource}.{action}` (жишээ `sales.invoice.post`); эрх R/I/M/D/X, `Y` шууд, `I` шууд бус (posting-оор). EDIT нь VIEW-г агуулна (`permission_set_include`).
+Системийн 41 permission set (`tenant_id IS NULL`, 02-architecture §10.2-ын `ERP …` багцууд, 13-security §6.4 / CR-23): `ERP_BASIC`, `ERP_READ_ALL`, `ERP_CUSTOMER_VIEW/EDIT`, `ERP_VENDOR_VIEW/EDIT`, `ERP_ITEM_EDIT`, `ERP_SALES_EDIT/POST`, `ERP_SALES_RETURN` (кредит нот, цуцлалт), `ERP_SALES_ANY`, `ERP_PURCH_EDIT/POST`, `ERP_CASH_RECEIPT`, `ERP_CASH`, `ERP_BANKING`, `ERP_JOURNALS_EDIT/POST`, `ERP_RECEIVABLES`, `ERP_PAYABLES`, `ERP_INV_EDIT`, `ERP_FA_VIEW/EDIT`, `ERP_FIN_REPORTS`, `ERP_VAT`, `ERP_PERIOD_CLOSE`, `ERP_PERIOD_REOPEN`, `ERP_SETUP`, `ERP_SECURITY`, `ERP_EBARIMT_OPS`, `ERP_EBARIMT_OVERRIDE`, `ERP_AUDIT_READ`, `ERP_PII_UNMASK`, `ERP_ARCHIVE`, `ERP_DOC_SIGN`, `ERP_DOC_APPROVE`, `ERP_TENANT_ADMIN`, `ERP_SUPER`, `ERP_SUPPORT_READ`, `ERP_SUPPORT_WRITE`, `ERP_SYSTEM_JOB`. Оноох боломжгүй (`assignable = false`): `ERP_PERIOD_REOPEN` (D-D3, зөвхөн Owner `ERP_SUPER`-аар), `ERP_SUPER` (зөвхөн built-in OWNER), `ERP_SUPPORT_READ/WRITE` (зөвхөн support grant), `ERP_SYSTEM_JOB` (системийн ажил). `ERP_SUPER` = `TABLE '*'` RIMD, `ACTION '*'` X, `REPORT '*'` X + хамгаалагдсан объект (`T_SECURITY`, `T_AUDIT`) тодорхой нэрээр. Объект нь `TABLE schema.table` (`*` = бүх хүснэгт) эсвэл `ACTION`/`REPORT` `{module}.{resource}.{action}` (жишээ `sales.invoice.post`); эрх R/I/M/D/X, `Y` шууд, `I` шууд бус (posting-оор). EDIT нь VIEW-г агуулна (`permission_set_include`).
 
 | Role (тенант) | Permission set |
 |---|---|
-| `OWNER` Эзэмшигч | Бүгд (30) — хэрэглэгч, эрх, хаасан үе нээх (D-D3) |
-| `ACCOUNTANT` Нягтлан бодогч | `ERP_SECURITY`, `ERP_PERIOD_REOPEN`-оос бусад бүх |
-| `EXTERNAL_ACCOUNTANT` Гэрээт нягтлан | Accountant-тай ижил (FR-PLT-005); хугацааг гишүүнчлэл/support grant-аар хязгаарлана |
-| `SALES_CLERK` Борлуулагч, кассчин | BASIC, CUSTOMER EDIT, SALES POST (+EDIT), CASH RECEIPT (МХ-1) |
+| `OWNER` Эзэмшигч | Зөвхөн `ERP_SUPER` — бүх эрх, хэрэглэгч, эрх, хаасан үе нээх (D-D3) |
+| `ACCOUNTANT` Нягтлан бодогч | 24 set: BASIC, READ ALL, CUSTOMER/VENDOR/ITEM EDIT, SALES POST/RETURN/ANY, PURCH POST, CASH, BANKING, JOURNALS POST, RECEIVABLES, PAYABLES, FIN REPORTS, SETUP, VAT, PERIOD CLOSE, EBARIMT OPS, AUDIT READ, ARCHIVE, DOC APPROVE, INV EDIT, FA EDIT. Security, PII unmask, tenant admin, period reopen, eBarimt override байхгүй (13 §6.5) |
+| `EXTERNAL_ACCOUNTANT` Гэрээт нягтлан | Accountant-тай ижил (FR-PLT-005); хугацааг `user_company_role.expires_at`-аар хязгаарлана |
+| `SALES_CLERK` Борлуулагч, кассчин | BASIC, CUSTOMER EDIT, SALES POST (+EDIT), CASH RECEIPT (МХ-1), DOC SIGN |
 | `VIEWER` Үзэгч | BASIC, READ ALL, FINANCIAL REP. |
 
-Системийн set-үүд `FORCE ROW LEVEL SECURITY`-тэй хүснэгтэд байдаг бөгөөд бодлого `tenant_id IS NULL` мөрийг бичихийг хориглодог. Тиймээс `mn_00_catalogs.sql` нь эзэмшигчийн (app_owner) нэг transaction дотор FORCE-ийг түр авч, мөр нэмээд буцааж тавина (`seed_checks.sql` шалгана). Хэрэглэгчид role оноох (`user_company_role`) нь урилгын урсгалд хийгдэнэ.
+Системийн set-үүд `FORCE ROW LEVEL SECURITY`-тэй хүснэгтэд байдаг бөгөөд бодлого `tenant_id IS NULL` мөрийг бичихийг хориглодог. Тиймээс `mn_00_catalogs.sql` нь эзэмшигчийн (app_owner) нэг transaction дотор FORCE-ийг түр авч, мөр нэмээд буцааж тавина (`seed_checks.sql` шалгана). Хэрэглэгчид role оноох (`user_company_role`) нь урилгын урсгалд (`platform.fn_accept_invitation`) хийгдэнэ. 2026-10-08-аас өмнө provision хийсэн тенантад `platform.fn_mn_seed_roles()`-ийг нэг удаа дуудахад built-in role-уудын хуучин харгалзаа (OWNER-ийн 30 set, нягтлангийн `ERP_PII_UNMASK`) хасагдаж, шинэ нь нэмэгдэнэ (13 CR-23 (7)-ийн migration); custom role-д хүрэхгүй.
 
 ## 10. Хэрхэн өөрчлөх
 
@@ -476,37 +481,38 @@ VAT Posting Setup = VAT Bus. × VAT Prod. (D-E1, D-E2). Хувь хэмжээ `t
 3. **Данс нэмэх:** `mn_10_coa.sql`-д мөр нэмж, Маягт А-гийн мөр ба МГТ-ийн ангиллыг заана. Дугаар нь тайлангийн мөрийн хүрээнд (`mn_50_reports.sql`) таарч байх ёстой; `seed_checks.sql` зөрүүг илрүүлнэ.
 4. **Хувь хэмжээ өөрчлөгдвөл** seed-ийг засахгүй: `legal_parameters.sql`-ийн эх өгөгдөлд (legal-parameters.md) шинэ `effective_from`-тэй мөр нэмнэ (D-E7). Posting engine огноогоор уншина; seed-ийн `vat_percent` нь зөвхөн анхны утга.
 5. **Маягт А-гийн код:** шинэ хувилбарыг шинэ `effective_from`-тэй мөрөөр нэмж, `effective_to`-оор хуучныг хаана. Дансны `statement_line_id`-г шинэ мөр рүү шилжүүлэх migration бичнэ.
-6. **Шинэ жил:** `platform.fn_mn_ensure_number_series(он)`, `gl.fn_mn_ensure_fiscal_year(он)`.
+6. **Шинэ жил:** `gl.fn_mn_ensure_fiscal_year(он)` (цувралын мөрийг pattern-аар автоматаар үүсгэнэ; урьдчилан нээх бол `platform.fn_mn_ensure_number_series(он)`).
+8. **R2 асаахад:** `platform.fn_mn_enable_r2_controls()` — бараа, ҮХ-ийн өртөг ба хуримтлагдсан элэгдлийн дансыг `direct_posting = false` болгоно (11 SCR-FA-06).
 7. Өөрчлөлт бүрийн дараа: `db/apply.sh <scratch-db> --seed --test` (catalog, smoke, seed checks бүгд PASS байх ёстой).
 
 ## 11. Шалгалт (`tests/seed_checks.sql`)
 
-Шинэ DB дээр `apply.sh --seed --test`-ээр ажиллана (2026-10-07, PostgreSQL 16.15): catalog checks цэвэр, `smoke.sql` 58/58 PASS, `seed_checks.sql` **80/80 PASS** (+1 WARN: 5 мөрөнд `TBD` taxProductCode).
+Шинэ DB дээр `apply.sh --seed --test`-ээр ажиллана (2026-10-08, PostgreSQL 16.15): catalog checks цэвэр, `smoke.sql` 86/86 PASS, `seed_checks.sql` **86/86 PASS** (+1 WARN: 5 мөрөнд `TBD` taxProductCode). 2026-10-07-нд 58/58 ба 80/80; нэмэгдсэн шалгалтыг [../CHANGE_REQUESTS.md](../CHANGE_REQUESTS.md)-ээс үзнэ.
 
-- Глобал каталог: мөрийн код (45/27/9/48), МГТ-ийн ангилал мөртэйгөө, 30 системийн set, FORCE RLS сэргээгдсэн.
+- Глобал каталог: мөрийн код (45/27/9/48), МГТ-ийн ангилал мөртэйгөө, МГТ-ийн 6 эсрэг хос, 41 системийн set (5 нь оноох боломжгүй), FORCE RLS сэргээгдсэн.
 - Provisioning: эхний дуудлага ≈ 814 мөр; **хоёр ба гурав дахь дуудлага 0** (гурав дахь нь `go_live_date`-ийг дараа он руу шилжүүлсний дараа — эхний жилд тулгуурлана); дуудагчийн контекст сэргэсэн; өөр тенантын компанийг tenant-bound контекстоос provision хийхийг татгалзана (`ERT01`); урьдач нөхцөлгүй дансны seed `55000`-аар зогсоно; хоёр дахь компани tenant role-уудыг дахин ашиглана; PROVISIONING → ACTIVE.
 - Данс: 182 (138 posting); posting данс бүр Маягт А-гийн навч мөр (балансын → СБТ, орлогын → ОДТ), МГТ ба дансны ангилалтай; 4 оронтой; Begin/End-Total хос; 01-requirements-ийн 18 дугаар бүгд posting данс.
 - Хяналтын данс `direct_posting = false`; general/VAT/customer/vendor/bank/FA/inventory/G/L/НХАТ/валют/банкны текстийн тохиргооны **282 дансны ишлэл** бүгд байгаа, блоклоогүй posting данс; ҮХ-ийн бүлэг бүр үнэ цэнийн бууралтын данстай; гаалийн нийлүүлэгч → 2365 (СБТ 2.1.1.3, МГТ 1.2.7); ажилтны тайлант тооцоо МГТ-д зарлага; үйлчилгээний худалдан авалтын хөнгөлөлт = 7200; банкны текстийн дүрэм BC-ийн чиглэлээр.
 - Матриц: General Posting Setup 3×4 + 4 `*`; VAT 4×4 + урвуу + гааль (19); загвар/данс/Gen. бүлгийн анхдагчаар хэрэглэгдэх VAT Bus. × VAT Prod. хос бүр мөртэй; борлуулалтын НӨАТ → өр төлбөрийн, худалдан авалтын → хөрөнгийн, урвуу тооцоо → өр төлбөрийн данс; % = `tax_parameter`; НӨАТ төлөгч бус компанид 100 % хасагдахгүй; НХАТ 2 %.
-- Дугаарлалт: баримтын төрөл бүрд цуврал (sales/purchase/inventory/journal/касс/загвар), хуулийн 11 цуврал завсаргүй ба жил бүр, 2 жилийн мөр, `PREFIX-YYYY-`.
-- Санхүүгийн жил 2 × 12 нээлттэй сар, 24 НӨАТ-ын үе (10-ны өдөр); журнал 5/7; касс → 1100; төлбөрийн хэлбэр/нөхцөл; хэмжих нэгж 20; загвар, валют, ҮХ, eBarimt.
+- Дугаарлалт: баримтын төрөл бүрд цуврал (sales/purchase/inventory/journal/касс/загвар), хуулийн 15 цуврал завсаргүй ба жил бүр (`yearly_prefix_pattern`-тэй), ваучерын 6 цуврал `date_order = false`, 2 жилийн мөр, `PREFIX-YYYY-`.
+- Санхүүгийн жил 2 × 12 нээлттэй сар, 24 НӨАТ-ын үе (10-ны өдөр); журнал 6/8; walk-in харилцагч C00000; татварын тохиргоо ба профайл; VAT зөрүү 1.00; 8430 NON_DEDUCTIBLE; FA эргэлтээс хасагдах; тайлангийн rounding anchor 14 мөр; касс → 1100; төлбөрийн хэлбэр/нөхцөл; хэмжих нэгж 20; загвар, валют, ҮХ, eBarimt.
 - Тайлан: навч мөр ↔ дансны харгалзаа яг таарна, данс бүр нэг навч мөрөнд, томъёоны ишлэл бүр байгаа мөр, МГТ-ийн ангилал бүр мөртэй; ТТ-03а 17 мөр, мөр 13 `FULL_AMOUNT`; насжилт.
-- Role: 5 role, Owner 30 set, үүргийн тусгаарлалт.
-- **Posting (DB guard-уудаар, `app_user`):** эхний үлдэгдэл `OB-2026-00001` (касс 1 000 000 / 3100), НӨАТ-тэй нэхэмжлэх `SI-2026-00001` (1200 Дт 1 100 / 5110 Кт 1 000 / 2300 Кт 100 — данс тохиргооноос), кассын орлого МХ-1 `KO-2026-00001` (касс → 1100, МГТ 1.1.1); гүйлгээ баланс дебит = кредит = 1 002 200; СБТ-ийн харгалзаагаар хөрөнгө = өр + өмч; ТТ-03а мөр 2 = 100; тэнцээгүй ваучер `ERB01`; тэнцсэн журнал `GJ-2026-00001` (завсаргүй); heading данс `ERG01`; нээгээгүй он `ERP01`, `ERN01`; ensure-функц дараагийн оныг idempotent нээнэ; **ТТ-03а-г BC-ийн дүрмээр (R-VAT-26/27) тооцсон** 3-р сар: дотоодын худалдан авалт (баталгаажсан 40, баталгаажаагүй 20) ба 50 % хасагдахгүй урвуу тооцоо (30) → мөр 2 = 100, 8 = 40, 10 = 15, 11 = 15, 12 = 55, 13 = 30, 14 = 75.
+- Role: 5 role, Owner = `ERP_SUPER`, Accountant 24 set, Sales clerk 5 set, үүргийн тусгаарлалт (нягтлан PII unmask / tenant admin / override-гүй).
+- **Posting (DB guard-уудаар, `app_user`):** эхний үлдэгдэл `OB-2026-00001` (касс 1 000 000 / 3100), НӨАТ-тэй нэхэмжлэх `SI-2026-00001` (1200 Дт 1 100 / 5110 Кт 1 000 / 2300 Кт 100 — данс тохиргооноос), кассын орлого МХ-1 `KO-2026-00001` (касс → 1100, МГТ 1.1.1); гүйлгээ баланс дебит = кредит = 1 002 200; СБТ-ийн харгалзаагаар хөрөнгө = өр + өмч; ТТ-03а мөр 2 = 100; тэнцээгүй ваучер `ERB01`; тэнцсэн журнал `GJ-2026-00001` (завсаргүй); heading данс `ERG01`; нээгээгүй он `ERP01`; pattern-аар 2028 оны SI мөр автоматаар (`SI-2028-00001`); ensure-функц дараагийн оныг idempotent нээнэ; **ТТ-03а-г BC-ийн дүрмээр (R-VAT-26/27) тооцсон** 3-р сар: дотоодын худалдан авалт (баталгаажсан 40, баталгаажаагүй 20) ба 50 % хасагдахгүй урвуу тооцоо (30) → мөр 2 = 100, 8 = 40, 10 = 15, 11 = 15, 12 = 55, 13 = 30, 14 = 75.
 
 ## 12. Нээлттэй асуудал (⚠)
 
 1. Маягт А-гийн мөрийн дугаарыг албан ёсны хавсралттай тулгах (`verified`); Маягт А/Б-ийн хэрэглээ (mn-accounting.md §3.2).
 2. `TBD` taxProductCode-ийг `getProductTaxCode`-оор солих (eBarimt лавлах).
 3. ТТ-03а-гийн одоогийн мөрийн дугаар (etax.mta.mn) — `box_no`.
-4. МГТ: хоёр чиглэлтэй ангилалд гарах урсгалын мөр (схемийн санал); одоохондоо бичилт тус бүрд сонгоно.
+4. ~~МГТ: хоёр чиглэлтэй ангилалд гарах урсгалын мөр~~ — шийдсэн (2026-10-08): `rpt.cash_flow_category.reverse_category_id`, 6 хос (10 SCR-RPT-05).
 5. НӨАТ-ын ангиллын анхдагч: хүүний орлого, даатгал, сургалт, банкны шимтгэл = EXEMPT; цалин, НДШ, элэгдэл, татвар = NOVAT — нягтлан зөвлөхөөр баталгаажуулах.
-6. Бараа, ҮХ-ийн данс R2-т хяналтын данс болох (`direct_posting = false`).
+6. ~~Бараа, ҮХ-ийн данс R2-т хяналтын данс болох~~ — шийдсэн (2026-10-08): `platform.fn_mn_enable_r2_controls()` (11 SCR-FA-06).
 7. **Тэмдгээр ангилах (sign-split):** 2310 НӨАТ-ын тооцооны дансны дебит үлдэгдэл (дараа сард шилжих / буцаан авах НӨАТ) СБТ 2.1.1.3-т сөрөг өр болж харагдана. Ижил асуудал: банкны овердрафт (11xx-ийн кредит үлдэгдэл), D-F4-ийн урьдчилгаа төлбөр (1200-ийн кредит үлдэгдэл), нийлүүлэгчийн дебит үлдэгдэл. IFRS for SMEs 2.52 хөрөнгө, өр төлбөрийг харилцан хаахыг хориглодог тул тайлангийн хөдөлгөөнд данс тус бүрээр тэмдгээр нь мөрөнд хуваарилах боломж хэрэгтэй (bc-periods-reporting §7 #12; R2). Seed-ийн "данс бүр нэг мөрөнд" дүрэмд тэр үед үл хамаарах жагсаалт нэмнэ.
 8. **МГТ-ийн харьцсан дансны аргын хязгаар:** ҮХ, хөрөнгө оруулалтыг нийлүүлэгч/харилцагчаар дамжуулж худалдаж авах/зарахад төлбөр нь үндсэн үйл ажиллагаанд (1.2.3/1.1.1) ордог, хөрөнгө оруулалтын (2.2.1/2.1.1) биш. Валютын харилцагчийн төлбөрт орсон хэрэгжсэн ханшийн зөрүү (8500) пропорциональ хуваалтаар 4-р мөрөнд ордог — IFRS for SMEs 7.11-ийн дагуу төлбөрийн өдрийн ханшаар бүтэн дүнгээрээ үндсэн үйл ажиллагаанд байх ёстой. Санал: хөдөлгүүр тулгагдсан баримтын мөр/гол харьцсан дансыг дагах (R2); тэр болтол бичилт тус бүрд ангиллыг сонгоно.
-9. **Хаалтын бичилтийн шүүлтүүр:** `include_closing_entries = false` нь бүх хаалтын бичилтийг хасдаг тул эхний жилийн хаалтын дараа гүйлгээ баланс/СБТ-ийн дансны түвшинд орлого, зардлын данс өмнөх оны дүнг авч явж, 3500 зөвхөн 01-01-ний шилжүүлгийг харуулна. Нийлбэр зөв (2.2.7 = `3400..3998|5000..9998`, R-45). BC-ийн C-огнооны утгаар зөвхөн тайлант оны эцсийн огнооны хаалтын бичилтийг хасах нь зөв — тайлангийн хөдөлгөөний гэрээ (engine contract).
+9. ~~**Хаалтын бичилтийн шүүлтүүр:**~~ — шийдсэн (2026-10-08): `rpt.fn_trial_balance` BC-ийн C-огнооны утгаар (16 SCR-T01, 10 SCR-RPT-01). Анхны тэмдэглэл: `include_closing_entries = false` нь бүх хаалтын бичилтийг хасдаг тул эхний жилийн хаалтын дараа гүйлгээ баланс/СБТ-ийн дансны түвшинд орлого, зардлын данс өмнөх оны дүнг авч явж, 3500 зөвхөн 01-01-ний шилжүүлгийг харуулна. Нийлбэр зөв (2.2.7 = `3400..3998|5000..9998`, R-45). BC-ийн C-огнооны утгаар зөвхөн тайлант оны эцсийн огнооны хаалтын бичилтийг хасах нь зөв — тайлангийн хөдөлгөөний гэрээ (engine contract).
 10. **IMPORT × VAT10 = NOVAT** (барааны импорт, НӨАТ гаалиар). Резидент бусаас авсан үйлчилгээнд хэрэглэгч `IMPORT_SERVICE`-ийг сонгохгүй бол урвуу тооцооны НӨАТ чимээгүй тооцогдохгүй. Санал: IMPORT нийлүүлэгчийн үйлчилгээ/зардлын мөрөнд VAT10 сонгогдвол анхааруулга. ⚠ Татварын зөвлөх.
-11. **НӨАТ-ын тайлангийн шүүлтүүрийн гэрээ:** `vat_statement_line`-ийн NULL VAT Bus./Prod. бүлэг = "бүх бүлэг" (BC R-VAT-26-д хоосон = зөвхөн хоосон). Хөдөлгүүр ба `040_tax.sql`-ийн COMMENT-д тодорхой бичих.
+11. ~~**НӨАТ-ын тайлангийн шүүлтүүрийн гэрээ:**~~ — шийдсэн (2026-10-08): `tax.vat_statement_line`-ийн баганын COMMENT (08 CR-TAX-12). Анхны тэмдэглэл: `vat_statement_line`-ийн NULL VAT Bus./Prod. бүлэг = "бүх бүлэг" (BC R-VAT-26-д хоосон = зөвхөн хоосон). Хөдөлгүүр ба `040_tax.sql`-ийн COMMENT-д тодорхой бичих.
 12. **Нягтлан/татварын зөвлөхөөр батлах анхдагч:** 7222 томилолт = NOVAT (дотоодын зочид буудал НӨАТ-тэй), 7270 төлөөлөх зардал = VAT10 (хасагдах эсэх), 8200 бусад орлого = NOVAT (хаягдал зарах г.м. НӨАТ ногдоно), ажилтны нийлүүлэгчийн загвар = NONREG (компанийн ТТД-тэй B2B баримттай бол хасагдана), ҮХ-ийн НӨАТ шууд хасагдана — `vat.fa_input_spread_months.*` (120/60 сар, 2026-12-31 хүртэл, unverified) бүх төлөгчид хамаарах эсэх.
 13. Өмнөх seed-ээр provision хийсэн компани (scratch DB-ээс гадна байвал) шинэ утгыг автоматаар авахгүй (seed дарж бичихгүй): банкны текстийн дүрмийн чиглэл, CUSTOMS загварын бүлэг, ҮХ-ийн бууралтын данс, ТТ-03а-гийн 8–13 мөр — нэг удаагийн migration хэрэгтэй. Шинэ данс 2365, 8450 ба бүлэг CUSTOMS-ийг дахин provision хийхэд нэмнэ (туршилтаар 3 мөр, дараа нь 0).
 

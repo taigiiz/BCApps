@@ -47,9 +47,20 @@ SELECT pg_temp.assert((SELECT count(*) FROM rpt.statement_line WHERE form_code =
                       'Form A statement lines loaded: СБТ 45, ОДТ 27, ӨӨТ 9, МГТ 48');
 SELECT pg_temp.assert((SELECT bool_and(statement_line_id IS NOT NULL) FROM rpt.cash_flow_category WHERE activity <> 'NONE' OR code = 'FX_EFFECT'),
                       'every operating/investing/financing cash-flow category points to an МГТ line');
-SELECT pg_temp.assert((SELECT count(*) FROM platform.permission_set WHERE tenant_id IS NULL AND is_system) = 30
-                  AND (SELECT count(*) FROM platform.permission WHERE tenant_id IS NULL) >= 200,
-                      'system permission sets (30) and their permissions are loaded');
+SELECT pg_temp.assert((SELECT count(*) FROM platform.permission_set WHERE tenant_id IS NULL AND is_system) = 41
+                  AND (SELECT count(*) FROM platform.permission WHERE tenant_id IS NULL) >= 300,
+                      'system permission sets (30 + 11 of 13 CR-23) and their permissions are loaded');
+SELECT pg_temp.assert((SELECT string_agg(code, ',' ORDER BY code) FROM platform.permission_set WHERE tenant_id IS NULL AND NOT assignable)
+                        = 'ERP_PERIOD_REOPEN,ERP_SUPER,ERP_SUPPORT_READ,ERP_SUPPORT_WRITE,ERP_SYSTEM_JOB'
+                  AND NOT EXISTS (SELECT 1 FROM platform.permission p JOIN platform.permission_set s ON s.id = p.permission_set_id
+                                   WHERE s.tenant_id IS NULL AND s.code = 'ERP_SALES_POST'
+                                     AND p.object_name IN ('sales.creditmemo.post','sales.invoice.cancel'))
+                  AND (SELECT count(*) FROM platform.permission p JOIN platform.permission_set s ON s.id = p.permission_set_id
+                        WHERE s.tenant_id IS NULL AND s.code = 'ERP_SUPER' AND p.object_name = '*') = 3,
+                      '13 CR-23: non-assignable sets (reopen, super, support, system job); credit memo / cancel moved to ERP_SALES_RETURN; ERP_SUPER wildcards');
+SELECT pg_temp.assert((SELECT count(*) FROM rpt.cash_flow_category c JOIN rpt.cash_flow_category r ON r.id = c.reverse_category_id
+                        WHERE r.reverse_category_id = c.id) = 12,
+                      '10 SCR-RPT-05: six reverse-direction cash-flow category pairs, both directions');
 SELECT pg_temp.assert((SELECT bool_and(c.relforcerowsecurity) FROM pg_class c
                         WHERE c.oid IN ('platform.permission_set'::regclass, 'platform.permission'::regclass,
                                         'platform.permission_set_include'::regclass)),
@@ -352,9 +363,34 @@ SELECT pg_temp.assert((SELECT count(*) FROM gl.fiscal_year WHERE year IN (:fy, :
                       'fiscal years ' || :fy || '/' || :fy_next || ': 24 open monthly periods, 24 VAT return periods due on the 10th');
 
 -- journals, cash box, payment methods, templates, master data
-SELECT pg_temp.assert((SELECT string_agg(code, ',' ORDER BY code) FROM gl.journal_template) = 'CASH_RECEIPT,CLOSING,GENERAL,OPENING,PAYMENT'
-                  AND (SELECT count(*) FROM gl.journal_batch) = 7,
-                      'journal templates GENERAL, CASH_RECEIPT, PAYMENT, OPENING, CLOSING with 7 batches');
+SELECT pg_temp.assert((SELECT string_agg(code, ',' ORDER BY code) FROM gl.journal_template) = 'CASH_RECEIPT,CLOSING,FA,GENERAL,OPENING,PAYMENT'
+                  AND (SELECT count(*) FROM gl.journal_batch) = 8,
+                      'journal templates GENERAL, CASH_RECEIPT, PAYMENT, OPENING, CLOSING, FA with 8 batches');
+SELECT pg_temp.assert((SELECT string_agg(code, ',' ORDER BY code) FROM platform.number_series WHERE NOT date_order) = 'BP,BR,CL,FXA,GJ,OB'
+                  AND NOT EXISTS (SELECT 1 FROM platform.number_series WHERE reset_yearly AND yearly_prefix_pattern IS DISTINCT FROM
+                                         (SELECT d.prefix || '-{YYYY}-' FROM platform.fn_mn_number_series_def() d WHERE d.code = number_series.code))
+                  AND (SELECT count(*) FROM platform.number_series WHERE code IN ('DP','IA','IC','FXA') AND gapless AND reset_yearly) = 4
+                  AND (SELECT count(*) FROM platform.number_series WHERE code IN ('IA_DRAFT','IC_DRAFT') AND NOT gapless) = 2,
+                      'CR-PST-03/04, SCR-FA-05, SCR-FX-04: voucher series without date order, yearly prefix patterns, DP/IA/IC/FXA + drafts');
+SELECT pg_temp.assert((SELECT c.no || ':' || c.kind || ':' || c.default_ebarimt_type FROM sales.sales_setup ss
+                         JOIN party.customer c ON c.id = ss.walk_in_customer_id) = 'C00000:INDIVIDUAL:B2C'
+                  AND (SELECT pm.code FROM sales.sales_setup ss JOIN party.payment_method pm ON pm.id = ss.default_cash_sale_payment_method_id) = 'CASH',
+                      '15 SCR-UI-09: walk-in customer C00000 (individual, B2C) and the CASH method preselected for a cash sale');
+SELECT pg_temp.assert((SELECT string_agg(d.code || ':' || r.row_no, ',' ORDER BY d.code, r.line_no)
+                         FROM rpt.fin_report_row r JOIN rpt.fin_report_row_definition d ON d.id = r.row_definition_id
+                        WHERE r.rounding_anchor)
+                      = 'MGT:5,MGT:7,ODT:22,ODT:24,OOT:CAP.9,OOT:TRS.9,OOT:APIC.9,OOT:REV.9,OOT:FXR.9,OOT:OTH.9,OOT:RE.9,OOT:T.9,SBT:1.3,SBT:2.3',
+                      '10 SCR-RPT-06: rounding anchors SBT 1.3/2.3, ODT 22/24, OOT *.9, MGT 5/7');
+SELECT pg_temp.assert((SELECT a1.no || ',' || a2.no || ',' || a3.no || ',' || a4.no || ',' || t.code
+                         FROM tax.tax_setup s JOIN gl.gl_account a1 ON a1.id = s.vat_settlement_account_id
+                         JOIN gl.gl_account a2 ON a2.id = s.simplified_vat_gain_account_id
+                         JOIN gl.gl_account a3 ON a3.id = s.cit_expense_account_id JOIN gl.gl_account a4 ON a4.id = s.cit_payable_account_id
+                         JOIN gl.journal_template t ON t.id = s.settlement_journal_template_id) = '2310,8200,9100,2330,GENERAL'
+                  AND (SELECT vat_status || ':' || valid_from FROM tax.company_tax_profile) = 'STANDARD:2020-01-01'   -- = vat_registered_from
+                  AND (SELECT max_vat_difference_allowed FROM gl.general_ledger_setup) = 1.00
+                  AND (SELECT string_agg(no, ',') FROM gl.gl_account WHERE cit_treatment <> 'NORMAL') = '8430'
+                  AND (SELECT string_agg(code, ',') FROM party.gen_prod_posting_group WHERE exclude_from_vat_turnover) = 'FA',
+                      'CR-TAX-03/04/07/10, SCR-PUR-09: tax setup accounts, tax profile STANDARD, VAT difference 1.00, 8430 non-deductible, FA excluded from turnover');
 SELECT pg_temp.assert((SELECT a.no FROM bank.bank_account b JOIN bank.bank_account_posting_group g ON g.id = b.bank_account_posting_group_id
                          JOIN gl.gl_account a ON a.id = g.gl_account_id WHERE b.no = 'CASH01' AND b.kind = 'CASH') = '1100',
                       'default cash box CASH01 posts to 1100');
@@ -428,14 +464,18 @@ SELECT pg_temp.assert((SELECT string_agg(coalesce(from_days::text, '') || '..' |
 -- roles (tenant)
 SELECT pg_temp.assert((SELECT string_agg(code, ',' ORDER BY code) FROM platform.role)
                         = 'ACCOUNTANT,EXTERNAL_ACCOUNTANT,OWNER,SALES_CLERK,VIEWER'
-                  AND (SELECT count(*) FROM platform.role_permission_set rp JOIN platform.role r ON r.id = rp.role_id WHERE r.code = 'OWNER') = 30,
-                      'default roles Owner, Accountant, External accountant, Sales clerk, Viewer; Owner holds all 30 sets (D-I2)');
+                  AND (SELECT string_agg(s.code, ',') FROM platform.role_permission_set rp JOIN platform.role r ON r.id = rp.role_id
+                         JOIN platform.permission_set s ON s.id = rp.permission_set_id WHERE r.code = 'OWNER') = 'ERP_SUPER'
+                  AND (SELECT count(*) FROM platform.role_permission_set rp JOIN platform.role r ON r.id = rp.role_id WHERE r.code = 'ACCOUNTANT') = 24
+                  AND (SELECT count(*) FROM platform.role_permission_set rp JOIN platform.role r ON r.id = rp.role_id WHERE r.code = 'SALES_CLERK') = 5,
+                      'default roles Owner, Accountant, External accountant, Sales clerk, Viewer; Owner = ERP_SUPER only (13 §6.5, CR-23 (7))');
 SELECT pg_temp.assert(NOT EXISTS (SELECT 1 FROM platform.role_permission_set rp JOIN platform.role r ON r.id = rp.role_id
                                     JOIN platform.permission_set s ON s.id = rp.permission_set_id
-                                   WHERE (r.code IN ('ACCOUNTANT','EXTERNAL_ACCOUNTANT') AND s.code IN ('ERP_SECURITY','ERP_PERIOD_REOPEN'))
+                                   WHERE (r.code IN ('ACCOUNTANT','EXTERNAL_ACCOUNTANT')
+                                          AND s.code IN ('ERP_SECURITY','ERP_PERIOD_REOPEN','ERP_PII_UNMASK','ERP_TENANT_ADMIN','ERP_EBARIMT_OVERRIDE'))
                                       OR (r.code = 'SALES_CLERK' AND s.code IN ('ERP_JOURNALS_POST','ERP_SETUP','ERP_CASH'))
                                       OR (r.code = 'VIEWER' AND s.code NOT IN ('ERP_BASIC','ERP_READ_ALL','ERP_FIN_REPORTS'))),
-                      'segregation: no security/reopen for accountants, no journals/setup/cash payments for sales clerk, read-only viewer');
+                      'segregation: no security/reopen/PII unmask/tenant admin/override for accountants, no journals/setup/cash payments for sales clerk, read-only viewer');
 COMMIT;
 
 -- S2: company without VAT registration
@@ -622,7 +662,8 @@ COMMIT;
 \set ON_ERROR_STOP on
 SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERG01', 'posting to the HEADING account 1199 is rejected (ERG01)');
 
--- 4h. Outside the provisioned fiscal years: no accounting period (ERP01) and no yearly series line (ERN01)
+-- 4h. Outside the provisioned fiscal years: no accounting period (ERP01, DETAIL gl.period_not_found); the yearly
+--     series line is created on first use from yearly_prefix_pattern (05 CR-PST-04)
 \set ON_ERROR_STOP off
 \set LAST_ERROR_SQLSTATE 'none'
 BEGIN;
@@ -633,15 +674,15 @@ VALUES (:tenant_s, :company_s1, 999999, 999999, make_date(:fy_out, 1, 15), 'TEST
 ROLLBACK;
 \set ON_ERROR_STOP on
 SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERP01', 'posting into ' || :fy_out || ' (no fiscal year provisioned) is rejected (ERP01)');
-\set ON_ERROR_STOP off
-\set LAST_ERROR_SQLSTATE 'none'
 BEGIN;
 SET LOCAL ROLE app_user;
 SELECT platform.fn_set_context(:tenant_s, :company_s1, :user_s, 'seed-check-series') \gset
-SELECT platform.fn_next_document_no('SI', make_date(:fy_out, 1, 15));
+SELECT platform.fn_next_document_no('SI', make_date(:fy_out, 1, 15)) AS si_auto \gset
+SELECT (SELECT l.prefix || ':' || l.starting_date FROM platform.number_series_line l JOIN platform.number_series s ON s.id = l.number_series_id
+         WHERE s.code = 'SI' AND l.line_no = :fy_out) AS si_auto_line \gset
 ROLLBACK;
-\set ON_ERROR_STOP on
-SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERN01', 'SI number for ' || :fy_out || ' refused until that year''s line exists (ERN01, D-C7)');
+SELECT pg_temp.assert(:'si_auto' = 'SI-' || :fy_out || '-00001' AND :'si_auto_line' = 'SI-' || :fy_out || '-:' || make_date(:fy_out, 1, 1),
+                      'SI number for ' || :fy_out || ' creates that year''s line from the pattern (CR-PST-04): ' || :'si_auto');
 
 -- 4i. Next year is prepared with the ensure-functions, idempotently
 BEGIN;
@@ -722,10 +763,11 @@ SELECT :tenant_s, :company_s1, :e7 + v.i, :t7, :r7, gl.fn_mn_account_id(v.acc), 
 INSERT INTO tax.vat_entry (tenant_id, company_id, entry_no, entry_type, posting_date, vat_date, document_type, document_no,
                            base, amount, non_deductible_base, non_deductible_amount, vat_calculation_type, vat_percent, vat_identifier,
                            vat_category, vat_bus_posting_group, vat_prod_posting_group, gen_bus_posting_group, gen_prod_posting_group,
-                           ebarimt_tax_type, deductible_confirmed, supplier_ebarimt_id, transaction_no, gl_register_no, gl_entry_no, source_code)
+                           ebarimt_tax_type, deductible_confirmed, supplier_ebarimt_id, transaction_no, gl_register_no, gl_entry_no, source_code,
+                           non_deductible_reason)
 SELECT :tenant_s, :company_s1, :v7 + v.i, 'PURCHASE', make_date(:fy, 3, 25), make_date(:fy, 3, 25), 'INVOICE', :'pi_no',
        v.base, v.amount, v.nd_base, v.nd_amount, v.calc, 10, v.ident, 'VAT10', v.vb, v.vp, v.gb, v.gp, 'VAT_ABLE',
-       v.confirmed, v.ddtd, :t7, :r7, :e7 + v.gl_i, 'PURCHASES'
+       v.confirmed, v.ddtd, :t7, :r7, :e7 + v.gl_i, 'PURCHASES', CASE WHEN v.nd_amount <> 0 THEN 'EXEMPT_RELATED' END
   FROM (VALUES (0, 400.00, 40.00,   0.00,  0.00, 'NORMAL',         'VAT10', 'DOMESTIC', 'VAT10',          'DOMESTIC', 'MISC',     true,  repeat('1', 33), 0),
                (1, 200.00, 20.00,   0.00,  0.00, 'NORMAL',         'VAT10', 'DOMESTIC', 'VAT10',          'DOMESTIC', 'MISC',     false, NULL,            3),
                (2, 150.00, 15.00, 150.00, 15.00, 'REVERSE_CHARGE', 'RC10',  'IMPORT',   'IMPORT_SERVICE', 'EXPORT',   'SERVICES', false, NULL,            6))

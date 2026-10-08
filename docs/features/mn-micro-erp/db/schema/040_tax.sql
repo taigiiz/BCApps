@@ -129,6 +129,7 @@ CREATE TABLE tax.vat_return_period (
     due_date                  date,
     status                    text NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','CLOSED','SUBMITTED')),
     settlement_transaction_no bigint,                 -- VAT settlement voucher (source code VATSTMT)
+    city_tax_settlement_transaction_no bigint,        -- CR #166 (BR-TAX-95, R2): CITYTAXSTMT voucher, undone on :reopen
     submitted_at              timestamptz,
     submitted_by              uuid,
     submission_reference      text,                   -- e-tax receipt number (ТТ-03а)
@@ -139,6 +140,7 @@ CREATE TABLE tax.vat_return_period (
     row_version               integer NOT NULL DEFAULT 1,
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
     FOREIGN KEY (company_id, settlement_transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no),
+    FOREIGN KEY (company_id, city_tax_settlement_transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no),
     UNIQUE (company_id, starting_date),
     UNIQUE (company_id, id),
     CHECK (ending_date >= starting_date),
@@ -146,6 +148,8 @@ CREATE TABLE tax.vat_return_period (
     EXCLUDE USING gist (company_id WITH =, daterange(starting_date, ending_date, '[]') WITH &&)
 );
 CREATE INDEX ix_vat_return_period__settlement ON tax.vat_return_period (company_id, settlement_transaction_no);
+CREATE INDEX ix_vat_return_period__city_tax_settlement ON tax.vat_return_period (company_id, city_tax_settlement_transaction_no)
+    WHERE city_tax_settlement_transaction_no IS NOT NULL;
 COMMENT ON TABLE tax.vat_return_period IS 'Mirrors BC table 737 VAT Return Period (monthly). VAT dates must fall in an OPEN period (D-E9); SUBMITTED = filed, final.';
 
 CREATE TABLE tax.vat_statement_template (
@@ -225,6 +229,42 @@ CREATE TABLE tax.vat_statement_line (
 CREATE INDEX ix_vat_statement_line__bus ON tax.vat_statement_line (company_id, vat_bus_posting_group_id);
 CREATE INDEX ix_vat_statement_line__prod ON tax.vat_statement_line (company_id, vat_prod_posting_group_id);
 COMMENT ON TABLE tax.vat_statement_line IS 'Mirrors BC table 256 VAT Statement Line (types Account Totaling / VAT Entry Totaling / Row Totaling / Description). Rows map to ТТ-03а lines (D-E8).';
+-- CR #172 (Z-TAX-10): unlike BC (blank = only blank), a NULL filter column means "any value" (seed contract).
+COMMENT ON COLUMN tax.vat_statement_line.vat_bus_posting_group_id IS 'VAT Entry Totaling filter. NULL = any VAT business posting group (differs from BC, where blank matches only blank).';
+COMMENT ON COLUMN tax.vat_statement_line.vat_prod_posting_group_id IS 'VAT Entry Totaling filter. NULL = any VAT product posting group (differs from BC, where blank matches only blank).';
+COMMENT ON COLUMN tax.vat_statement_line.vat_category IS 'VAT Entry Totaling filter on vat_entry.vat_category. NULL = any category.';
+
+-- -----------------------------------------------------------------------------
+-- Customs declarations (CR #165 CR-TAX-05 merged with 07 SCR-PUR-07): evidence for FULL_VAT import VAT and the
+-- customs value of ТТ-03а-5 section Б. vendor / currency FKs are added in 050 / 060.
+-- -----------------------------------------------------------------------------
+CREATE TABLE tax.customs_declaration (
+    id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id            uuid NOT NULL,
+    company_id           uuid NOT NULL,
+    declaration_no       text NOT NULL CHECK (char_length(declaration_no) BETWEEN 1 AND 35),
+    declaration_date     date NOT NULL,
+    customs_office_code  text CHECK (char_length(customs_office_code) <= 20),
+    vendor_id            uuid,                                   -- the customs authority vendor (CUSTOMS template), FK in 060
+    currency_code        platform.currency_code,                 -- invoice currency of the goods, FK in 050
+    exchange_rate        platform.exch_rate CHECK (exchange_rate > 0),   -- customs rate, MNT per 1 FCY
+    customs_value        platform.amount NOT NULL DEFAULT 0,     -- MNT
+    customs_duty         platform.amount NOT NULL DEFAULT 0,
+    excise_tax           platform.amount NOT NULL DEFAULT 0,
+    vat_base             platform.amount NOT NULL DEFAULT 0,
+    vat_amount           platform.amount NOT NULL DEFAULT 0,
+    note                 text,
+    created_at           timestamptz NOT NULL DEFAULT now(),
+    created_by           uuid DEFAULT platform.current_user_id(),
+    updated_at           timestamptz,
+    updated_by           uuid,
+    row_version          integer NOT NULL DEFAULT 1,
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    UNIQUE (company_id, declaration_no),
+    UNIQUE (company_id, id),
+    CHECK ((currency_code IS NULL) = (exchange_rate IS NULL))
+);
+COMMENT ON TABLE tax.customs_declaration IS 'Import customs declaration (гаалийн мэдүүлэг): customs value, duty, excise, VAT base and VAT (CR #165, #152; BR-TAX-62). Referenced by purchase documents and FULL_VAT VAT entries. No BC equivalent.';
 
 -- -----------------------------------------------------------------------------
 -- VAT ledger
@@ -270,6 +310,11 @@ CREATE TABLE tax.vat_entry (
     deductible_confirmed_at    timestamptz,
     deductible_confirmed_by    uuid,
     supplier_ebarimt_id        platform.ddtd,                       -- supplier receipt ДДТД (purchase), whitelisted
+    non_deductible_reason      text CHECK (non_deductible_reason IN ('NON_VAT_COMPANY','SIMPLIFIED_REGIME','REJECTED',
+                                   'PASSENGER_CAR','PERSONAL_USE','EXEMPT_RELATED','NO_EBARIMT')),   -- CR #162 (BR-TAX-25/51/52, ТТ-03а row 11)
+    tax_parameter_id           uuid REFERENCES tax.tax_parameter (id),   -- CR #120/#161 (FR-TAX-003 AC1): statutory parameter row that produced vat_percent
+    excluded_from_turnover     boolean NOT NULL DEFAULT false,      -- CR #167 (BR-TAX-83): snapshot of gen_prod_posting_group.exclude_from_vat_turnover
+    customs_declaration_id     uuid,                                -- CR #165: import VAT evidence (whitelisted: the declaration may arrive later)
     source_code                platform.code20 NOT NULL REFERENCES platform.source_code (code),
     reason_code_id             uuid,
     reversed                   boolean NOT NULL DEFAULT false,
@@ -278,6 +323,7 @@ CREATE TABLE tax.vat_entry (
     created_at                 timestamptz NOT NULL DEFAULT now(),
     created_by                 uuid DEFAULT platform.current_user_id(),
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    FOREIGN KEY (company_id, customs_declaration_id) REFERENCES tax.customs_declaration (company_id, id),
     FOREIGN KEY (company_id, transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no),
     FOREIGN KEY (company_id, gl_register_no) REFERENCES gl.gl_register (company_id, no) DEFERRABLE INITIALLY DEFERRED,
     FOREIGN KEY (company_id, gl_entry_no) REFERENCES gl.gl_entry (company_id, entry_no),
@@ -290,7 +336,15 @@ CREATE TABLE tax.vat_entry (
     UNIQUE (company_id, id),
     CHECK (entry_type <> 'PURCHASE' OR NOT deductible_confirmed OR supplier_ebarimt_id IS NOT NULL
            OR vat_calculation_type <> 'NORMAL'),
-    CHECK (NOT closed OR closed_by_entry_no IS NOT NULL OR entry_type = 'SETTLEMENT')
+    CHECK (NOT closed OR closed_by_entry_no IS NOT NULL OR entry_type = 'SETTLEMENT'),
+    -- CR #174/#177 (CR-TAX-14; BR-TAX-24/25/46/62/73)
+    CHECK (vat_calculation_type <> 'FULL_VAT' OR base = 0),
+    CHECK (entry_type <> 'SALE' OR (non_deductible_base = 0 AND non_deductible_amount = 0)),
+    CHECK (entry_type <> 'SETTLEMENT' OR closed),
+    CHECK (entry_type <> 'PURCHASE' OR vat_calculation_type <> 'FULL_VAT' OR amount = 0
+           OR (deductible_confirmed AND external_document_no IS NOT NULL AND document_date IS NOT NULL)),
+    -- CR #162: a non-deductible part always carries its reason, and a reason only a non-deductible part
+    CHECK ((non_deductible_reason IS NOT NULL) = (non_deductible_amount <> 0 OR non_deductible_base <> 0))
 );
 CREATE INDEX ix_vat_entry__vat_date ON tax.vat_entry (company_id, vat_date, entry_type) INCLUDE (base, amount, closed);
 CREATE INDEX ix_vat_entry__open ON tax.vat_entry (company_id, entry_type, vat_date) WHERE NOT closed;
@@ -309,6 +363,8 @@ CREATE INDEX ix_vat_entry__reversed_by ON tax.vat_entry (company_id, reversed_by
 -- ebarimt.purchase_receipt UNIQUE (company_id, ddtd) and its purch_inv_header_id link.
 CREATE INDEX ix_vat_entry__supplier_receipt ON tax.vat_entry (company_id, supplier_ebarimt_id)
     WHERE supplier_ebarimt_id IS NOT NULL;
+CREATE INDEX ix_vat_entry__customs ON tax.vat_entry (company_id, customs_declaration_id) WHERE customs_declaration_id IS NOT NULL;
+CREATE INDEX ix_vat_entry__tax_parameter ON tax.vat_entry (tax_parameter_id) WHERE tax_parameter_id IS NOT NULL;
 COMMENT ON TABLE tax.vat_entry IS 'Mirrors BC table 254 VAT Entry (VAT subledger). Append-only; only closed/closed_by/period/deductible/reversal columns change via platform.fn_ledger_update. Adds rate snapshot and eBarimt deduction fields (D-E4).';
 
 CREATE TABLE tax.gl_entry_vat_entry_link (
@@ -394,6 +450,8 @@ CREATE TABLE tax.city_tax_entry (
     base                   platform.amount NOT NULL,
     amount                 platform.amount NOT NULL,
     rate_percent           platform.percent NOT NULL,
+    tax_parameter_id       uuid REFERENCES tax.tax_parameter (id),     -- CR #161: parameter row that produced rate_percent
+    vat_return_period_id   uuid,                                       -- CR #166: settlement period (whitelisted, like vat_entry)
     bill_to_pay_to_type    text CHECK (bill_to_pay_to_type IN ('CUSTOMER','VENDOR')),
     bill_to_pay_to_id      uuid,
     transaction_no         bigint NOT NULL,
@@ -409,6 +467,7 @@ CREATE TABLE tax.city_tax_entry (
     created_by             uuid DEFAULT platform.current_user_id(),
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
     FOREIGN KEY (company_id, city_tax_code_id) REFERENCES tax.city_tax_code (company_id, id),
+    FOREIGN KEY (company_id, vat_return_period_id) REFERENCES tax.vat_return_period (company_id, id),
     FOREIGN KEY (company_id, transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no),
     FOREIGN KEY (company_id, gl_register_no) REFERENCES gl.gl_register (company_id, no) DEFERRABLE INITIALLY DEFERRED,
     FOREIGN KEY (company_id, gl_entry_no) REFERENCES gl.gl_entry (company_id, entry_no),
@@ -426,7 +485,128 @@ CREATE INDEX ix_city_tax_entry__gl_entry ON tax.city_tax_entry (company_id, gl_e
 CREATE INDEX ix_city_tax_entry__closed_by ON tax.city_tax_entry (company_id, closed_by_entry_no) WHERE closed_by_entry_no IS NOT NULL;
 CREATE INDEX ix_city_tax_entry__reversed_entry ON tax.city_tax_entry (company_id, reversed_entry_no) WHERE reversed_entry_no IS NOT NULL;
 CREATE INDEX ix_city_tax_entry__reversed_by ON tax.city_tax_entry (company_id, reversed_by_entry_no) WHERE reversed_by_entry_no IS NOT NULL;
+CREATE INDEX ix_city_tax_entry__period ON tax.city_tax_entry (company_id, vat_return_period_id) WHERE vat_return_period_id IS NOT NULL;
 COMMENT ON TABLE tax.city_tax_entry IS 'City tax (НХАТ) ledger, modelled on BC table 254 VAT Entry. Append-only (R2 functionality).';
+
+-- -----------------------------------------------------------------------------
+-- Tax setup (CR #163 CR-TAX-03): settlement / CIT accounts instead of passing them in each :close request
+-- -----------------------------------------------------------------------------
+CREATE TABLE tax.tax_setup (
+    id                              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id                       uuid NOT NULL,
+    company_id                      uuid NOT NULL,
+    vat_settlement_account_id       uuid,          -- 2310 НӨАТ-ын тооцоо
+    simplified_vat_gain_account_id  uuid,          -- 8200 (simplified VAT regime gain, BR-TAX-100)
+    cit_expense_account_id          uuid,          -- 9100 (R2 CIT helper)
+    cit_payable_account_id          uuid,          -- 2330
+    settlement_journal_template_id  uuid,          -- default GENERAL (posting series GJ)
+    created_at                      timestamptz NOT NULL DEFAULT now(),
+    created_by                      uuid DEFAULT platform.current_user_id(),
+    updated_at                      timestamptz,
+    updated_by                      uuid,
+    row_version                     integer NOT NULL DEFAULT 1,
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    FOREIGN KEY (company_id, vat_settlement_account_id) REFERENCES gl.gl_account (company_id, id),
+    FOREIGN KEY (company_id, simplified_vat_gain_account_id) REFERENCES gl.gl_account (company_id, id),
+    FOREIGN KEY (company_id, cit_expense_account_id) REFERENCES gl.gl_account (company_id, id),
+    FOREIGN KEY (company_id, cit_payable_account_id) REFERENCES gl.gl_account (company_id, id),
+    FOREIGN KEY (company_id, settlement_journal_template_id) REFERENCES gl.journal_template (company_id, id),
+    UNIQUE (company_id)
+);
+CREATE INDEX ix_tax_setup__settlement ON tax.tax_setup (company_id, vat_settlement_account_id);
+CREATE INDEX ix_tax_setup__simplified ON tax.tax_setup (company_id, simplified_vat_gain_account_id);
+CREATE INDEX ix_tax_setup__cit_expense ON tax.tax_setup (company_id, cit_expense_account_id);
+CREATE INDEX ix_tax_setup__cit_payable ON tax.tax_setup (company_id, cit_payable_account_id);
+CREATE INDEX ix_tax_setup__template ON tax.tax_setup (company_id, settlement_journal_template_id);
+COMMENT ON TABLE tax.tax_setup IS 'Company tax setup (VAT settlement account, simplified-VAT gain, CIT accounts, settlement journal template), CR #163. Simplified counterpart of the BC VAT settlement report options (pitfall 11: account no longer passed per request).';
+
+-- -----------------------------------------------------------------------------
+-- Effective-dated company tax profile (CR #164 CR-TAX-04, ADR-0021 #2): VAT registration / deregistration and regime
+-- history. platform.company_setup.vat_registered / vat_registered_from become a cache of the row valid today.
+-- -----------------------------------------------------------------------------
+CREATE TABLE tax.company_tax_profile (
+    id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id               uuid NOT NULL,
+    company_id              uuid NOT NULL,
+    valid_from              date NOT NULL,
+    valid_to                date,
+    vat_status              text NOT NULL CHECK (vat_status IN ('STANDARD','SIMPLIFIED','NOT_REGISTERED')),
+    vat_return_frequency    text NOT NULL DEFAULT 'MONTHLY' CHECK (vat_return_frequency IN ('MONTHLY','QUARTERLY')),
+    simplified_base         text CHECK (simplified_base IN ('VAT_EXCLUSIVE','VAT_INCLUSIVE')),
+    cit_regime              text NOT NULL DEFAULT 'STANDARD' CHECK (cit_regime IN ('STANDARD','CREDIT_90','ONE_PERCENT','SIMPLIFIED_ANNUAL')),
+    excluded_activity_code  text,
+    note                    text,
+    created_at              timestamptz NOT NULL DEFAULT now(),
+    created_by              uuid DEFAULT platform.current_user_id(),
+    updated_at              timestamptz,
+    updated_by              uuid,
+    row_version             integer NOT NULL DEFAULT 1,
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    UNIQUE (company_id, id),
+    CHECK (valid_to IS NULL OR valid_to >= valid_from),
+    CHECK ((vat_status = 'SIMPLIFIED') = (simplified_base IS NOT NULL)),
+    EXCLUDE USING gist (company_id WITH =, daterange(valid_from, valid_to, '[]') WITH &&)
+);
+COMMENT ON TABLE tax.company_tax_profile IS 'Effective-dated tax profile of a company (VAT status STANDARD / SIMPLIFIED / NOT_REGISTERED, return frequency, CIT regime), CR #164. company_setup.vat_registered(_from) is maintained from the row valid on the current date (tax.fn_sync_company_vat_status; the daily tax.vat_threshold.check job re-syncs).';
+
+CREATE FUNCTION tax.fn_sync_company_vat_status(p_company_id uuid) RETURNS void
+LANGUAGE plpgsql VOLATILE AS $$
+DECLARE
+    v_today date := (now() AT TIME ZONE 'Asia/Ulaanbaatar')::date;
+    v_reg   boolean;
+    v_from  date;
+BEGIN
+    SELECT p.vat_status <> 'NOT_REGISTERED' INTO v_reg
+      FROM tax.company_tax_profile p
+     WHERE p.company_id = p_company_id AND v_today BETWEEN p.valid_from AND coalesce(p.valid_to, 'infinity'::date);
+    IF NOT FOUND THEN
+        RETURN;                                   -- no profile row for today: keep the R1 value of company_setup
+    END IF;
+    IF v_reg THEN
+        -- start of the uninterrupted registered stretch that contains today
+        WITH RECURSIVE stretch AS (
+            SELECT p.valid_from FROM tax.company_tax_profile p
+             WHERE p.company_id = p_company_id AND v_today BETWEEN p.valid_from AND coalesce(p.valid_to, 'infinity'::date)
+            UNION ALL
+            SELECT p.valid_from FROM tax.company_tax_profile p JOIN stretch s ON p.valid_to = s.valid_from - 1
+             WHERE p.company_id = p_company_id AND p.vat_status <> 'NOT_REGISTERED')
+        SELECT min(valid_from) INTO v_from FROM stretch;
+    END IF;
+    UPDATE platform.company_setup cs
+       SET vat_registered = v_reg, vat_registered_from = CASE WHEN v_reg THEN v_from ELSE cs.vat_registered_from END
+     WHERE cs.company_id = p_company_id
+       AND (cs.vat_registered IS DISTINCT FROM v_reg OR (v_reg AND cs.vat_registered_from IS DISTINCT FROM v_from));
+END $$;
+COMMENT ON FUNCTION tax.fn_sync_company_vat_status(uuid) IS 'Refreshes the cache company_setup.vat_registered / vat_registered_from from tax.company_tax_profile (row valid today, Asia/Ulaanbaatar). Called by trigger and by the daily tax.vat_threshold.check job.';
+
+CREATE FUNCTION tax.fn_company_tax_profile_sync() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM tax.fn_sync_company_vat_status(coalesce(NEW.company_id, OLD.company_id));
+    RETURN NULL;
+END $$;
+CREATE TRIGGER trg_company_tax_profile_sync AFTER INSERT OR UPDATE OR DELETE ON tax.company_tax_profile
+    FOR EACH ROW EXECUTE FUNCTION tax.fn_company_tax_profile_sync();
+
+-- -----------------------------------------------------------------------------
+-- Filed ТТ-03а snapshot (CR #175 CR-TAX-15, mn-tax R19): immutable record written by :submit (ledger-guarded, 910)
+-- -----------------------------------------------------------------------------
+CREATE TABLE tax.vat_return_snapshot (
+    id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id             uuid NOT NULL,
+    company_id            uuid NOT NULL,
+    vat_return_period_id  uuid NOT NULL,
+    statement_name_code   platform.code20 NOT NULL,          -- e.g. TT03A
+    rows                  jsonb NOT NULL CHECK (jsonb_typeof(rows) = 'array'),   -- [{line_no,row_no,value,printed}]
+    scope_version         text,
+    sha256                bytea NOT NULL CHECK (octet_length(sha256) = 32),
+    created_at            timestamptz NOT NULL DEFAULT now(),
+    created_by            uuid DEFAULT platform.current_user_id(),
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    FOREIGN KEY (company_id, vat_return_period_id) REFERENCES tax.vat_return_period (company_id, id),
+    UNIQUE (company_id, vat_return_period_id)
+);
+COMMENT ON TABLE tax.vat_return_snapshot IS 'Immutable copy of each submitted VAT return (row values, template scope version, SHA-256), CR #175. Recalculation after template edits (R2) never changes a filed return. Append-only.';
 
 -- Foreign keys from tables of 020
 ALTER TABLE gl.gl_account

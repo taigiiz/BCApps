@@ -9,9 +9,13 @@
 ```
 db/
 ├── apply.sh                    схемийг дарааллаар нь өгөгдлийн санд суулгана
+├── CHANGE_REQUESTS.md          spec-үүдийн 228 schema өөрчлөлтийн хүсэлтийн шийдвэр (2026-10-08)
+├── change_requests_raw.json    хүсэлтүүдийн түүхий жагсаалт (эх сурвалж)
 ├── schema/
 │   ├── 000_extensions_roles.sql   өргөтгөл, бүлэг role, модулийн schema
-│   ├── 010_platform.sql           domain төрөл, контекст функц, tenant/company, хэрэглэгч, эрх, дугаарлалт, counter
+│   ├── 010_platform.sql           domain төрөл, контекст функц, tenant/company, хэрэглэгч, эрх, дугаарлалт, counter,
+│   │                              урилга, интеграцийн client, тенантын түлхүүр/нууц, гарын үсэг зурагч, хэрэглэгчийн тохиргоо
+│   ├── 015_identity.sql           нэвтрэлтийн сан (тенантгүй, RLS-гүй, D-K7): credential, session, token, OpenIddict
 │   ├── 020_gl.sql                 дансны төлөвлөгөө, тохиргоо, санхүүгийн жил/үе, журнал, gl_transaction/register/entry
 │   ├── 030_dimension.sql          dimension, утга, default dimension, dimension set (hash)
 │   ├── 040_tax.sql                НӨАТ-ын бүлэг/тохиргоо, vat_entry, тайлангийн загвар, НХАТ, tax_parameter (глобал)
@@ -26,7 +30,8 @@ db/
 │   ├── 120_rpt.sql                санхүүгийн тайлангийн тодорхойлолт, Form A мөрийн код, МГТ ангилал, насжилт
 │   ├── 130_ebarimt.sql            eBarimt PosAPI 3.0 давхарга (POS тус бүрийн reset-гүй billIdSuffix counter, төлөвийн түүх)
 │   ├── 140_integration_audit.sql  outbox/inbox, idempotency, job, аудитын лог, аюулгүй байдлын лог, гарын үсэг,
-│   │                              support хандалт, Navigate view, ерөнхий trigger
+│   │                              support хандалт, хавсралт, rendition, архив, onboarding, webhook, Navigate view,
+│   │                              тенант/урилга/purge-ийн SECURITY DEFINER функц, ерөнхий trigger
 │   ├── 900_rls.sql                эрх олголт ба row-level security (RLS)
 │   ├── 910_ledger_guards.sql      ledger-ийн хамгаалалт: append-only, тэнцлийн шалгалт, үеийн хяналт, voucher-тэй уялдаа
 │   └── 920_views.sql              үлдэгдэл, гүйлгээ баланс, нээлттэй гүйлгээ, насжилт, тогтвортой байдлын шалгалт
@@ -74,10 +79,11 @@ psql -v ON_ERROR_STOP=1 -d erp_scratch -f db/tests/smoke.sql
 | `app_owner` | NOLOGIN, BYPASSRLS **үгүй** | Бүх schema/объектыг эзэмшинэ. Migrator login (`erp_migrator`) гишүүн нь |
 | `app_user` | NOLOGIN, BYPASSRLS үгүй | Бизнесийн хүснэгтэд DML. Ledger ба posted баримтад **зөвхөн SELECT, INSERT**. Глобал лавлахад SELECT |
 | `app_worker` | `app_user`-ийн гишүүн | Нэмэлтээр: Монголбанкны ханш, eBarimt-ийн кэш, PosAPI төлөв бичих. Тенант хоорондын `integration.fn_claim_outbox`, `platform.fn_list_active_companies`-ийг **зөвхөн энэ role** дуудна |
-| `app_readonly` | NOLOGIN | Зөвхөн SELECT (RLS үйлчилнэ) |
-| `app_rls_bypass` | NOLOGIN, **BYPASSRLS** | Зөвхөн SECURITY DEFINER функц эзэмшинэ: `integration.fn_claim_outbox`, `platform.fn_list_active_companies`, `audit.fn_row_change`, `audit.fn_log_security_event`, мөн COMMIT-ийн шалгалт `gl.fn_sum_transaction`, `gl.fn_check_transaction_*`, `bank.fn_check_non_negative_cash` (RLS-ийн контекстоос хамааралгүй) |
+| `app_readonly` | NOLOGIN | Зөвхөн SELECT (RLS үйлчилнэ). `identity.*`-д хандахгүй |
+| `app_ops` | NOLOGIN, BYPASSRLS үгүй | Production-ий ops (`erp_ops_ro`): бизнесийн хүснэгтэд **SELECT байхгүй**; зөвхөн PII-гүй нэгтгэл `integration.fn_ops_health()` (13 CR-10) |
+| `app_rls_bypass` | NOLOGIN, **BYPASSRLS** | Зөвхөн SECURITY DEFINER функц эзэмшинэ: `integration.fn_claim_outbox`, `platform.fn_list_active_companies`, `audit.fn_row_change`, `audit.fn_log_security_event`, мөн COMMIT-ийн шалгалт `gl.fn_sum_transaction`, `gl.fn_check_transaction_*`, `bank.fn_check_non_negative_cash` (RLS-ийн контекстоос хамааралгүй); тенант сонгохоос өмнөх `platform.fn_list_user_tenants`, `fn_find_invitation`, `fn_accept_invitation`, `fn_resolve_integration_client`; `integration.fn_purge_expired`, `audit.fn_purge_platform_rows`, `integration.fn_ops_health`, `ebarimt.fn_instance_merchant_counts` |
 
-Локал/CI-ийн login role-ууд (`starter/db/init/01-roles.sql`) байвал автоматаар холбогдоно: `erp_migrator → app_owner`, `erp_app → app_user`, `erp_worker → app_worker`, `erp_ops_ro → app_readonly`.
+Локал/CI-ийн login role-ууд (`starter/db/init/01-roles.sql`) байвал автоматаар холбогдоно: `erp_migrator → app_owner`, `erp_app → app_user`, `erp_worker → app_worker`, `erp_ops_ro → app_ops` (өмнө нь `app_readonly`; 13 CR-10).
 
 ## 4. Дүрэм (conventions)
 
@@ -108,11 +114,15 @@ psql -v ON_ERROR_STOP=1 -d erp_scratch -f db/tests/smoke.sql
 | `trg_gl_transaction_period` / `gl.fn_assert_posting_date_allowed` | `910_ledger_guards.sql` | Posting date нь OPEN үе ба компанийн цонх дотор (хаалтын ваучер ч цонхонд захирагдана, D-D3) |
 | `trg_*_global_dims` | `910_ledger_guards.sql` | `global_dim_1/2_value_id`-г `dimension_set_id`-ээс гаргана (оролтыг үл тооно) |
 | `trg_vat_return_period_status` | `910_ledger_guards.sql` | SUBMITTED НӨАТ-ын үе эцсийнх (`ERP02`) |
-| `platform.fn_next_document_no` | `010_platform.sql` | Завсаргүй (gapless) дугаар — posting transaction дотор түгжинэ; `reset_yearly` цувралд тухайн жилийн мөр заавал (`ERN01`). SECURITY DEFINER, counter-т `app_user` шууд бичихгүй |
+| `platform.fn_next_document_no` | `010_platform.sql` | Завсаргүй (gapless) дугаар — posting transaction дотор түгжинэ; `reset_yearly` цувралд тухайн жилийн мөр заавал (`ERN01`), харин `yearly_prefix_pattern` (`SI-{YYYY}-`) байвал шинэ жилийн мөрийг өөрөө үүсгэнэ. Gapless дугаар бүрийг `platform.number_allocation`-д бичнэ (цоорхой: `platform.v_number_series_gap`). SECURITY DEFINER, counter-т `app_user` шууд бичихгүй |
+| `platform.fn_purge_in_progress` + `platform.tenant_purge_log` | `140`, `910` | Append-only guard-уудын цорын ганц DELETE салбар: migrator, `erp.purge_tenant` = тенант, тенант `PURGE_APPROVED` (13 CR-17) |
+| `platform.fn_attachment_guard`, `rpt.fn_statement_snapshot_status`, `fa.fn_depreciation_run_line_guard` | `910_ledger_guards.sql` | Posted баримтын хавсралт, FINAL тайлангийн snapshot, DRAFT-аас гарсан элэгдлийн run-ий мөр өөрчлөгдөхгүй |
+| `trg_ebarimt_document_guard` | `910_ledger_guards.sql` | eBarimt-ийн төлөвийн whitelist, `attempt_count`-ийн дүрэм, илгээлтийн snapshot өөрчлөгдөхгүй (12 SCR-18) |
+| `party.fn_edit_ledger_entry`, `bank.fn_mark_account_statement_undone` | `910_ledger_guards.sql` | Нээлттэй авлага/өглөгийн `due_date`/`on_hold` засвар (`audit.row_change`-д бичнэ); хуулгыг нэг удаа "буцаасан" тэмдэглэх |
 | `platform.fn_next_entry_no` | `010_platform.sql` | Ledger бүрийн `entry_no`/`transaction_no`/`register_no` (SECURITY DEFINER) |
 | `ebarimt.fn_next_bill_seq` | `130_ebarimt.sql` | POS тус бүрийн reset-гүй `billIdSuffix` дараалал (D-K4), `bill_id_suffix = seq mod 10^6` |
 
-Алдааны код: `ERB01` тэнцээгүй гүйлгээ, `ERB02` voucher-ийн огноо/register зөрсөн, `ERP01` үе/цонх, `ERP02` үе ба НӨАТ-ын үеийн төлөвийн шилжилт, `ERL01` өөрчлөгдөхгүй дүрэм, `ERT01` контекст/тенант, `ERV01` НӨАТ-ын үе, `ERC01` касс сөрөг, `ERG01` данс posting биш, `ERN01..03` дугаарлалт, `ERD01` dimension.
+Алдааны код: `ERB01` тэнцээгүй гүйлгээ, `ERB02` voucher-ийн огноо/register зөрсөн, `ERP01` үе/цонх (DETAIL нь шалтгааны код: `gl.period_not_found`, `gl.period_closed`, `gl.period_locked`, `gl.posting_date_outside_window`), `ERP02` үе ба НӨАТ-ын үеийн төлөвийн шилжилт, `ERL01` өөрчлөгдөхгүй дүрэм, `ERT01` контекст/тенант, `ERV01` НӨАТ-ын үе, `ERC01` касс сөрөг, `ERG01` данс posting биш, `ERN01..03` дугаарлалт, `ERD01` dimension, `ERI01` урилга хүчингүй (олдоогүй, хугацаа дууссан, өөр имэйл).
 
 ## 6. BC-ийн харгалзааны товчоо
 
@@ -132,14 +142,18 @@ psql -v ON_ERROR_STOP=1 -d erp_scratch -f db/tests/smoke.sql
 
 Дэлгэрэнгүй харгалзаа, хялбарчилсан/хассан зүйлсийг [03-domain-model.md](../03-domain-model.md)-ийн §4-өөс үзнэ.
 
-## 7. Тестийн үр дүн (2026-10-06, PostgreSQL 16.15)
+## 7. Тестийн үр дүн (2026-10-08, PostgreSQL 16.15)
 
-- 18 файл алдаагүй суусан. Нийт **158 хүснэгт**, 12 view (хяналтын дараа, доорх тэмдэглэлийг үзнэ үү).
-- `catalog_checks.sql`: FK индексгүй 0, COMMENT-гүй 0, float багана 0, дүрэм зөрчсөн хүснэгт 0.
-- `seed_checks.sql` (MN багц, [seed/README.md](seed/README.md) §11 ба хяналтын тэмдэглэл): **80/80 PASS** — provisioning хоёр, гурав дахь удаад 0 мөр нэмнэ, өөр тенантын компанийг provision хийхийг татгалзана (`ERT01`), posting данс бүр Маягт А-гийн мөр ба МГТ-ийн ангилалтай, тохиргооны 282 дансны ишлэл бүгд posting данс, баримтын төрөл бүрд цуврал, тэнцсэн ваучер DB guard-уудаар батлагдана, ТТ-03а-г BC-ийн дүрмээр тооцоход төлөх НӨАТ зөв гарна.
-- `smoke.sql`: **58/58 PASS** (анхны 33 + хяналтын 25 regression шалгалт). Үүнд тэнцсэн гүйлгээ commit болох, тэнцээгүй нь COMMIT үед `ERB01`-ээр унах, `gl_entry.amount`-ийг `app_user` (42501) болон эзэмшигч (ERL01) хоёулаа өөрчилж чадахгүй байх, rollback-ийн дараа дугаар завсаргүй үргэлжлэх, буцаалт эсрэг баганад орох, хаалттай үед posting хийх боломжгүй байх, авлагын үлдэгдэл detailed entry-тэй тэнцэх, тенант/компанийн RLS тусгаарлалт, контекстгүй query алдаа өгөх зэрэг шалгалт орсон.
+Шинэ хоосон DB дээр `bash db/apply.sh "<url>" --seed --test` (мөн `--seed`-гүй `--test`) алдаагүй, exit 0.
+
+- 19 файл алдаагүй суусан. Нийт **201 хүснэгт** (15 schema; үүнээс `identity` 8), 21 view. Өмнө (2026-10-06): 18 файл, 158 хүснэгт, 12 view. Нэмэгдсэн 43 хүснэгт, 9 view-ийн жагсаалт ба шалтгааныг [CHANGE_REQUESTS.md](CHANGE_REQUESTS.md)-ээс үзнэ.
+- `catalog_checks.sql`: FK индексгүй 0, COMMENT-гүй 0, float багана 0, дүрэм зөрчсөн хүснэгт 0 (`tenant_id`-тэй бүх хүснэгт FORCE RLS-тэй).
+- `smoke.sql`: **86/86 PASS** = өмнөх 58 + өөрчлөлтийн хүсэлтийн 28 regression шалгалт (§10): CASH данс `prevent_negative_balance`-гүй үүсэхгүй (23514); eBarimt-ийн төлөвийн whitelist (ERROR→PENDING, SUCCESS→SENT, `attempt_count`-ийн дүрэм — ERL01) ба `MANUAL_VOID`; `yearly_prefix_pattern`-оор шинэ жилийн мөр автоматаар (`GJ-2027-00001`), `number_allocation` лог, цоорхойн view, лог руу шууд бичих 42501; OPEN→LOCKED, 12-р сарын LOCKED, жилийн LOCKED-ийн дүрэм (ERP02), `ERP01`-ийн DETAIL `gl.period_closed`; тенантын төлөв ба MFA-г шууд өөрчлөх 42501; `posapi_instance.base_url` 42501; `party.fn_edit_ledger_entry` + `audit.row_change`, зөвшөөрөгдөөгүй багана ERL01, давхардсан нэхэмжлэхийн дугаар 23505; trial balance (BC C-date) ба `fn_integrity_report` I-01..I-08; `user_company_role`-ийн аудит, `tenant_secret.ciphertext` redact; урилга олох/хүлээн авах, бусдын тенант жагсаах ERT01; posted баримтын хавсралт устгах ERL01; `app_ops` зөвхөн `fn_ops_health`, ямар ч хүснэгтэд SELECT-гүй.
+- `seed_checks.sql` (MN багц, [seed/README.md](seed/README.md)): **86/86 PASS** = өмнөх 80 + 6 (системийн 41 permission set ба 5 non-assignable, ERP_SUPER-ийн wildcard, кредит нот/цуцлалт `ERP_SALES_RETURN`-д; МГТ-ийн 6 эсрэг хос; цувралын `date_order`/`yearly_prefix_pattern`, DP/IA/IC/FXA + ноорог; walk-in харилцагч C00000 ба CASH хэлбэр; татварын тохиргоо 2310/8200/9100/2330, татварын профайл, VAT зөрүү 1.00, 8430 NON_DEDUCTIBLE, FA эргэлтээс хасагдах; тайлангийн rounding anchor). Өөрчлөгдсөн шалгалт: Owner = зөвхөн `ERP_SUPER`, журналын загвар 6 (FA нэмэгдсэн) ба batch 8, 2028 оны SI дугаар ERN01 биш харин pattern-аар `SI-2028-00001`, урвуу тооцооны (RC) VAT entry `non_deductible_reason`-тэй.
 
 ## Хяналтын тэмдэглэл (Review log)
+
+> **2026-10-08 — өөрчлөлтийн хүсэлтүүд.** Spec-үүдийн (05–16) 228 schema өөрчлөлтийн хүсэлтийг давхардлаас цэвэрлэж, нэг бүрчлэн шийдвэрлэсэн дүн, хэрэгжүүлэлт, татгалзсан шалтгааныг [CHANGE_REQUESTS.md](CHANGE_REQUESTS.md)-д бичив. Доорх нь 2026-10-06-ны схемийн хяналтын тэмдэглэл.
 
 **Огноо:** 2026-10-06. **Хамрах хүрээ:** `db/schema/*.sql`, `db/tests/smoke.sql`, [03-domain-model.md](../03-domain-model.md). **Жишиг:** [DECISIONS.md](../DECISIONS.md) ба `research/bc-*.md`-ийн "Entities"/"Business rules" (MUST/SHOULD), PostgreSQL-ийн зөв ажиллагаа, eBarimt, олон компанийн бүрэн бүтэн байдал.
 **Шалгалт:** шинэ DB дээр 18 файл алдаагүй суусан → `catalog_checks.sql` цэвэр → `smoke.sql` **58/58 PASS** (`apply.sh --seed --test`-ээр ч мөн). Хүснэгт 150 → **158**, view 11 → **12**.

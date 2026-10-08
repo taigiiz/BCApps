@@ -49,16 +49,36 @@ $$;
 -- platform.fn_next_entry_no, ebarimt.fn_next_bill_seq): a direct UPDATE/DELETE could skip or reuse
 -- legal numbers (D-C7, D-K3, D-K4).
 REVOKE INSERT, UPDATE, DELETE ON platform.number_series_counter, platform.ledger_counter, ebarimt.pos_counter FROM app_user;
+-- ... and so is the allocation log that proves gaplessness (CR #119)
+REVOKE INSERT, UPDATE, DELETE ON platform.number_allocation FROM app_user;
 
--- Tenant-less tables the application writes under its own policies.
-GRANT INSERT, UPDATE ON platform.tenant, platform.app_user TO app_user;
+-- Tenant-less tables the application writes under its own policies. Column-level UPDATE (CR #50, 13 §7.8, SEC-ID-11):
+-- a tenant cannot change its own status / plan / limits / legal hold (platform.fn_set_tenant_status, operators only),
+-- and a user cannot change its own status or MFA flag (platform.fn_set_user_mfa).
+GRANT INSERT ON platform.tenant, platform.app_user TO app_user;
+GRANT UPDATE (name, default_language, require_mfa_all_users, updated_at, updated_by) ON platform.tenant TO app_user;
+GRANT UPDATE (display_name, phone, preferred_language, last_login_at, updated_at, updated_by) ON platform.app_user TO app_user;
+-- Tenant data keys (CR #45): insert, rewrap (wrapped_key / kek_id) and retire only; deleted only by the purge.
+REVOKE UPDATE, DELETE ON platform.tenant_key FROM app_user;
+GRANT UPDATE (wrapped_key, kek_id, retired_at) ON platform.tenant_key TO app_user;
+-- Operator-only tables: invisible to application and report roles.
+REVOKE ALL ON platform.tenant_purge_log FROM app_user, app_readonly;
+-- PosAPI instances (CR #84): tenants see no base_url / operator_tin; the worker reads and maintains everything.
+REVOKE SELECT ON ebarimt.posapi_instance FROM app_user, app_readonly;
+GRANT SELECT (id, code, environment, max_merchants, status, last_send_data_at, left_lotteries, merchant_soft_limit,
+              receipts_per_day_soft_limit, health_status, last_info_at, version, created_at, updated_at)
+    ON ebarimt.posapi_instance TO app_user, app_readonly;
+GRANT SELECT ON ebarimt.posapi_instance TO app_worker;
 -- audit.row_change is written only by the audit trigger (owned by app_rls_bypass).
 REVOKE INSERT, UPDATE, DELETE ON audit.row_change FROM app_user;
 -- audit.security_event: tenant rows may be inserted by the app; NULL-tenant rows only via audit.fn_log_security_event.
 REVOKE UPDATE, DELETE ON audit.security_event FROM app_user;
 -- Worker-maintained global reference data.
-GRANT INSERT, UPDATE ON fx.official_exchange_rate, ebarimt.classification_code, ebarimt.tax_product_code TO app_worker;
-GRANT UPDATE (last_send_data_at, left_lotteries, updated_at) ON ebarimt.posapi_instance TO app_worker;
+GRANT INSERT, UPDATE ON fx.official_exchange_rate, ebarimt.classification_code, ebarimt.tax_product_code,
+                        ebarimt.district, ebarimt.barcode_reference, ebarimt.taxpayer_info TO app_worker;
+GRANT INSERT, UPDATE ON ebarimt.taxpayer_info TO app_user;            -- CR #23: getInfo on demand (customer TIN check)
+GRANT UPDATE (last_send_data_at, left_lotteries, updated_at, health_status, last_info_at, last_info_error, version)
+    ON ebarimt.posapi_instance TO app_worker;
 GRANT INSERT, UPDATE ON integration.job_run TO app_worker;
 
 -- Functions: SECURITY DEFINER helpers are granted explicitly; everything else keeps PUBLIC EXECUTE.

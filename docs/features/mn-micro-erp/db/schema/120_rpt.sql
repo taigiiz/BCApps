@@ -37,8 +37,10 @@ CREATE TABLE rpt.cash_flow_category (
     activity           text NOT NULL CHECK (activity IN ('OPERATING','INVESTING','FINANCING','NONE')),
     direction          text NOT NULL CHECK (direction IN ('INFLOW','OUTFLOW','BOTH')),
     statement_line_id  uuid REFERENCES rpt.statement_line (id),
+    reverse_category_id uuid REFERENCES rpt.cash_flow_category (id),   -- CR #209 (BR-RPT-77): line for flows against `direction` (two-way accounts)
     sort_order         integer NOT NULL DEFAULT 0,
-    created_at         timestamptz NOT NULL DEFAULT now()
+    created_at         timestamptz NOT NULL DEFAULT now(),
+    CHECK (reverse_category_id IS NULL OR reverse_category_id <> id)
 );
 COMMENT ON TABLE rpt.cash_flow_category IS 'Global direct-method cash-flow categories (МГТ lines: receipts from customers, payments to suppliers, wages, taxes, ...). Replaces BC Additional Report Definition (indirect method).';
 
@@ -88,6 +90,7 @@ CREATE TABLE rpt.fin_report_row (
     statement_line_id      uuid REFERENCES rpt.statement_line (id),     -- e-balance export target of this row
     dimension_1_totaling   text,
     dimension_2_totaling   text,
+    rounding_anchor        boolean NOT NULL DEFAULT false,   -- CR #210 (BR-EBL-04): anchor of e-balance thousand-MNT round-then-sum
     created_at             timestamptz NOT NULL DEFAULT now(),
     created_by             uuid DEFAULT platform.current_user_id(),
     updated_at             timestamptz,
@@ -96,7 +99,8 @@ CREATE TABLE rpt.fin_report_row (
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
     FOREIGN KEY (company_id, row_definition_id) REFERENCES rpt.fin_report_row_definition (company_id, id) ON DELETE CASCADE,
     UNIQUE (company_id, row_definition_id, line_no),
-    CHECK (totaling_type <> 'FORMULA' OR totaling IS NOT NULL)
+    CHECK (totaling_type <> 'FORMULA' OR totaling IS NOT NULL),
+    CHECK (totaling_type <> 'CASH_FLOW_CATEGORY' OR row_type = 'NET_CHANGE')   -- CR #216 (BR-RPT-49)
 );
 CREATE UNIQUE INDEX ux_fin_report_row__row_no ON rpt.fin_report_row (company_id, row_definition_id, row_no) WHERE row_no IS NOT NULL;
 COMMENT ON TABLE rpt.fin_report_row IS 'Mirrors BC table 85 Acc. Schedule Line (row: totaling type, row type, show rules, sign flip, formatting). Formula grammar per BC R-33..R-36.';
@@ -229,6 +233,66 @@ CREATE TABLE rpt.aging_bucket (
     CHECK (from_days IS NULL OR to_days IS NULL OR to_days >= from_days)
 );
 COMMENT ON TABLE rpt.aging_bucket IS 'One aging column: days overdue = as_of_date - basis date, bucket [from_days, to_days].';
+
+-- -----------------------------------------------------------------------------
+-- e-balance filing evidence (CR #206, BR-PER-17, BR-EBL-10, FR-GL-024: a LOCKED year has stored submission evidence)
+-- -----------------------------------------------------------------------------
+CREATE TABLE rpt.filing_submission (
+    id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id               uuid NOT NULL,
+    company_id              uuid NOT NULL,
+    fiscal_year_id          uuid NOT NULL,
+    filing_type             text NOT NULL CHECK (filing_type IN ('EBALANCE_ANNUAL','EBALANCE_HALFYEAR')),
+    submitted_at            date NOT NULL,
+    submitted_by            uuid,
+    submission_reference    text CHECK (char_length(submission_reference) <= 100),
+    evidence_attachment_id  uuid,                                   -- platform.attachment (FK in 140)
+    evidence_note           text,
+    snapshot_ids            uuid[] NOT NULL DEFAULT '{}',          -- rpt.statement_snapshot rows that were filed
+    created_at              timestamptz NOT NULL DEFAULT now(),
+    created_by              uuid DEFAULT platform.current_user_id(),
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    FOREIGN KEY (company_id, fiscal_year_id) REFERENCES gl.fiscal_year (company_id, id),
+    UNIQUE (company_id, fiscal_year_id, filing_type),
+    CHECK (evidence_attachment_id IS NOT NULL OR char_length(btrim(evidence_note)) >= 10)
+);
+COMMENT ON TABLE rpt.filing_submission IS 'Evidence of an e-balance (e-tax) financial statement filing per fiscal year (reporting.filing_submission of 02 §9.6, CR #206). Append-only (910).';
+
+-- -----------------------------------------------------------------------------
+-- Saved financial statements (CR #207/#219, BR-RPT-90..93, FR-RPT-012 AC1): reopen with the old definition and the
+-- same numbers; target of Form A signatures and the archive package.
+-- -----------------------------------------------------------------------------
+CREATE TABLE rpt.statement_snapshot (
+    id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id               uuid NOT NULL,
+    company_id              uuid NOT NULL,
+    snapshot_no             bigint NOT NULL CHECK (snapshot_no > 0),   -- company counter (platform.fn_next_entry_no('STATEMENT_SNAPSHOT')); key of fn_ledger_update
+    financial_report_id     uuid,
+    report_code             text NOT NULL CHECK (report_code IN ('SBT','ODT','OOT','MGT','TB','EBALANCE')),
+    fiscal_year             smallint,
+    date_from               date NOT NULL,
+    date_to                 date NOT NULL,
+    parameters              jsonb NOT NULL DEFAULT '{}'::jsonb,
+    definition_sha256       bytea NOT NULL CHECK (octet_length(definition_sha256) = 32),
+    statement_line_version  date,                                      -- effective_from of the Form A codes used
+    result                  jsonb NOT NULL,
+    result_sha256           bytea NOT NULL CHECK (octet_length(result_sha256) = 32),
+    pdf_object_key          text,
+    pdf_sha256              bytea CHECK (octet_length(pdf_sha256) = 32),
+    status                  text NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT','FINAL')),
+    created_at              timestamptz NOT NULL DEFAULT now(),
+    created_by              uuid DEFAULT platform.current_user_id(),
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    FOREIGN KEY (company_id, financial_report_id) REFERENCES rpt.financial_report (company_id, id),
+    UNIQUE (company_id, snapshot_no),
+    UNIQUE (company_id, id),
+    CHECK (date_to >= date_from),
+    CHECK ((pdf_object_key IS NULL) = (pdf_sha256 IS NULL)),
+    CHECK (NOT integration.fn_has_forbidden_ebarimt_keys(result) AND NOT integration.fn_has_forbidden_ebarimt_keys(parameters))
+);
+CREATE INDEX ix_statement_snapshot__report ON rpt.statement_snapshot (company_id, report_code, fiscal_year, created_at DESC);
+CREATE INDEX ix_statement_snapshot__financial_report ON rpt.statement_snapshot (company_id, financial_report_id);
+COMMENT ON TABLE rpt.statement_snapshot IS 'Saved financial statement (definition hash, result JSON + hash, optional PDF) per BR-RPT-90..93. Append-only; only status changes (DRAFT -> FINAL, never back), through platform.fn_ledger_update with key snapshot_no.';
 
 -- Foreign keys from earlier files (targets are global catalogs)
 ALTER TABLE gl.gl_account

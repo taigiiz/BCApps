@@ -70,6 +70,8 @@ CREATE TABLE gl.gl_account (
     vat_prod_posting_group_id uuid,                           -- FK added in 040
     statement_line_id         uuid,                           -- e-balance Form A line, FK added in 120
     cash_flow_category_id     uuid,                           -- МГТ direct-method category, FK added in 120
+    cit_treatment             text NOT NULL DEFAULT 'NORMAL'
+                              CHECK (cit_treatment IN ('NORMAL','NON_DEDUCTIBLE','NON_TAXABLE')),   -- CR #170 (BR-TAX-106, R2 CIT helper)
     created_at                timestamptz NOT NULL DEFAULT now(),
     created_by                uuid DEFAULT platform.current_user_id(),
     updated_at                timestamptz,
@@ -87,6 +89,8 @@ CREATE TABLE gl.gl_account (
 );
 CREATE INDEX ix_gl_account__subcategory ON gl.gl_account (company_id, account_subcategory_id);
 CREATE INDEX ix_gl_account__name ON gl.gl_account (company_id, search_name);
+CREATE INDEX ix_gl_account__search_trgm ON gl.gl_account USING gin (company_id, search_name gin_trgm_ops);   -- CR #82 (Alt+Q, NFR-062)
+COMMENT ON COLUMN gl.gl_account.search_name IS 'Search key: lower-case Cyrillic<->Latin transliteration skeleton of no + name (UX-FMT-14), maintained by the application; trigram-indexed.';
 COMMENT ON TABLE gl.gl_account IS 'Mirrors BC table 15 G/L Account (chart of accounts). Balances are SQL aggregates over gl_entry instead of FlowFields.';
 
 -- -----------------------------------------------------------------------------
@@ -108,6 +112,7 @@ CREATE TABLE gl.general_ledger_setup (
     unrealized_fx_gain_account_id    uuid,
     unrealized_fx_loss_account_id    uuid,
     max_vat_difference_allowed       platform.amount NOT NULL DEFAULT 0 CHECK (max_vat_difference_allowed >= 0),
+    bank_reval_gain_loss_kind        text NOT NULL DEFAULT 'REALIZED' CHECK (bank_reval_gain_loss_kind IN ('REALIZED','UNREALIZED')),  -- CR #194 (FR-FX-009, ⚠ MN treatment)
     journal_template_mandatory       boolean NOT NULL DEFAULT true,
     block_deletion_of_gl_accounts    boolean NOT NULL DEFAULT true,
     created_at                       timestamptz NOT NULL DEFAULT now(),
@@ -199,6 +204,7 @@ CREATE TABLE gl.accounting_period_status_log (
     to_status            text NOT NULL CHECK (to_status IN ('OPEN','CLOSED','LOCKED')),
     reason_code_id       uuid,
     reason_text          text,
+    checklist_snapshot   jsonb CHECK (checklist_snapshot IS NULL OR jsonb_typeof(checklist_snapshot) = 'object'),  -- CR #208 (BR-PER-44, FR-GL-025 AC1)
     created_at           timestamptz NOT NULL DEFAULT now(),
     created_by           uuid DEFAULT platform.current_user_id(),
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
@@ -301,6 +307,7 @@ CREATE TABLE gl.journal_line (
     description                   text CHECK (char_length(description) <= 100),
     currency_code                 platform.currency_code,     -- NULL = LCY; FK added in 050
     currency_factor               platform.exch_rate,         -- FCY per 1 LCY (BC Currency Factor)
+    exchange_rate                 platform.exch_rate,         -- CR #191 (FR-FX-004): MNT per 1 FCY, the rate amounts are converted with
     amount                        platform.amount NOT NULL DEFAULT 0,   -- signed, in currency_code (debit +)
     amount_lcy                    platform.amount NOT NULL DEFAULT 0,
     gen_posting_type              platform.gen_posting_type NOT NULL DEFAULT 'NONE',
@@ -318,6 +325,11 @@ CREATE TABLE gl.journal_line (
     bal_vat_prod_posting_group_id uuid,
     bal_vat_amount                platform.amount NOT NULL DEFAULT 0,
     supplier_ebarimt_id           platform.ddtd,              -- D-E4 supplier receipt ДДТД for purchase VAT
+    non_deductible_reason         text CHECK (non_deductible_reason IN ('NON_VAT_COMPANY','SIMPLIFIED_REGIME','REJECTED',
+                                      'PASSENGER_CAR','PERSONAL_USE','EXEMPT_RELATED','NO_EBARIMT')),   -- CR #162 (BR-TAX-25, buffer key)
+    recipient_bank_account_id     uuid,                       -- CR #148 (BR-AP-67): payee account, FK added in 060
+    corrects_transaction_no       bigint,                     -- CR #129 (FR-GL-014): closed-period correction of this voucher
+    system_origin                 text CHECK (system_origin ~ '^[A-Z_]+:[0-9A-Za-z_-]+$'),   -- CR #133 (BR-PST-58): system-generated draft marker
     dimension_set_id              bigint NOT NULL DEFAULT 0,  -- FK added in 030
     applies_to_doc_type           platform.document_type,
     applies_to_doc_no             platform.document_no,
@@ -350,10 +362,17 @@ CREATE TABLE gl.journal_line (
     CHECK ((bal_account_type IS NULL) = (bal_account_id IS NULL)),
     CHECK (currency_code IS NOT NULL OR amount = amount_lcy),
     CHECK ((currency_code IS NULL) = (currency_factor IS NULL)),
-    CHECK (currency_factor IS NULL OR currency_factor > 0)
+    CHECK (currency_factor IS NULL OR currency_factor > 0),
+    CHECK ((currency_code IS NULL) = (exchange_rate IS NULL)),
+    CHECK (exchange_rate IS NULL OR (exchange_rate > 0 AND abs(currency_factor * exchange_rate - 1) <= 0.000000000001))
 );
 CREATE INDEX ix_journal_line__reason ON gl.journal_line (company_id, reason_code_id);
 CREATE INDEX ix_journal_line__document ON gl.journal_line (company_id, journal_batch_id, document_no, posting_date);
+-- CR #150 (Z-PUR-08, BR-AP-72): payment suggestion skips entries already targeted by any journal batch
+CREATE INDEX ix_journal_line__applies_to ON gl.journal_line (company_id, account_type, account_id, applies_to_doc_type, applies_to_doc_no)
+    WHERE applies_to_doc_no IS NOT NULL;
+CREATE INDEX ix_journal_line__system_origin ON gl.journal_line (company_id, journal_batch_id, system_origin) WHERE system_origin IS NOT NULL;
+CREATE INDEX ix_journal_line__corrects ON gl.journal_line (company_id, corrects_transaction_no) WHERE corrects_transaction_no IS NOT NULL;
 COMMENT ON TABLE gl.journal_line IS 'Mirrors BC table 81 Gen. Journal Line (unposted). Signed amount only (no Debit/Credit input columns, no Correction/storno flag: D-C3).';
 
 -- -----------------------------------------------------------------------------
@@ -427,16 +446,20 @@ CREATE TABLE gl.gl_register (
     journal_batch_code   text,
     request_id           text,                       -- API request / job run that produced the posting
     reversed             boolean NOT NULL DEFAULT false,
+    hash_version         smallint,                   -- CR #54/#130 (FR-GL-028, NFR-053): register hash chain, set at insert
+    prev_hash            bytea CHECK (octet_length(prev_hash) = 32),
+    hash                 bytea CHECK (octet_length(hash) = 32),
     created_at           timestamptz NOT NULL DEFAULT now(),
     created_by           uuid DEFAULT platform.current_user_id(),
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
     UNIQUE (company_id, no),
     UNIQUE (company_id, id),
     CHECK (from_entry_no IS NULL OR to_entry_no >= from_entry_no),
-    CHECK (from_vat_entry_no IS NULL OR to_vat_entry_no >= from_vat_entry_no)
+    CHECK (from_vat_entry_no IS NULL OR to_vat_entry_no >= from_vat_entry_no),
+    CHECK ((hash IS NULL) = (hash_version IS NULL))
 );
 CREATE INDEX ix_gl_register__created ON gl.gl_register (company_id, created_at);
-COMMENT ON TABLE gl.gl_register IS 'Mirrors BC table 45 G/L Register: one row per posting run (audit trail; reversal of a whole register). Append-only.';
+COMMENT ON TABLE gl.gl_register IS 'Mirrors BC table 45 G/L Register: one row per posting run (audit trail; reversal of a whole register). Append-only. hash = SHA-256 over (prev_hash, register content) written by the posting engine (02 §8.7 hash chain).';
 
 CREATE TABLE gl.gl_transaction (
     id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -453,6 +476,7 @@ CREATE TABLE gl.gl_transaction (
     description                text,
     reverses_transaction_no    bigint,                 -- set on the reversing voucher
     reversed_by_transaction_no bigint,                 -- set on the original (whitelisted update)
+    corrects_transaction_no    bigint,                 -- CR #129 (FR-GL-014): correction (current period) of a voucher in a closed period
     created_at                 timestamptz NOT NULL DEFAULT now(),
     created_by                 uuid DEFAULT platform.current_user_id(),
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
@@ -460,9 +484,11 @@ CREATE TABLE gl.gl_transaction (
     FOREIGN KEY (company_id, reason_code_id) REFERENCES platform.reason_code (company_id, id),
     FOREIGN KEY (company_id, reverses_transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no),
     FOREIGN KEY (company_id, reversed_by_transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY (company_id, corrects_transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no),
     UNIQUE (company_id, transaction_no),
     UNIQUE (company_id, id),
     CHECK (reverses_transaction_no IS NULL OR reverses_transaction_no <> transaction_no),
+    CHECK (corrects_transaction_no IS NULL OR corrects_transaction_no <> transaction_no),
     CHECK (NOT is_closing OR (extract(month FROM posting_date) = 12 AND extract(day FROM posting_date) = 31))
 );
 CREATE INDEX ix_gl_transaction__register ON gl.gl_transaction (company_id, gl_register_no);
@@ -473,6 +499,8 @@ CREATE UNIQUE INDEX ux_gl_transaction__reverses ON gl.gl_transaction (company_id
     WHERE reverses_transaction_no IS NOT NULL;
 CREATE INDEX ix_gl_transaction__reversed_by ON gl.gl_transaction (company_id, reversed_by_transaction_no)
     WHERE reversed_by_transaction_no IS NOT NULL;
+CREATE INDEX ix_gl_transaction__corrects ON gl.gl_transaction (company_id, corrects_transaction_no)
+    WHERE corrects_transaction_no IS NOT NULL;
 COMMENT ON TABLE gl.gl_transaction IS 'Mirrors BC table 57 G/L Transaction, extended to a voucher header (posting date, document, closing flag, reversal links). sum(gl_entry.amount) = 0 per transaction (D-C5).';
 
 CREATE TABLE gl.gl_entry (
@@ -534,7 +562,7 @@ CREATE TABLE gl.gl_entry (
     CHECK (NOT reversed OR reversed_by_entry_no IS NOT NULL OR reversed_entry_no IS NOT NULL)
 );
 CREATE INDEX ix_gl_entry__account_date ON gl.gl_entry (company_id, gl_account_id, posting_date) INCLUDE (amount, is_closing);
-CREATE INDEX ix_gl_entry__transaction ON gl.gl_entry (company_id, transaction_no, entry_no) INCLUDE (amount);
+CREATE INDEX ix_gl_entry__transaction ON gl.gl_entry (company_id, transaction_no, entry_no) INCLUDE (amount, gl_account_id);   -- CR #214: index-only contra lookups
 CREATE INDEX ix_gl_entry__register ON gl.gl_entry (company_id, gl_register_no);
 CREATE INDEX ix_gl_entry__document ON gl.gl_entry (company_id, document_no, posting_date);
 CREATE INDEX ix_gl_entry__date ON gl.gl_entry (company_id, posting_date);
@@ -553,6 +581,8 @@ ALTER TABLE gl.fiscal_year
     ADD FOREIGN KEY (company_id, closing_transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no);
 CREATE INDEX ix_fiscal_year__closing_transaction ON gl.fiscal_year (company_id, closing_transaction_no)
     WHERE closing_transaction_no IS NOT NULL;
+ALTER TABLE gl.journal_line
+    ADD FOREIGN KEY (company_id, corrects_transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no);
 
 -- -----------------------------------------------------------------------------
 -- Fiscal calendar helper

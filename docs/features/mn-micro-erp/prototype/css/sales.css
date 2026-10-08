@@ -1,0 +1,35 @@
+/* css/sales.css — sales invoice list, draft editor, posted invoice, receipt preview (js/screens/sales.js). Tokens only. */
+.lines-grid td { padding: 4px 6px; }
+.lines-grid td .input, .lines-grid td .select { height: 30px; }
+.lines-grid td:nth-child(1) { min-width: 86px; }
+.lines-grid td:nth-child(2) { min-width: 190px; }
+.lines-grid td:nth-child(3) { min-width: 180px; }
+.lines-grid td:nth-child(4) { min-width: 70px; }
+.lines-grid td:nth-child(6) { min-width: 110px; }
+.lines-grid td:nth-child(7) { min-width: 60px; }
+.lines-grid td:nth-child(9) { min-width: 120px; }
+.lines-grid tr.sel td { background: var(--accent-soft); }
+.ro-grid { margin: 0; }
+.ro-grid dd { margin: 0; font-weight: 500; }
+.timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; border-left: 2px solid var(--rule); }
+.timeline li { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 8px; align-items: center; padding-left: 10px; font-size: var(--fs-sm); position: relative; }
+.timeline li::before { content: ""; position: absolute; left: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); border: 2px solid var(--rule-strong); }
+.tl-time { font-size: var(--fs-xs); color: var(--ink-3); }
+@media (max-width: 640px) { .timeline li { grid-template-columns: minmax(0, 1fr); } }
+/* receipt preview (80 mm roll look) */
+.receipt {
+  position: relative; width: min(100%, 320px); margin: 0 auto; padding: 14px 14px 18px; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--rule-strong); font-family: var(--font-mono); font-size: 12px; line-height: 1.5; overflow: hidden;
+}
+.receipt .r-center { text-align: center; }
+.receipt .r-row { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+.receipt .r-item { margin: 4px 0; }
+.receipt .r-rule { border-top: 1px dashed var(--rule-strong); margin: 8px 0; }
+.receipt .r-total { font-weight: 700; font-size: 14px; margin-top: 4px; }
+.receipt .r-ddtd { text-align: center; word-break: break-all; margin-top: 4px; }
+.receipt .r-lottery { margin: 10px 0; border: 1px solid var(--rule-strong); padding: 6px; }
+.receipt canvas { margin-top: 8px; max-width: 100%; image-rendering: pixelated; }
+.receipt-copy {
+  position: absolute; top: 46%; left: 50%; transform: translate(-50%, -50%) rotate(-24deg); font-size: 34px; font-weight: 700; letter-spacing: .2em;
+  color: var(--seal); opacity: .22; pointer-events: none; font-family: var(--font-sans);
+}

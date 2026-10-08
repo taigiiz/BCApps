@@ -14,6 +14,7 @@ CREATE TABLE fa.fa_class (
     code            platform.code20 NOT NULL,      -- BUILDINGS, MACHINERY, VEHICLES, COMPUTERS, INTANGIBLE
     name            text NOT NULL,
     tax_life_param_code text,                      -- e.g. fa.tax_life.computers_software_years in tax.tax_parameter
+    ebarimt_classification_code text CHECK (ebarimt_classification_code ~ '^[0-9]{7}$'),   -- CR #101 (FA-R-25): default БҮНА for asset sales
     created_at      timestamptz NOT NULL DEFAULT now(),
     created_by      uuid DEFAULT platform.current_user_id(),
     updated_at      timestamptz,
@@ -159,31 +160,50 @@ CREATE INDEX ix_fa_depreciation_book__posting_group ON fa.fa_depreciation_book (
 COMMENT ON TABLE fa.fa_depreciation_book IS 'Mirrors BC table 5612 FA Depreciation Book (per-asset, per-book parameters; straight-line by months).';
 
 CREATE TABLE fa.depreciation_run (
-    id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id             uuid NOT NULL,
-    company_id            uuid NOT NULL,
-    run_no                bigint NOT NULL,
-    depreciation_book_id  uuid NOT NULL,
-    period_ending_date    date NOT NULL,
-    posting_date          date NOT NULL,
-    status                text NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT','POSTED','REVERSED')),
-    transaction_no        bigint,
-    created_at            timestamptz NOT NULL DEFAULT now(),
-    created_by            uuid DEFAULT platform.current_user_id(),
-    updated_at            timestamptz,
-    updated_by            uuid,
-    row_version           integer NOT NULL DEFAULT 1,
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id                   uuid NOT NULL,
+    company_id                  uuid NOT NULL,
+    run_no                      bigint NOT NULL,
+    depreciation_book_id        uuid NOT NULL,
+    gl_integrated               boolean NOT NULL,          -- CR #94: snapshot of the book at creation (TAX memo book = false)
+    period_ending_date          date NOT NULL,
+    posting_date                date NOT NULL,
+    document_no                 platform.document_no,     -- CR #94: legal voucher number (series DP), required once posted
+    status                      text NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT','POSTED','REVERSED')),
+    calculated_at               timestamptz,               -- CR #94 (S11-05): stale-draft detection
+    calculated_max_fa_entry_no  bigint,
+    total_amount                platform.amount NOT NULL DEFAULT 0,
+    transaction_no              bigint,
+    posted_at                   timestamptz,
+    posted_by                   uuid,
+    reversal_transaction_no     bigint,
+    reversed_at                 timestamptz,
+    reversed_by                 uuid,
+    created_at                  timestamptz NOT NULL DEFAULT now(),
+    created_by                  uuid DEFAULT platform.current_user_id(),
+    updated_at                  timestamptz,
+    updated_by                  uuid,
+    row_version                 integer NOT NULL DEFAULT 1,
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
     FOREIGN KEY (company_id, depreciation_book_id) REFERENCES fa.depreciation_book (company_id, id),
     FOREIGN KEY (company_id, transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no),
+    FOREIGN KEY (company_id, reversal_transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no),
     UNIQUE (company_id, run_no),
     UNIQUE (company_id, id),
-    CHECK (status = 'DRAFT' OR transaction_no IS NOT NULL OR status = 'REVERSED')
+    -- CR #94: a TAX memo run never creates a G/L voucher, so POSTED needs a transaction only when G/L-integrated
+    CHECK (status <> 'POSTED' OR NOT gl_integrated OR transaction_no IS NOT NULL),
+    CHECK (status <> 'REVERSED' OR NOT gl_integrated OR reversal_transaction_no IS NOT NULL),
+    CHECK (status = 'DRAFT' OR document_no IS NOT NULL),
+    CHECK (status = 'DRAFT' OR posted_at IS NOT NULL),
+    CHECK (status <> 'REVERSED' OR reversed_at IS NOT NULL),
+    CHECK (posting_date = period_ending_date),
+    CHECK (extract(day FROM period_ending_date + 1) = 1)          -- month end
 );
 CREATE UNIQUE INDEX ux_depreciation_run__period ON fa.depreciation_run (company_id, depreciation_book_id, period_ending_date)
     WHERE status <> 'REVERSED';
 CREATE INDEX ix_depreciation_run__transaction ON fa.depreciation_run (company_id, transaction_no);
-COMMENT ON TABLE fa.depreciation_run IS 'Monthly depreciation run (BC Report 5692 Calculate Depreciation output). At most one live run per book and period.';
+CREATE INDEX ix_depreciation_run__reversal ON fa.depreciation_run (company_id, reversal_transaction_no) WHERE reversal_transaction_no IS NOT NULL;
+COMMENT ON TABLE fa.depreciation_run IS 'Monthly depreciation run (BC Report 5692 Calculate Depreciation output): DRAFT (calculated lines) -> POSTED -> REVERSED. At most one live run per book and period; TAX memo runs post FA ledger entries without a G/L voucher.';
 
 CREATE TABLE fa.fa_ledger_entry (
     id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -235,7 +255,11 @@ CREATE TABLE fa.fa_ledger_entry (
     FOREIGN KEY (company_id, reversed_entry_no) REFERENCES fa.fa_ledger_entry (company_id, entry_no),
     FOREIGN KEY (company_id, reversed_by_entry_no) REFERENCES fa.fa_ledger_entry (company_id, entry_no) DEFERRABLE INITIALLY DEFERRED,
     UNIQUE (company_id, entry_no),
-    UNIQUE (company_id, id)
+    UNIQUE (company_id, id),
+    -- CR #96/#108 (FA-R-12): FA posting date = posting date, except opening balances (earlier FA date) and reversals
+    CHECK (fa_posting_date = posting_date
+           OR (source_code = 'OPENING' AND fa_posting_date <= posting_date AND fa_posting_type IN ('ACQUISITION_COST','DEPRECIATION'))
+           OR (source_code = 'REVERSAL' AND reversed_entry_no IS NOT NULL))
 );
 CREATE INDEX ix_fa_ledger_entry__asset ON fa.fa_ledger_entry (company_id, fixed_asset_id, depreciation_book_id, fa_posting_date) INCLUDE (amount, fa_posting_type);
 CREATE INDEX ix_fa_ledger_entry__book ON fa.fa_ledger_entry (company_id, depreciation_book_id);
@@ -248,6 +272,49 @@ CREATE INDEX ix_fa_ledger_entry__document ON fa.fa_ledger_entry (company_id, doc
 CREATE INDEX ix_fa_ledger_entry__disposal ON fa.fa_ledger_entry (company_id, disposal_entry_no) WHERE disposal_entry_no IS NOT NULL;
 CREATE INDEX ix_fa_ledger_entry__reversed_entry ON fa.fa_ledger_entry (company_id, reversed_entry_no) WHERE reversed_entry_no IS NOT NULL;
 CREATE INDEX ix_fa_ledger_entry__reversed_by ON fa.fa_ledger_entry (company_id, reversed_by_entry_no) WHERE reversed_by_entry_no IS NOT NULL;
+
+-- Draft calculation of a depreciation run (CR #95, R-FA-INVENTORY-02/28): one line per asset with the amount or the
+-- reason it was skipped. Frozen once the run leaves DRAFT (trigger in 910).
+CREATE TABLE fa.depreciation_run_line (
+    id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id                 uuid NOT NULL,
+    company_id                uuid NOT NULL,
+    depreciation_run_id       uuid NOT NULL,
+    line_no                   integer NOT NULL,
+    fixed_asset_id            uuid NOT NULL,
+    fa_depreciation_book_id   uuid NOT NULL,
+    first_depreciation_date   date,
+    until_date                date,
+    no_of_depreciation_days   integer CHECK (no_of_depreciation_days >= 0),
+    book_value_before         platform.amount,
+    residual_value            platform.amount,
+    remaining_life_days       integer,
+    calculated_amount         platform.amount NOT NULL DEFAULT 0 CHECK (calculated_amount <= 0),   -- depreciation is a credit to book value
+    skip_reason               text CHECK (skip_reason IN ('MANUAL_METHOD','BLOCKED','INACTIVE','DISPOSED','NOT_ACQUIRED',
+                                  'ACQUIRED_AFTER_PERIOD','NOT_IN_SERVICE','NOT_STARTED','ALREADY_DEPRECIATED',
+                                  'FULLY_DEPRECIATED','ZERO_AMOUNT')),
+    dimension_set_id          bigint NOT NULL DEFAULT 0,
+    fa_ledger_entry_no        bigint,                         -- set when the run is posted
+    created_at                timestamptz NOT NULL DEFAULT now(),
+    created_by                uuid DEFAULT platform.current_user_id(),
+    updated_at                timestamptz,
+    updated_by                uuid,
+    row_version               integer NOT NULL DEFAULT 1,
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    FOREIGN KEY (company_id, depreciation_run_id) REFERENCES fa.depreciation_run (company_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id, fixed_asset_id) REFERENCES fa.fixed_asset (company_id, id),
+    FOREIGN KEY (company_id, fa_depreciation_book_id) REFERENCES fa.fa_depreciation_book (company_id, id),
+    FOREIGN KEY (company_id, dimension_set_id) REFERENCES gl.dimension_set (company_id, dimension_set_id),
+    FOREIGN KEY (company_id, fa_ledger_entry_no) REFERENCES fa.fa_ledger_entry (company_id, entry_no),
+    UNIQUE (company_id, depreciation_run_id, fixed_asset_id),
+    UNIQUE (company_id, depreciation_run_id, line_no),
+    CHECK (skip_reason IS NULL OR calculated_amount = 0)
+);
+CREATE INDEX ix_depreciation_run_line__asset ON fa.depreciation_run_line (company_id, fixed_asset_id);
+CREATE INDEX ix_depreciation_run_line__fa_book ON fa.depreciation_run_line (company_id, fa_depreciation_book_id);
+CREATE INDEX ix_depreciation_run_line__dimension_set ON fa.depreciation_run_line (company_id, dimension_set_id);
+CREATE INDEX ix_depreciation_run_line__fa_entry ON fa.depreciation_run_line (company_id, fa_ledger_entry_no) WHERE fa_ledger_entry_no IS NOT NULL;
+COMMENT ON TABLE fa.depreciation_run_line IS 'Calculated depreciation per asset of a run (draft / preview / post flow, CR #95) incl. skip reasons. Changes are blocked once the run is not DRAFT. Not audited (recalculated drafts).';
 COMMENT ON TABLE fa.fa_ledger_entry IS 'Mirrors BC table 5601 FA Ledger Entry (BC posting category/type pairs and signs kept so book value = SUM filters). Append-only.';
 
 -- Foreign keys from earlier files

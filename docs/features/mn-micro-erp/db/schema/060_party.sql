@@ -146,6 +146,7 @@ CREATE TABLE party.gen_prod_posting_group (
     description                       text,
     default_vat_prod_posting_group_id uuid,
     auto_insert_default               boolean NOT NULL DEFAULT true,
+    exclude_from_vat_turnover         boolean NOT NULL DEFAULT false,   -- CR #167/#178 (BR-TAX-83): e.g. FA disposals do not count to the VAT threshold
     created_at                        timestamptz NOT NULL DEFAULT now(),
     created_by                        uuid DEFAULT platform.current_user_id(),
     updated_at                        timestamptz,
@@ -232,6 +233,13 @@ CREATE TABLE party.customer (
     city_tax_payer            boolean NOT NULL DEFAULT false,
     ebarimt_consumer_no       text CHECK (ebarimt_consumer_no ~ '^[0-9]{8}$'),   -- citizen e-barimt number (B2C)
     default_ebarimt_type      text NOT NULL DEFAULT 'AUTO' CHECK (default_ebarimt_type IN ('AUTO','B2B','B2C','NONE')),
+    -- CR #44 (ADR-0023 D, FR-PTY-004, NFR-033): an individual's civil registration no. / personal TIN only encrypted
+    personal_id_enc           bytea,                                             -- AES-GCM with tenant_key PII_ENC
+    personal_id_hmac          bytea CHECK (octet_length(personal_id_hmac) = 32),   -- HMAC (tenant_key PII_HMAC) for exact search
+    personal_id_hint          text CHECK (char_length(personal_id_hint) <= 12),     -- masked display, e.g. ••12345678
+    personal_tin_enc          bytea,
+    personal_tin_hmac         bytea CHECK (octet_length(personal_tin_hmac) = 32),
+    personal_tin_hint         text CHECK (char_length(personal_tin_hint) <= 12),
     address                   text,
     city                      text,
     country_code              text NOT NULL DEFAULT 'MN' CHECK (country_code ~ '^[A-Z]{2}$'),
@@ -261,9 +269,16 @@ CREATE TABLE party.customer (
     FOREIGN KEY (company_id, currency_code) REFERENCES fx.currency (company_id, code),
     UNIQUE (company_id, no),
     UNIQUE (company_id, id),
-    CHECK (kind <> 'LEGAL' OR country_code <> 'MN' OR tin IS NOT NULL OR registration_no IS NOT NULL OR NOT vat_registered)
+    CHECK (kind <> 'LEGAL' OR country_code <> 'MN' OR tin IS NOT NULL OR registration_no IS NOT NULL OR NOT vat_registered),
+    CHECK (kind <> 'INDIVIDUAL' OR (registration_no IS NULL AND tin IS NULL)),          -- CR #44: plaintext only for legal entities
+    CHECK ((personal_id_enc IS NULL) = (personal_id_hmac IS NULL)),
+    CHECK ((personal_tin_enc IS NULL) = (personal_tin_hmac IS NULL))
 );
 CREATE INDEX ix_customer__name ON party.customer (company_id, search_name);
+CREATE INDEX ix_customer__search_trgm ON party.customer USING gin (company_id, search_name gin_trgm_ops);   -- CR #82
+CREATE INDEX ix_customer__personal_id ON party.customer (company_id, personal_id_hmac) WHERE personal_id_hmac IS NOT NULL;
+CREATE INDEX ix_customer__personal_tin ON party.customer (company_id, personal_tin_hmac) WHERE personal_tin_hmac IS NOT NULL;
+COMMENT ON COLUMN party.customer.search_name IS 'Search key: lower-case Cyrillic<->Latin transliteration skeleton of no + name (UX-FMT-14), maintained by the application; trigram-indexed.';
 CREATE INDEX ix_customer__tin ON party.customer (company_id, tin) WHERE tin IS NOT NULL;
 CREATE INDEX ix_customer__posting_group ON party.customer (company_id, customer_posting_group_id);
 CREATE INDEX ix_customer__gen_bus ON party.customer (company_id, gen_bus_posting_group_id);
@@ -287,6 +302,12 @@ CREATE TABLE party.vendor (
     foreign_tax_id            text,
     vat_registered            boolean NOT NULL DEFAULT false,
     ebarimt_merchant_tin      platform.tin,                -- seller TIN on the supplier's eBarimt receipts
+    personal_id_enc           bytea,                       -- CR #44: individuals only, encrypted (see party.customer)
+    personal_id_hmac          bytea CHECK (octet_length(personal_id_hmac) = 32),
+    personal_id_hint          text CHECK (char_length(personal_id_hint) <= 12),
+    personal_tin_enc          bytea,
+    personal_tin_hmac         bytea CHECK (octet_length(personal_tin_hmac) = 32),
+    personal_tin_hint         text CHECK (char_length(personal_tin_hint) <= 12),
     address                   text,
     city                      text,
     country_code              text NOT NULL DEFAULT 'MN' CHECK (country_code ~ '^[A-Z]{2}$'),
@@ -314,9 +335,16 @@ CREATE TABLE party.vendor (
     FOREIGN KEY (company_id, payment_method_id) REFERENCES party.payment_method (company_id, id),
     FOREIGN KEY (company_id, currency_code) REFERENCES fx.currency (company_id, code),
     UNIQUE (company_id, no),
-    UNIQUE (company_id, id)
+    UNIQUE (company_id, id),
+    CHECK (kind <> 'INDIVIDUAL' OR (registration_no IS NULL AND tin IS NULL AND ebarimt_merchant_tin IS NULL)),   -- CR #44
+    CHECK ((personal_id_enc IS NULL) = (personal_id_hmac IS NULL)),
+    CHECK ((personal_tin_enc IS NULL) = (personal_tin_hmac IS NULL))
 );
 CREATE INDEX ix_vendor__name ON party.vendor (company_id, search_name);
+CREATE INDEX ix_vendor__search_trgm ON party.vendor USING gin (company_id, search_name gin_trgm_ops);   -- CR #82
+CREATE INDEX ix_vendor__personal_id ON party.vendor (company_id, personal_id_hmac) WHERE personal_id_hmac IS NOT NULL;
+CREATE INDEX ix_vendor__personal_tin ON party.vendor (company_id, personal_tin_hmac) WHERE personal_tin_hmac IS NOT NULL;
+COMMENT ON COLUMN party.vendor.search_name IS 'Search key: lower-case Cyrillic<->Latin transliteration skeleton of no + name (UX-FMT-14), maintained by the application; trigram-indexed.';
 CREATE INDEX ix_vendor__tin ON party.vendor (company_id, tin) WHERE tin IS NOT NULL;
 CREATE INDEX ix_vendor__posting_group ON party.vendor (company_id, vendor_posting_group_id);
 CREATE INDEX ix_vendor__gen_bus ON party.vendor (company_id, gen_bus_posting_group_id);
@@ -346,7 +374,8 @@ CREATE TABLE party.vendor_bank_account (
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
     FOREIGN KEY (company_id, vendor_id) REFERENCES party.vendor (company_id, id) ON DELETE CASCADE,
     FOREIGN KEY (company_id, currency_code) REFERENCES fx.currency (company_id, code),
-    UNIQUE (company_id, vendor_id, code)
+    UNIQUE (company_id, vendor_id, code),
+    UNIQUE (company_id, id)                                   -- target of gl.journal_line.recipient_bank_account_id (CR #148)
 );
 CREATE INDEX ix_vendor_bank_account__currency ON party.vendor_bank_account (company_id, currency_code) WHERE currency_code IS NOT NULL;
 CREATE UNIQUE INDEX ux_vendor_bank_account__default ON party.vendor_bank_account (company_id, vendor_id) WHERE is_default;
@@ -446,6 +475,12 @@ CREATE INDEX ix_journal_line__gen_bus ON gl.journal_line (company_id, gen_bus_po
 CREATE INDEX ix_journal_line__gen_prod ON gl.journal_line (company_id, gen_prod_posting_group_id);
 CREATE INDEX ix_journal_line__terms ON gl.journal_line (company_id, payment_terms_id);
 CREATE INDEX ix_journal_line__method ON gl.journal_line (company_id, payment_method_id);
+ALTER TABLE gl.journal_line
+    ADD FOREIGN KEY (company_id, recipient_bank_account_id) REFERENCES party.vendor_bank_account (company_id, id);
+CREATE INDEX ix_journal_line__recipient_bank ON gl.journal_line (company_id, recipient_bank_account_id) WHERE recipient_bank_account_id IS NOT NULL;
+ALTER TABLE tax.customs_declaration
+    ADD FOREIGN KEY (company_id, vendor_id) REFERENCES party.vendor (company_id, id);
+CREATE INDEX ix_customs_declaration__vendor ON tax.customs_declaration (company_id, vendor_id);
 
 ALTER TABLE gl.standard_journal_line
     ADD FOREIGN KEY (company_id, gen_bus_posting_group_id) REFERENCES party.gen_bus_posting_group (company_id, id),
@@ -475,6 +510,8 @@ CREATE TABLE party.cust_ledger_entry (
     currency_code              platform.currency_code,
     original_currency_factor   platform.exch_rate,
     adjusted_currency_factor   platform.exch_rate,                   -- whitelisted (FX revaluation, R2)
+    original_exchange_rate     platform.exch_rate,                   -- CR #191: MNT per 1 FCY at posting
+    adjusted_exchange_rate     platform.exch_rate,                   -- CR #191: whitelisted (FX revaluation, R2)
     amount                     platform.amount NOT NULL,             -- original amount (= INITIAL detailed entry)
     amount_lcy                 platform.amount NOT NULL,
     sales_lcy                  platform.amount NOT NULL DEFAULT 0,
@@ -526,6 +563,8 @@ CREATE TABLE party.cust_ledger_entry (
     UNIQUE (company_id, id),
     CHECK (positive = (amount > 0) OR amount = 0),
     CHECK ((currency_code IS NULL) = (original_currency_factor IS NULL)),
+    CHECK ((currency_code IS NULL) = (original_exchange_rate IS NULL)),
+    CHECK (original_exchange_rate IS NULL OR abs(original_currency_factor * original_exchange_rate - 1) <= 0.000000000001),
     CHECK ((bal_account_type IS NULL) = (bal_account_id IS NULL)),
     -- no over-application: remaining keeps the sign of the original amount and never exceeds it (BC CalcApplication)
     CHECK (remaining_amount = 0 OR (sign(remaining_amount) = sign(amount) AND abs(remaining_amount) <= abs(amount)))
@@ -543,6 +582,11 @@ CREATE INDEX ix_cust_ledger_entry__closed_by ON party.cust_ledger_entry (company
 CREATE INDEX ix_cust_ledger_entry__reversed_entry ON party.cust_ledger_entry (company_id, reversed_entry_no) WHERE reversed_entry_no IS NOT NULL;
 CREATE INDEX ix_cust_ledger_entry__reversed_by ON party.cust_ledger_entry (company_id, reversed_by_entry_no) WHERE reversed_by_entry_no IS NOT NULL;
 CREATE INDEX ix_cust_ledger_entry__applies_to_id ON party.cust_ledger_entry (company_id, applies_to_id) WHERE applies_to_id IS NOT NULL;
+-- CR #143 (BR-AR-09, R-SALES-DOCUMENTS-38): an invoice / credit memo number is used once in the receivables ledger,
+-- whatever wrote it (documents, journals, imports). Opening balances share their OB voucher number; reversing
+-- entries are inserted with reversed = true.
+CREATE UNIQUE INDEX ux_cust_ledger_entry__doc_no ON party.cust_ledger_entry (company_id, document_type, document_no)
+    WHERE document_type IN ('INVOICE','CREDIT_MEMO') AND source_code <> 'OPENING' AND NOT reversed;
 COMMENT ON TABLE party.cust_ledger_entry IS 'Mirrors BC table 21 Cust. Ledger Entry (one row per posted customer document; party schema per D-K2). remaining_amount(_lcy)/open are a cache of the detailed entries maintained only by trigger (INV-04); no over-application (CHECK). Append-only except application/status columns.';
 
 CREATE TABLE party.detailed_cust_ledger_entry (
@@ -605,6 +649,7 @@ CREATE INDEX ix_detailed_cust_ledger_entry__unapplied_by ON party.detailed_cust_
 CREATE INDEX ix_detailed_cust_ledger_entry__posting_group ON party.detailed_cust_ledger_entry (company_id, customer_posting_group_id);
 CREATE INDEX ix_detailed_cust_ledger_entry__fx_reg ON party.detailed_cust_ledger_entry (company_id, exch_rate_adjmt_reg_no) WHERE exch_rate_adjmt_reg_no IS NOT NULL;
 COMMENT ON TABLE party.detailed_cust_ledger_entry IS 'Mirrors BC table 379 Detailed Cust. Ledg. Entry (append-only money movements: initial, application, FX, corrections). Source of truth for balances and remaining amounts (D-F3). transaction_no NULL = application without G/L effect (BC Transaction No. 0); such rows are grouped by application_no.';
+COMMENT ON COLUMN party.detailed_cust_ledger_entry.initial_entry_due_date IS 'Due date of the ledger entry at the time this row was posted (snapshot, never updated; CR #140). Aging uses the current party.cust_ledger_entry.due_date, which an authorized user may edit (party.fn_edit_ledger_entry).';
 
 CREATE TABLE party.vendor_ledger_entry (
     id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -624,6 +669,8 @@ CREATE TABLE party.vendor_ledger_entry (
     currency_code              platform.currency_code,
     original_currency_factor   platform.exch_rate,
     adjusted_currency_factor   platform.exch_rate,
+    original_exchange_rate     platform.exch_rate,                  -- CR #191: MNT per 1 FCY at posting
+    adjusted_exchange_rate     platform.exch_rate,                  -- CR #191: whitelisted (FX revaluation, R2)
     amount                     platform.amount NOT NULL,            -- invoice: negative (credit)
     amount_lcy                 platform.amount NOT NULL,
     purchase_lcy               platform.amount NOT NULL DEFAULT 0,
@@ -675,6 +722,8 @@ CREATE TABLE party.vendor_ledger_entry (
     UNIQUE (company_id, id),
     CHECK (positive = (amount > 0) OR amount = 0),
     CHECK ((currency_code IS NULL) = (original_currency_factor IS NULL)),
+    CHECK ((currency_code IS NULL) = (original_exchange_rate IS NULL)),
+    CHECK (original_exchange_rate IS NULL OR abs(original_currency_factor * original_exchange_rate - 1) <= 0.000000000001),
     CHECK ((bal_account_type IS NULL) = (bal_account_id IS NULL)),
     CHECK (document_type NOT IN ('INVOICE','CREDIT_MEMO') OR external_document_no IS NOT NULL OR source_code = 'OPENING'),
     CHECK (remaining_amount = 0 OR (sign(remaining_amount) = sign(amount) AND abs(remaining_amount) <= abs(amount)))
@@ -693,11 +742,19 @@ CREATE INDEX ix_vendor_ledger_entry__reversed_entry ON party.vendor_ledger_entry
 CREATE INDEX ix_vendor_ledger_entry__reversed_by ON party.vendor_ledger_entry (company_id, reversed_by_entry_no) WHERE reversed_by_entry_no IS NOT NULL;
 CREATE INDEX ix_vendor_ledger_entry__applies_to_id ON party.vendor_ledger_entry (company_id, applies_to_id) WHERE applies_to_id IS NOT NULL;
 CREATE INDEX ix_vendor_ledger_entry__supplier_receipt ON party.vendor_ledger_entry (company_id, supplier_ebarimt_id) WHERE supplier_ebarimt_id IS NOT NULL;
+-- CR #151 (BR-PUR-10/12): vendor document numbers compare case- and whitespace-insensitively, whatever wrote the row
+CREATE FUNCTION platform.fn_normalize_ext_doc_no(p text) RETURNS text
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$ SELECT upper(regexp_replace(btrim(p), '\s+', ' ', 'g')) $$;
+COMMENT ON FUNCTION platform.fn_normalize_ext_doc_no(text) IS 'Normal form of an external (vendor) document number for uniqueness checks: trimmed, inner whitespace collapsed, upper case.';
 -- BC "Purchase invoice already exists for this vendor": one live invoice/credit memo per vendor document number.
 CREATE UNIQUE INDEX ux_vendor_ledger_entry__vendor_doc_no ON party.vendor_ledger_entry
-    (company_id, vendor_id, document_type, external_document_no)
+    (company_id, vendor_id, document_type, platform.fn_normalize_ext_doc_no(external_document_no))
     WHERE document_type IN ('INVOICE','CREDIT_MEMO') AND external_document_no IS NOT NULL AND NOT reversed;
-COMMENT ON TABLE party.vendor_ledger_entry IS 'Mirrors BC table 25 Vendor Ledger Entry (party schema per D-K2). Vendor invoice no. is unique per vendor and document type among non-reversed entries; remaining/open trigger-maintained; no over-application.';
+-- CR #158 (BR-AP-10): our own posted purchase invoice / credit memo number once in the payables ledger (mirror of
+-- ux_cust_ledger_entry__doc_no; cash-purchase PAYMENT/REFUND entries share the number with another type).
+CREATE UNIQUE INDEX ux_vendor_ledger_entry__doc_no ON party.vendor_ledger_entry (company_id, document_type, document_no)
+    WHERE document_type IN ('INVOICE','CREDIT_MEMO') AND source_code <> 'OPENING' AND NOT reversed;
+COMMENT ON TABLE party.vendor_ledger_entry IS 'Mirrors BC table 25 Vendor Ledger Entry (party schema per D-K2). Vendor invoice no. is unique per vendor and document type among non-reversed entries (normalized, platform.fn_normalize_ext_doc_no); remaining/open trigger-maintained; no over-application.';
 
 CREATE TABLE party.detailed_vendor_ledger_entry (
     id                              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -758,6 +815,7 @@ CREATE INDEX ix_detailed_vendor_ledger_entry__unapplied_by ON party.detailed_ven
 CREATE INDEX ix_detailed_vendor_ledger_entry__posting_group ON party.detailed_vendor_ledger_entry (company_id, vendor_posting_group_id);
 CREATE INDEX ix_detailed_vendor_ledger_entry__fx_reg ON party.detailed_vendor_ledger_entry (company_id, exch_rate_adjmt_reg_no) WHERE exch_rate_adjmt_reg_no IS NOT NULL;
 COMMENT ON TABLE party.detailed_vendor_ledger_entry IS 'Mirrors BC table 380 Detailed Vendor Ledg. Entry (append-only; source of truth for payables balances). transaction_no NULL = application without G/L effect.';
+COMMENT ON COLUMN party.detailed_vendor_ledger_entry.initial_entry_due_date IS 'Due date of the ledger entry when this row was posted (snapshot, never updated; CR #140). Aging uses the current party.vendor_ledger_entry.due_date.';
 
 -- Remaining-amount cache maintenance (INV-04). SECURITY DEFINER: app_user has no UPDATE on the ledger, and
 -- remaining_amount(_lcy)/open are NOT updatable through platform.fn_ledger_update (only this trigger).
@@ -803,14 +861,18 @@ CREATE TABLE party.application_draft (
     is_applying_entry        boolean NOT NULL DEFAULT false,      -- BC "Applying Entry" (the payment being applied)
     amount_to_apply          platform.amount NOT NULL DEFAULT 0,  -- signed like the entry; 0 = full remaining
     sequence_no              integer NOT NULL DEFAULT 0,          -- allocation order (default: due date ascending)
+    owner_kind               text NOT NULL DEFAULT 'SESSION' CHECK (owner_kind IN ('SESSION','JOURNAL_LINE')),   -- CR #149 (BR-AP-34/75/78)
+    journal_line_id          uuid,                                -- JOURNAL_LINE drafts live and die with their suggested-payment line
     created_at               timestamptz NOT NULL DEFAULT now(),
     created_by               uuid DEFAULT platform.current_user_id(),
-    updated_at               timestamptz,
+    updated_at               timestamptz NOT NULL DEFAULT now(),  -- CR #144/#159: the 30-minute stale-session rule reads it
     updated_by               uuid,
     row_version              integer NOT NULL DEFAULT 1,
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
     FOREIGN KEY (company_id, cust_ledger_entry_no, customer_id) REFERENCES party.cust_ledger_entry (company_id, entry_no, customer_id) ON DELETE CASCADE,
     FOREIGN KEY (company_id, vendor_ledger_entry_no, vendor_id) REFERENCES party.vendor_ledger_entry (company_id, entry_no, vendor_id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id, journal_line_id) REFERENCES gl.journal_line (company_id, id) ON DELETE CASCADE,
+    CHECK ((owner_kind = 'JOURNAL_LINE') = (journal_line_id IS NOT NULL)),
     CHECK ((party_type = 'CUSTOMER') = (customer_id IS NOT NULL AND cust_ledger_entry_no IS NOT NULL)),
     CHECK ((party_type = 'VENDOR') = (vendor_id IS NOT NULL AND vendor_ledger_entry_no IS NOT NULL)),
     CHECK (customer_id IS NULL OR vendor_id IS NULL)
@@ -819,4 +881,6 @@ CREATE UNIQUE INDEX ux_application_draft__cust ON party.application_draft (compa
 CREATE UNIQUE INDEX ux_application_draft__vend ON party.application_draft (company_id, vendor_ledger_entry_no, vendor_id) WHERE vendor_ledger_entry_no IS NOT NULL;
 CREATE UNIQUE INDEX ux_application_draft__one_applying ON party.application_draft (company_id, applies_to_id) WHERE is_applying_entry;
 CREATE INDEX ix_application_draft__applies_to_id ON party.application_draft (company_id, applies_to_id, sequence_no);
+CREATE INDEX ix_application_draft__journal_line ON party.application_draft (company_id, journal_line_id) WHERE journal_line_id IS NOT NULL;
+CREATE INDEX ix_application_draft__stale ON party.application_draft (company_id, updated_at) WHERE owner_kind = 'SESSION';
 COMMENT ON TABLE party.application_draft IS 'Application worksheet (FR-PTY-010; BC Applies-to ID + Amount to Apply + Applying Entry staging). An open entry can be in one draft at a time; at most one applying entry per Applies-to ID. Not a ledger: rows are deleted after posting.';

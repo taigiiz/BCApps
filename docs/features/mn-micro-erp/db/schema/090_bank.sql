@@ -24,7 +24,8 @@ CREATE TABLE bank.bank_account_posting_group (
     UNIQUE (company_id, code),
     UNIQUE (company_id, id)
 );
-CREATE INDEX ix_bank_account_posting_group__gl ON bank.bank_account_posting_group (company_id, gl_account_id);
+-- CR #193 (FR-BNK-001 AC2, BR-BNK-02/14): one G/L account = one money account, so bank subledger = G/L per account
+CREATE UNIQUE INDEX ux_bank_account_posting_group__gl ON bank.bank_account_posting_group (company_id, gl_account_id);
 COMMENT ON TABLE bank.bank_account_posting_group IS 'Mirrors BC table 277 Bank Account Posting Group (bank/cash -> G/L account).';
 
 CREATE TABLE bank.bank_statement_import_format (
@@ -100,7 +101,7 @@ CREATE TABLE bank.bank_account (
     match_tolerance_type          text NOT NULL DEFAULT 'AMOUNT' CHECK (match_tolerance_type IN ('AMOUNT','PERCENTAGE')),
     match_tolerance_value         numeric(19,5) NOT NULL DEFAULT 0 CHECK (match_tolerance_value >= 0),
     min_balance                   platform.amount NOT NULL DEFAULT 0,
-    prevent_negative_balance      boolean NOT NULL DEFAULT false,       -- true for CASH by default (D-G1)
+    prevent_negative_balance      boolean NOT NULL DEFAULT false,       -- must be true for CASH (D-G1, CHECK)
     cash_receipt_no_series_id     uuid,                                 -- МХ-1 (кассын орлогын баримт), gapless
     cash_payment_no_series_id     uuid,                                 -- МХ-2 (кассын зарлагын баримт), gapless
     blocked                       boolean NOT NULL DEFAULT false,
@@ -117,10 +118,11 @@ CREATE TABLE bank.bank_account (
     FOREIGN KEY (company_id, cash_payment_no_series_id) REFERENCES platform.number_series (company_id, id),
     UNIQUE (company_id, no),
     UNIQUE (company_id, id),
-    CHECK (kind <> 'CASH' OR (bank_account_no IS NULL AND iban IS NULL))
+    CHECK (kind <> 'CASH' OR (bank_account_no IS NULL AND iban IS NULL)),
+    CHECK (kind <> 'CASH' OR prevent_negative_balance)          -- CR #90: D-G1 has no opt-out for a cash box
 );
 CREATE INDEX ix_bank_account__currency ON bank.bank_account (company_id, currency_code) WHERE currency_code IS NOT NULL;
-CREATE INDEX ix_bank_account__posting_group ON bank.bank_account (company_id, bank_account_posting_group_id);
+CREATE UNIQUE INDEX ux_bank_account__posting_group ON bank.bank_account (company_id, bank_account_posting_group_id);   -- CR #193
 CREATE INDEX ix_bank_account__import_format ON bank.bank_account (company_id, import_format_id);
 CREATE INDEX ix_bank_account__cash_receipt_nos ON bank.bank_account (company_id, cash_receipt_no_series_id);
 CREATE INDEX ix_bank_account__cash_payment_nos ON bank.bank_account (company_id, cash_payment_no_series_id);
@@ -182,7 +184,7 @@ CREATE TABLE bank.bank_ledger_entry (
     UNIQUE (company_id, id),
     CHECK (positive = (amount > 0) OR amount = 0),
     CHECK ((bal_account_type IS NULL) = (bal_account_id IS NULL)),
-    CHECK (statement_status = 'OPEN' OR statement_no IS NOT NULL)
+    CHECK (statement_status = 'OPEN' OR statement_no IS NOT NULL OR amount = 0)   -- CR #196: zero revaluation entries are written CLOSED
 );
 CREATE INDEX ix_bank_ledger_entry__account_date ON bank.bank_ledger_entry (company_id, bank_account_id, posting_date) INCLUDE (amount, amount_lcy);
 CREATE INDEX ix_bank_ledger_entry__open ON bank.bank_ledger_entry (company_id, bank_account_id, posting_date) WHERE open;
@@ -197,6 +199,7 @@ CREATE INDEX ix_bank_ledger_entry__cash_flow ON bank.bank_ledger_entry (company_
 CREATE INDEX ix_bank_ledger_entry__closed_by ON bank.bank_ledger_entry (company_id, closed_by_entry_no) WHERE closed_by_entry_no IS NOT NULL;
 CREATE INDEX ix_bank_ledger_entry__reversed_entry ON bank.bank_ledger_entry (company_id, reversed_entry_no) WHERE reversed_entry_no IS NOT NULL;
 CREATE INDEX ix_bank_ledger_entry__reversed_by ON bank.bank_ledger_entry (company_id, reversed_by_entry_no) WHERE reversed_by_entry_no IS NOT NULL;
+CREATE INDEX ix_bank_ledger_entry__keyset ON bank.bank_ledger_entry (company_id, bank_account_id, entry_no);   -- CR #73
 COMMENT ON TABLE bank.bank_ledger_entry IS 'Mirrors BC table 271 Bank Account Ledger Entry (bank, cash and wallet movements). Append-only except reconciliation/status columns.';
 
 CREATE TABLE bank.posted_cash_voucher (
@@ -210,7 +213,7 @@ CREATE TABLE bank.posted_cash_voucher (
     counterparty_type   platform.account_type,
     counterparty_id     uuid,
     counterparty_name   text NOT NULL,
-    counterparty_id_doc text,                     -- person identification (регистр), printed on the voucher
+    counterparty_id_doc text CHECK (counterparty_id_doc IS NULL OR counterparty_id_doc LIKE 'enc:v1:%'),   -- CR #44: civil reg. no. only encrypted (PII-S)
     purpose             text NOT NULL,
     amount              platform.amount NOT NULL CHECK (amount > 0),
     amount_in_words     text,
@@ -249,6 +252,8 @@ CREATE TABLE bank.bank_statement (
     file_name          text,
     file_sha256        bytea CHECK (octet_length(file_sha256) = 32),
     status             text NOT NULL DEFAULT 'IMPORTED' CHECK (status IN ('IMPORTED','IN_RECONCILIATION','POSTED','DISCARDED')),
+    line_count              integer NOT NULL DEFAULT 0 CHECK (line_count >= 0),               -- CR #72 (FR-BNK-010 AC1)
+    skipped_duplicate_count integer NOT NULL DEFAULT 0 CHECK (skipped_duplicate_count >= 0),  -- lines not imported (dedupe_key already known)
     created_at         timestamptz NOT NULL DEFAULT now(),
     created_by         uuid DEFAULT platform.current_user_id(),
     updated_at         timestamptz,
@@ -351,6 +356,7 @@ CREATE TABLE bank.bank_reconciliation_line (
     match_confidence           text NOT NULL DEFAULT 'NONE'
                                CHECK (match_confidence IN ('NONE','LOW','MEDIUM','HIGH','HIGH_TEXT_TO_ACCOUNT','MANUAL','ACCEPTED')),
     match_quality              integer NOT NULL DEFAULT 0,
+    parent_line_no             integer,                     -- CR #195 (BR-BNK-62): split difference child line -> parent line
     created_at                 timestamptz NOT NULL DEFAULT now(),
     created_by                 uuid DEFAULT platform.current_user_id(),
     updated_at                 timestamptz,
@@ -361,9 +367,14 @@ CREATE TABLE bank.bank_reconciliation_line (
     FOREIGN KEY (company_id, bank_statement_line_id) REFERENCES bank.bank_statement_line (company_id, id),
     UNIQUE (company_id, bank_reconciliation_id, statement_line_no),
     UNIQUE (company_id, id),
-    CHECK ((account_type IS NULL) = (account_id IS NULL))
+    FOREIGN KEY (company_id, bank_reconciliation_id, parent_line_no)
+        REFERENCES bank.bank_reconciliation_line (company_id, bank_reconciliation_id, statement_line_no) ON DELETE CASCADE,
+    CHECK ((account_type IS NULL) = (account_id IS NULL)),
+    CHECK (parent_line_no IS NULL OR parent_line_no < statement_line_no)
 );
 CREATE INDEX ix_bank_reconciliation_line__statement_line ON bank.bank_reconciliation_line (company_id, bank_statement_line_id);
+CREATE INDEX ix_bank_reconciliation_line__parent ON bank.bank_reconciliation_line (company_id, bank_reconciliation_id, parent_line_no)
+    WHERE parent_line_no IS NOT NULL;
 COMMENT ON TABLE bank.bank_reconciliation_line IS 'Mirrors BC table 274 Bank Acc. Reconciliation Line.';
 
 CREATE TABLE bank.bank_rec_match (
@@ -380,7 +391,8 @@ CREATE TABLE bank.bank_rec_match (
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
     FOREIGN KEY (company_id, bank_reconciliation_id) REFERENCES bank.bank_reconciliation (company_id, id) ON DELETE CASCADE,
     UNIQUE (company_id, bank_reconciliation_id, match_no),
-    UNIQUE (company_id, id)
+    UNIQUE (company_id, id),
+    UNIQUE (company_id, id, bank_reconciliation_id)          -- target of the member's reconciliation-consistency FK (CR #197)
 );
 COMMENT ON TABLE bank.bank_rec_match IS 'Match group (n statement lines <-> m bank ledger entries, equal sums). Replaces BC Bank Acc. Rec. Match Buffer (T2711) and parent/child line splitting.';
 
@@ -389,19 +401,24 @@ CREATE TABLE bank.bank_rec_match_member (
     tenant_id               uuid NOT NULL,
     company_id              uuid NOT NULL,
     bank_rec_match_id       uuid NOT NULL,
+    bank_reconciliation_id  uuid NOT NULL,                  -- CR #197: copy of the match's reconciliation (consistency FK below)
     member_type             text NOT NULL CHECK (member_type IN ('STATEMENT_LINE','BANK_LEDGER_ENTRY')),
     reconciliation_line_id  uuid,
     bank_ledger_entry_no    bigint,
     amount                  platform.amount NOT NULL,
     created_at              timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
-    FOREIGN KEY (company_id, bank_rec_match_id) REFERENCES bank.bank_rec_match (company_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id, bank_rec_match_id, bank_reconciliation_id)
+        REFERENCES bank.bank_rec_match (company_id, id, bank_reconciliation_id) ON DELETE CASCADE,
     FOREIGN KEY (company_id, reconciliation_line_id) REFERENCES bank.bank_reconciliation_line (company_id, id) ON DELETE CASCADE,
     FOREIGN KEY (company_id, bank_ledger_entry_no) REFERENCES bank.bank_ledger_entry (company_id, entry_no),
     CHECK ((member_type = 'STATEMENT_LINE') = (reconciliation_line_id IS NOT NULL)),
     CHECK ((member_type = 'BANK_LEDGER_ENTRY') = (bank_ledger_entry_no IS NOT NULL))
 );
-CREATE INDEX ix_bank_rec_match_member__match ON bank.bank_rec_match_member (company_id, bank_rec_match_id);
+CREATE INDEX ix_bank_rec_match_member__match ON bank.bank_rec_match_member (company_id, bank_rec_match_id, bank_reconciliation_id);
+-- CR #197 (BR-BNK-64): a bank ledger entry is in at most one match group of a reconciliation
+CREATE UNIQUE INDEX ux_bank_rec_match_member__ble ON bank.bank_rec_match_member (company_id, bank_reconciliation_id, bank_ledger_entry_no)
+    WHERE bank_ledger_entry_no IS NOT NULL;
 CREATE UNIQUE INDEX ux_bank_rec_match_member__line ON bank.bank_rec_match_member (company_id, reconciliation_line_id) WHERE reconciliation_line_id IS NOT NULL;
 CREATE INDEX ix_bank_rec_match_member__ble ON bank.bank_rec_match_member (company_id, bank_ledger_entry_no) WHERE bank_ledger_entry_no IS NOT NULL;
 COMMENT ON TABLE bank.bank_rec_match_member IS 'Members of a match group: statement lines and bank ledger entries.';
@@ -469,16 +486,25 @@ CREATE TABLE bank.bank_account_statement (
     outstanding_payments          platform.amount NOT NULL DEFAULT 0,
     outstanding_transactions      platform.amount NOT NULL DEFAULT 0,
     bank_reconciliation_id        uuid,
+    undone_at                     timestamptz,                -- CR #71/#192/#203 (FR-BNK-014): set once by bank.fn_mark_account_statement_undone
+    undone_by                     uuid,
+    undo_reason_code_id           uuid,
     created_at                    timestamptz NOT NULL DEFAULT now(),
     created_by                    uuid DEFAULT platform.current_user_id(),
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
     FOREIGN KEY (company_id, bank_account_id) REFERENCES bank.bank_account (company_id, id),
     FOREIGN KEY (company_id, bank_reconciliation_id) REFERENCES bank.bank_reconciliation (company_id, id),
-    UNIQUE (company_id, bank_account_id, statement_no),
-    UNIQUE (company_id, id)
+    FOREIGN KEY (company_id, undo_reason_code_id) REFERENCES platform.reason_code (company_id, id),
+    UNIQUE (company_id, id),
+    CHECK ((undone_at IS NULL) = (undone_by IS NULL))
 );
+-- an undone statement number can be posted again
+CREATE UNIQUE INDEX ux_bank_account_statement__no ON bank.bank_account_statement (company_id, bank_account_id, statement_no)
+    WHERE undone_at IS NULL;
 CREATE INDEX ix_bank_account_statement__rec ON bank.bank_account_statement (company_id, bank_reconciliation_id);
-COMMENT ON TABLE bank.bank_account_statement IS 'Mirrors BC table 275 Bank Account Statement (immutable snapshot of a posted reconciliation; merges T1295).';
+CREATE INDEX ix_bank_account_statement__account ON bank.bank_account_statement (company_id, bank_account_id);
+CREATE INDEX ix_bank_account_statement__reason ON bank.bank_account_statement (company_id, undo_reason_code_id) WHERE undo_reason_code_id IS NOT NULL;
+COMMENT ON TABLE bank.bank_account_statement IS 'Mirrors BC table 275 Bank Account Statement (immutable snapshot of a posted reconciliation; merges T1295). Undo (FR-BNK-014) only sets undone_at/undone_by/undo_reason_code_id, once.';
 
 CREATE TABLE bank.bank_account_statement_line (
     id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -499,3 +525,28 @@ CREATE TABLE bank.bank_account_statement_line (
     UNIQUE (company_id, bank_account_statement_id, statement_line_no)
 );
 COMMENT ON TABLE bank.bank_account_statement_line IS 'Mirrors BC table 276 Bank Account Statement Line (+ T1296 posted payment recon line). Immutable.';
+
+-- -----------------------------------------------------------------------------
+-- Learned counterparty bank accounts (CR #190, BR-BNK-72, GS-REC-001): statement counterparty account -> customer /
+-- vendor. Learned when a reconciliation is posted, or entered manually.
+-- -----------------------------------------------------------------------------
+CREATE TABLE bank.counterparty_account_map (
+    id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id        uuid NOT NULL,
+    company_id       uuid NOT NULL,
+    account_no_norm  text NOT NULL CHECK (account_no_norm ~ '^[A-Z0-9]{4,40}$'),   -- digits/letters only, upper case
+    party_type       text NOT NULL CHECK (party_type IN ('CUSTOMER','VENDOR')),
+    party_id         uuid NOT NULL,                                                -- polymorphic (customer / vendor), validated by the app
+    source           text NOT NULL DEFAULT 'LEARNED' CHECK (source IN ('LEARNED','MANUAL')),
+    times_confirmed  integer NOT NULL DEFAULT 1 CHECK (times_confirmed >= 0),
+    last_seen_at     timestamptz NOT NULL DEFAULT now(),
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    created_by       uuid DEFAULT platform.current_user_id(),
+    updated_at       timestamptz,
+    updated_by       uuid,
+    row_version      integer NOT NULL DEFAULT 1,
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    UNIQUE (company_id, account_no_norm, party_type, party_id)
+);
+CREATE INDEX ix_counterparty_account_map__account ON bank.counterparty_account_map (company_id, account_no_norm);
+COMMENT ON TABLE bank.counterparty_account_map IS 'Counterparty bank account -> customer/vendor mapping used by statement matching (CR #190; extends BC Match Bank Payments, which uses Customer Bank Account T287).';

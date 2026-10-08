@@ -19,7 +19,10 @@
 -- a HEADING sits on the number just before its group (1199 "Дансны авлага" precedes 1200).
 --
 -- Every POSTING account carries: income_balance (derived from the category), normal side (warning only, D-D1),
--- direct_posting = false for control accounts (receivables, payables, VAT, bank/cash/wallet; FR-GL-003),
+-- direct_posting = false for control accounts (receivables, payables, VAT, bank/cash/wallet; FR-GL-003); the
+-- inventory (14xx), asset-cost (16xx/17xx) and accumulated-depreciation (1690/1790) accounts stay open in R1 and are
+-- closed by platform.fn_mn_enable_r2_controls() when inventory / fixed assets are switched on (11 SCR-FA-06),
+-- cit_treatment = NON_DEDUCTIBLE for 8430 fines and penalties (08 CR-TAX-10), NORMAL otherwise,
 -- the Form A line (rpt.statement_line, СБТ for balance sheet / ОДТ for income statement accounts), the МГТ
 -- cash-flow category of the direct method, and default Gen. Prod. / VAT Prod. groups so that a G/L-account
 -- line on a sales or purchase document resolves its posting setup without extra input (BC R-ACCOUNT-DETERMINATION-05).
@@ -114,14 +117,15 @@ BEGIN
     INSERT INTO gl.gl_account (tenant_id, company_id, no, name, name_en, search_name, account_type, income_balance,
                                account_category, account_subcategory_id, normal_side, totaling, indentation, direct_posting,
                                gen_posting_type, gen_prod_posting_group_id, vat_prod_posting_group_id,
-                               statement_line_id, cash_flow_category_id)
+                               statement_line_id, cash_flow_category_id, cit_treatment)
     SELECT v_tenant, v_company, v.no, v.name, v.name_en, upper(v.name),
            CASE v.t WHEN 'P' THEN 'POSTING' WHEN 'H' THEN 'HEADING' WHEN 'B' THEN 'BEGIN_TOTAL'
                     WHEN 'E' THEN 'END_TOTAL' ELSE 'TOTAL' END,
            CASE WHEN left(v.no, 1) IN ('1','2','3') THEN 'BALANCE_SHEET' ELSE 'INCOME_STATEMENT' END,
            v.cat, sc.id,
            CASE v.side WHEN 'D' THEN 'DEBIT' WHEN 'C' THEN 'CREDIT' ELSE 'BOTH' END,
-           v.totaling, v.ind, v.direct, 'NONE', gp.id, vp.id, sl.id, cf.id
+           v.totaling, v.ind, v.direct, 'NONE', gp.id, vp.id, sl.id, cf.id,
+           CASE WHEN v.no IN ('8430') THEN 'NON_DEDUCTIBLE' ELSE 'NORMAL' END   -- 08 CR-TAX-10: fines are not CIT-deductible
       FROM (VALUES
         -- ===== 1 ХӨРӨНГӨ =====
         ('1000','B','ХӨРӨНГӨ','ASSETS','ASSETS',NULL,'D',false,NULL,0,NULL,NULL,NULL,NULL),

@@ -885,7 +885,7 @@ repeat:
     for (t, c) in batch:
         TenantScope.RunAsync(t, c, SYSTEM_PRINCIPAL, "job:" + jobRunId, s =>
             INSERT INTO integration.outbox (tenant_id, company_id, topic, payload, idempotency_key, max_attempts)
-            VALUES (t, c, 'job.vat_threshold_check', '{}', 'vat.threshold:' || c || ':' || period, 3))
+            VALUES (t, c, 'tax.vat_threshold.check', '{}', 'vat.threshold:' || c || ':' || period, 3))
     after := last(batch)
 until batch is empty
 ```

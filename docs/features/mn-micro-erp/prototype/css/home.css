@@ -1,0 +1,24 @@
+/* css/home.css — #home role center (js/screens/home.js). Tokens only. */
+.headline { font-size: var(--fs-lg); padding: 10px 14px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); }
+.headline a { font-weight: 600; }
+.quick-actions { gap: 8px; }
+.home-split { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 900px) { .home-split { grid-template-columns: minmax(0, 1fr); } }
+.chart-body { position: relative; }
+#chart-view { position: relative; }
+.chart-svg { width: 100%; height: auto; display: block; max-width: 100%; }
+.chart-svg .ch-grid { stroke: var(--chart-grid); stroke-width: 1; }
+.chart-svg .ch-axis { stroke: var(--rule-strong); stroke-width: 1; }
+.chart-svg .ch-tick { fill: var(--ink-3); font-size: 11px; font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
+.chart-svg .ch-label { fill: var(--ink); font-size: 11px; font-weight: 600; font-family: var(--font-sans); }
+.chart-svg .ch-mark { fill: var(--chart-line); }
+.chart-svg .ch-last { fill: var(--accent-hover); }
+.chart-svg .ch-hit { fill: transparent; }
+.chart-svg .ch-bar { cursor: default; outline: none; }
+.chart-svg .ch-bar.dim .ch-mark { opacity: .45; }
+.chart-svg .ch-bar:focus-visible .ch-hit { stroke: var(--focus); stroke-width: 2; }
+.ch-tip {
+  position: absolute; top: 4px; transform: translateX(-50%); pointer-events: none; z-index: 3;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--rule-strong); border-radius: var(--radius);
+  padding: 6px 9px; font-size: var(--fs-xs); box-shadow: var(--shadow); white-space: nowrap; font-variant-numeric: tabular-nums;
+}

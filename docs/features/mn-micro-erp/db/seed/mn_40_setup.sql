@@ -5,18 +5,24 @@
 --   * platform.fn_mn_seed_reason_codes           reason codes (credit memo, reversal, period reopen, ...)
 --   * gl.fn_mn_ensure_fiscal_year(year)          fiscal year + 12 monthly periods + 12 VAT return periods
 --   * bank.fn_mn_seed_cash_account               default cash box CASH01 with its МХ-1 / МХ-2 series (D-G1)
---   * gl.fn_mn_seed_journals                     journal templates/batches GENERAL, CASH_RECEIPT, PAYMENT, OPENING, CLOSING
+--   * gl.fn_mn_seed_journals                     journal templates/batches GENERAL, CASH_RECEIPT, PAYMENT, OPENING, CLOSING, FA
 --   * gl.fn_mn_seed_gl_setup                     G/L setup: retained earnings 3400, current-year result 3500 (D-D4),
 --                                                rounding 8290, cash over/short 8240/8440, FX 8500/8510
 --   * party.fn_mn_seed_payment_methods           CASH, BANK, CARD, QPAY (+ eBarimt payments[].code) and party templates
---   * platform.fn_mn_seed_module_setups          sales/purchase/inventory setup, eBarimt POS (+ setup when TIN known),
---                                                bank text-to-account rules
+--   * platform.fn_mn_seed_module_setups          sales/purchase/inventory setup, walk-in customer C00000, eBarimt POS
+--                                                (+ setup when TIN known), bank text-to-account rules
+--   * tax.fn_mn_seed_tax_setup(year)             tax setup (2310 / 8200 / 9100 / 2330) + the first tax profile row
+--   * platform.fn_mn_enable_r2_controls          R2 switch-on: inventory / FA cost / accumulated depreciation accounts
+--                                                become direct_posting = false (11 SCR-FA-06; not run by provisioning)
 --
--- Numbering (D-C7): legal documents use GAPLESS series PREFIX-YYYY-##### that restart every year (reset_yearly:
--- a line per year must exist, otherwise posting fails with ERN01 instead of continuing last year's prefix).
--- Provisioning creates the lines of the first fiscal year and of the next one; call
--- platform.fn_mn_ensure_number_series(<year>) and gl.fn_mn_ensure_fiscal_year(<year>) before each new year
--- (the year-end close job does it). Drafts and master data use non-gapless series (gaps allowed).
+-- Numbering (D-C7): legal documents use GAPLESS series PREFIX-YYYY-##### that restart every year (reset_yearly).
+-- The series carry yearly_prefix_pattern 'PREFIX-{YYYY}-' (05 CR-PST-04, FR-PLT-008 AC3): the first posting of a new
+-- year creates that year's line inside the posting transaction (platform.fn_next_document_no), so posting no longer
+-- fails with ERN01 at year change. Provisioning still creates the lines of the first fiscal year and of the next one;
+-- platform.fn_mn_ensure_number_series(<year>) remains idempotent. Fiscal years still have to exist
+-- (gl.fn_mn_ensure_fiscal_year, job gl.fiscal_year.ensure_next). Drafts and master data use non-gapless series.
+-- date_order (BC "Date Order") is true for document series and false for voucher series that legitimately post
+-- out of date order: GJ, BR, BP, OB, CL, FXA (05 CR-PST-03, 09 SCR-BNK-08 / SCR-FX-04).
 -- =============================================================================
 \set ON_ERROR_STOP on
 SET ROLE app_owner;
@@ -25,9 +31,10 @@ SET ROLE app_owner;
 -- Number series
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION platform.fn_mn_number_series_def()
-RETURNS TABLE (code text, description text, gapless boolean, yearly boolean, manual boolean, kind text, prefix text, width smallint)
+RETURNS TABLE (code text, description text, gapless boolean, yearly boolean, manual boolean, kind text, prefix text, width smallint,
+               date_order boolean)
 LANGUAGE sql IMMUTABLE AS $$
-    SELECT * FROM (VALUES
+    SELECT v.*, v.code NOT IN ('GJ','BR','BP','OB','CL','FXA') FROM (VALUES
         -- legal documents: gapless, PREFIX-YYYY-##### (D-C7)
         ('SI',        'Борлуулалтын нэхэмжлэх (батлагдсан, ТМ-1)',  true,  true,  false, 'POSTED_SALES_INVOICE',   'SI', 5::smallint),
         ('SC',        'Борлуулалтын кредит нот (батлагдсан)',       true,  true,  false, 'POSTED_SALES_CR_MEMO',   'SC', 5::smallint),
@@ -40,12 +47,18 @@ LANGUAGE sql IMMUTABLE AS $$
         ('GJ',        'Ерөнхий журналын ваучер',                    true,  true,  false, 'JOURNAL_VOUCHER',        'GJ', 5::smallint),
         ('OB',        'Эхний үлдэгдлийн ваучер',                    true,  true,  false, 'OPENING_VOUCHER',        'OB', 5::smallint),
         ('CL',        'Жилийн хаалтын ваучер',                      true,  true,  false, 'CLOSING_VOUCHER',        'CL', 5::smallint),
+        ('FXA',       'Ханшийн тэгшитгэлийн ваучер',                true,  true,  false, 'FX_ADJUSTMENT_VOUCHER',  'FXA', 5::smallint),
+        ('DP',        'Элэгдлийн ваучер',                           true,  true,  false, 'DEPRECIATION_VOUCHER',   'DP', 5::smallint),
+        ('IA',        'Бараа материалын тохируулгын баримт',        true,  true,  false, 'INV_ADJUSTMENT',         'IA', 5::smallint),
+        ('IC',        'Тооллогын баримт',                           true,  true,  false, 'PHYS_INVENTORY',         'IC', 5::smallint),
         -- drafts: sequence, gaps allowed (D-C7)
         ('SI_DRAFT',  'Борлуулалтын нэхэмжлэхийн ноорог',           false, false, false, 'SALES_INVOICE_DRAFT',    'DSI-', 6::smallint),
         ('SC_DRAFT',  'Борлуулалтын кредит нотын ноорог',           false, false, false, 'SALES_CR_MEMO_DRAFT',    'DSC-', 6::smallint),
         ('PI_DRAFT',  'Худалдан авалтын нэхэмжлэхийн ноорог',       false, false, false, 'PURCH_INVOICE_DRAFT',    'DPI-', 6::smallint),
         ('PC_DRAFT',  'Худалдан авалтын кредит нотын ноорог',       false, false, false, 'PURCH_CR_MEMO_DRAFT',    'DPC-', 6::smallint),
         ('JNL_DRAFT', 'Журналын мөрийн ноорог дугаар',              false, false, false, 'JOURNAL_DRAFT',          'J-',   6::smallint),
+        ('IA_DRAFT',  'Тохируулгын баримтын ноорог',                false, false, false, 'INV_ADJUSTMENT_DRAFT',   'DIA-', 6::smallint),
+        ('IC_DRAFT',  'Тооллогын баримтын ноорог',                  false, false, false, 'PHYS_INVENTORY_DRAFT',   'DIC-', 6::smallint),
         -- master data (manual numbers allowed)
         ('CUST',      'Харилцагчийн дугаар',                        false, false, true,  'CUSTOMER',               'C',  5::smallint),
         ('VEND',      'Нийлүүлэгчийн дугаар',                       false, false, true,  'VENDOR',                 'V',  5::smallint),
@@ -53,7 +66,7 @@ LANGUAGE sql IMMUTABLE AS $$
         ('FA',        'Үндсэн хөрөнгийн дугаар',                    false, false, true,  'FIXED_ASSET',            'FA', 5::smallint)
     ) AS v(code, description, gapless, yearly, manual, kind, prefix, width)
 $$;
-COMMENT ON FUNCTION platform.fn_mn_number_series_def() IS 'MN localization package: definition of the number series (code, gapless, yearly reset, document kind, prefix, width). Data only.';
+COMMENT ON FUNCTION platform.fn_mn_number_series_def() IS 'MN localization package: definition of the number series (code, gapless, yearly reset, document kind, prefix, width, date order). Data only.';
 GRANT EXECUTE ON FUNCTION platform.fn_mn_number_series_def() TO app_user;
 
 CREATE OR REPLACE FUNCTION platform.fn_mn_ensure_number_series(p_year integer) RETURNS integer
@@ -65,10 +78,19 @@ DECLARE
     n         integer;
 BEGIN
     INSERT INTO platform.number_series (tenant_id, company_id, code, description, default_nos, manual_nos, date_order,
-                                        gapless, reset_yearly, document_kind)
-    SELECT v_tenant, v_company, d.code, d.description, true, d.manual, d.gapless, d.gapless, d.yearly, d.kind
+                                        gapless, reset_yearly, yearly_prefix_pattern, document_kind)
+    SELECT v_tenant, v_company, d.code, d.description, true, d.manual, d.date_order, d.gapless, d.yearly,
+           CASE WHEN d.yearly THEN d.prefix || '-{YYYY}-' END, d.kind
       FROM platform.fn_mn_number_series_def() d
     ON CONFLICT (company_id, code) DO NOTHING;
+    GET DIAGNOSTICS n = ROW_COUNT; v_rows := v_rows + n;
+
+    -- companies provisioned before CR-PST-04: fill the empty pattern of the package's yearly series (never overwrites)
+    UPDATE platform.number_series s
+       SET yearly_prefix_pattern = d.prefix || '-{YYYY}-'
+      FROM platform.fn_mn_number_series_def() d
+     WHERE s.company_id = v_company AND s.code = d.code AND d.yearly AND s.reset_yearly
+       AND s.yearly_prefix_pattern IS NULL;
     GET DIAGNOSTICS n = ROW_COUNT; v_rows := v_rows + n;
 
     -- yearly line of p_year (line_no = year, prefix SI-2026-) / one open-ended line for the other series
@@ -177,7 +199,8 @@ BEGIN
                    ('CASH_RECEIPT', 'Мөнгөн орлогын журнал',          'CASH_RECEIPTS', 'CASHRECJNL', 'BR'),
                    ('PAYMENT',      'Төлбөрийн журнал',               'PAYMENTS',      'PAYMENTJNL', 'BP'),
                    ('OPENING',      'Эхний үлдэгдлийн журнал (D-D7)', 'OPENING',       'OPENING',    'OB'),
-                   ('CLOSING',      'Жилийн хаалтын журнал (D-D4)',   'GENERAL',       'CLSINCOME',  'CL')) AS v(code, descr, ttype, src, series)
+                   ('CLOSING',      'Жилийн хаалтын журнал (D-D4)',   'GENERAL',       'CLSINCOME',  'CL'),
+                   ('FA',           'Үндсэн хөрөнгийн журнал (R2)',   'ASSETS',        'FAGLJNL',    'GJ')) AS v(code, descr, ttype, src, series)
       JOIN platform.number_series d ON d.company_id = v_company AND d.code = 'JNL_DRAFT'
       JOIN platform.number_series p ON p.company_id = v_company AND p.code = v.series
     ON CONFLICT (company_id, code) DO NOTHING;
@@ -194,7 +217,8 @@ BEGIN
                    ('PAYMENT',      'BANK',     'Банкны зарлага',                   false, NULL, NULL),
                    ('PAYMENT',      'CASH',     'Кассын зарлага (МХ-2)',            true,  'KZ', NULL),
                    ('OPENING',      'DEFAULT',  'Эхний үлдэгдэл',                   false, NULL, 'OPENING'),
-                   ('CLOSING',      'YEAR_END', 'Орлого, зардлын хаалт (12-31)',    false, NULL, NULL)) AS v(tmpl, code, descr, cash, series, reason)
+                   ('CLOSING',      'YEAR_END', 'Орлого, зардлын хаалт (12-31)',    false, NULL, NULL),
+                   ('FA',           'DEFAULT',  'Үндсэн хөрөнгө',                   false, NULL, NULL)) AS v(tmpl, code, descr, cash, series, reason)
       JOIN gl.journal_template t ON t.company_id = v_company AND t.code = v.tmpl
       LEFT JOIN bank.bank_account c ON c.company_id = v_company AND c.no = 'CASH01'
       LEFT JOIN platform.number_series p ON p.company_id = v_company AND p.code = v.series
@@ -204,7 +228,7 @@ BEGIN
     GET DIAGNOSTICS n = ROW_COUNT; v_rows := v_rows + n;
     RETURN v_rows;
 END $$;
-COMMENT ON FUNCTION gl.fn_mn_seed_journals() IS 'MN localization package: journal templates GENERAL, CASH_RECEIPT, PAYMENT, OPENING, CLOSING and their batches for the current company. Inserts missing rows only.';
+COMMENT ON FUNCTION gl.fn_mn_seed_journals() IS 'MN localization package: journal templates GENERAL, CASH_RECEIPT, PAYMENT, OPENING, CLOSING, FA (ASSETS, FAGLJNL, posting series GJ; 11 SCR-FA-05) and their batches for the current company. Inserts missing rows only.';
 GRANT EXECUTE ON FUNCTION gl.fn_mn_seed_journals() TO app_user;
 
 -- -----------------------------------------------------------------------------
@@ -225,7 +249,10 @@ BEGIN
            realized_fx_gain_account_id    = coalesce(s.realized_fx_gain_account_id,    gl.fn_mn_account_id('8500')),
            realized_fx_loss_account_id    = coalesce(s.realized_fx_loss_account_id,    gl.fn_mn_account_id('8500')),
            unrealized_fx_gain_account_id  = coalesce(s.unrealized_fx_gain_account_id,  gl.fn_mn_account_id('8510')),
-           unrealized_fx_loss_account_id  = coalesce(s.unrealized_fx_loss_account_id,  gl.fn_mn_account_id('8510'))
+           unrealized_fx_loss_account_id  = coalesce(s.unrealized_fx_loss_account_id,  gl.fn_mn_account_id('8510')),
+           -- 07 SCR-PUR-09: VAT difference up to 1.00 MNT (supplier rounding); only on the first fill of a fresh setup
+           max_vat_difference_allowed     = CASE WHEN s.retained_earnings_account_id IS NULL AND s.max_vat_difference_allowed = 0
+                                                 THEN 1.00 ELSE s.max_vat_difference_allowed END
      WHERE s.company_id = platform.current_company_id()
        AND (s.retained_earnings_account_id IS NULL OR s.current_year_result_account_id IS NULL
             OR s.invoice_rounding_account_id IS NULL OR s.cash_over_account_id IS NULL OR s.cash_short_account_id IS NULL
@@ -234,7 +261,7 @@ BEGIN
     GET DIAGNOSTICS v_rows = ROW_COUNT;
     RETURN v_rows;
 END $$;
-COMMENT ON FUNCTION gl.fn_mn_seed_gl_setup() IS 'MN localization package: fills the empty account fields of the G/L setup (3400, 3500, 8290, 8240, 8440, 8500, 8510). Never overwrites a value.';
+COMMENT ON FUNCTION gl.fn_mn_seed_gl_setup() IS 'MN localization package: fills the empty account fields of the G/L setup (3400, 3500, 8290, 8240, 8440, 8500, 8510) and, on the first fill, max_vat_difference_allowed = 1.00. Never overwrites a value.';
 GRANT EXECUTE ON FUNCTION gl.fn_mn_seed_gl_setup() TO app_user;
 
 -- -----------------------------------------------------------------------------
@@ -315,15 +342,40 @@ DECLARE
     v_rows    integer := 0;
     n         integer;
 BEGIN
+    -- Walk-in customer of the cash sale (15 SCR-UI-09, S-SAL-09): 'C00000 Иргэн', individual, B2C receipt, from the
+    -- B2C template; no personal data.
+    INSERT INTO party.customer (tenant_id, company_id, no, name, kind, default_ebarimt_type, customer_posting_group_id,
+                                gen_bus_posting_group_id, vat_bus_posting_group_id, payment_terms_id, payment_method_id,
+                                prices_including_vat)
+    SELECT v_tenant, v_company, 'C00000', 'Иргэн', 'INDIVIDUAL', 'B2C', t.customer_posting_group_id,
+           t.gen_bus_posting_group_id, t.vat_bus_posting_group_id, t.payment_terms_id, t.payment_method_id, t.prices_including_vat
+      FROM party.customer_template t
+     WHERE t.company_id = v_company AND t.code = 'B2C'
+    ON CONFLICT (company_id, no) DO NOTHING;
+    GET DIAGNOSTICS n = ROW_COUNT; v_rows := v_rows + n;
+
     INSERT INTO sales.sales_setup (tenant_id, company_id, customer_nos_id, invoice_nos_id, credit_memo_nos_id,
-                                   posted_invoice_nos_id, posted_credit_memo_nos_id)
+                                   posted_invoice_nos_id, posted_credit_memo_nos_id, walk_in_customer_id,
+                                   default_cash_sale_payment_method_id)
     SELECT v_tenant, v_company,
            (SELECT id FROM platform.number_series WHERE company_id = v_company AND code = 'CUST'),
            (SELECT id FROM platform.number_series WHERE company_id = v_company AND code = 'SI_DRAFT'),
            (SELECT id FROM platform.number_series WHERE company_id = v_company AND code = 'SC_DRAFT'),
            (SELECT id FROM platform.number_series WHERE company_id = v_company AND code = 'SI'),
-           (SELECT id FROM platform.number_series WHERE company_id = v_company AND code = 'SC')
+           (SELECT id FROM platform.number_series WHERE company_id = v_company AND code = 'SC'),
+           (SELECT id FROM party.customer WHERE company_id = v_company AND no = 'C00000'),
+           (SELECT id FROM party.payment_method WHERE company_id = v_company AND code = 'CASH')
     ON CONFLICT (company_id) DO NOTHING;
+    GET DIAGNOSTICS n = ROW_COUNT; v_rows := v_rows + n;
+    -- companies provisioned before SCR-UI-09: fill the empty fields only
+    UPDATE sales.sales_setup ss
+       SET walk_in_customer_id = coalesce(ss.walk_in_customer_id,
+                                          (SELECT id FROM party.customer WHERE company_id = v_company AND no = 'C00000')),
+           default_cash_sale_payment_method_id = coalesce(ss.default_cash_sale_payment_method_id,
+                                          (SELECT id FROM party.payment_method WHERE company_id = v_company AND code = 'CASH'))
+     WHERE ss.company_id = v_company
+       AND (ss.walk_in_customer_id IS NULL OR ss.default_cash_sale_payment_method_id IS NULL)
+       AND EXISTS (SELECT 1 FROM party.customer WHERE company_id = v_company AND no = 'C00000');
     GET DIAGNOSTICS n = ROW_COUNT; v_rows := v_rows + n;
 
     INSERT INTO purchase.purchase_setup (tenant_id, company_id, vendor_nos_id, invoice_nos_id, credit_memo_nos_id,
@@ -369,5 +421,71 @@ BEGIN
     GET DIAGNOSTICS n = ROW_COUNT; v_rows := v_rows + n;
     RETURN v_rows;
 END $$;
-COMMENT ON FUNCTION platform.fn_mn_seed_module_setups() IS 'MN localization package: sales/purchase/inventory setup, eBarimt POS 001 (+ merchant setup when TIN and district are known) and bank text rules of the current company. Inserts missing rows only.';
+COMMENT ON FUNCTION platform.fn_mn_seed_module_setups() IS 'MN localization package: walk-in customer C00000 and sales setup (walk-in customer, cash payment method), purchase/inventory setup, eBarimt POS 001 (+ merchant setup when TIN and district are known) and bank text rules of the current company. Inserts missing rows only.';
 GRANT EXECUTE ON FUNCTION platform.fn_mn_seed_module_setups() TO app_user;
+
+-- -----------------------------------------------------------------------------
+-- Tax setup (08 CR-TAX-03) and the first effective-dated tax profile row (08 CR-TAX-04)
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION tax.fn_mn_seed_tax_setup(p_first_year integer) RETURNS integer
+LANGUAGE plpgsql VOLATILE AS $$
+DECLARE
+    v_tenant  uuid := platform.current_tenant_id();
+    v_company uuid := platform.current_company_id();
+    v_rows    integer := 0;
+    n         integer;
+BEGIN
+    INSERT INTO tax.tax_setup (tenant_id, company_id, vat_settlement_account_id, simplified_vat_gain_account_id,
+                               cit_expense_account_id, cit_payable_account_id, settlement_journal_template_id)
+    SELECT v_tenant, v_company, gl.fn_mn_account_id('2310'), gl.fn_mn_account_id('8200'), gl.fn_mn_account_id('9100'),
+           gl.fn_mn_account_id('2330'),
+           (SELECT id FROM gl.journal_template WHERE company_id = v_company AND code = 'GENERAL')
+    ON CONFLICT DO NOTHING;
+    GET DIAGNOSTICS n = ROW_COUNT; v_rows := v_rows + n;
+
+    -- One open-ended row from the first fiscal year (or the VAT registration date) that matches company_setup;
+    -- later changes (registration, simplified regime, deregistration) are new rows (valid_from) in the UI.
+    INSERT INTO tax.company_tax_profile (tenant_id, company_id, valid_from, vat_status, note)
+    SELECT v_tenant, v_company,
+           CASE WHEN cs.vat_registered THEN coalesce(cs.vat_registered_from, make_date(p_first_year, 1, 1))
+                ELSE make_date(p_first_year, 1, 1) END,
+           CASE WHEN cs.vat_registered THEN 'STANDARD' ELSE 'NOT_REGISTERED' END,
+           'provisioning (MN localization package)'
+      FROM platform.company_setup cs
+     WHERE cs.company_id = v_company
+       AND NOT EXISTS (SELECT 1 FROM tax.company_tax_profile p WHERE p.company_id = v_company);
+    GET DIAGNOSTICS n = ROW_COUNT; v_rows := v_rows + n;
+    RETURN v_rows;
+END $$;
+COMMENT ON FUNCTION tax.fn_mn_seed_tax_setup(integer) IS
+    'MN localization package: tax setup of the current company (VAT settlement 2310, simplified-VAT gain 8200, CIT expense 9100, CIT payable 2330, settlement template GENERAL) and the first tax profile row derived from company_setup.vat_registered. Inserts missing rows only.';
+GRANT EXECUTE ON FUNCTION tax.fn_mn_seed_tax_setup(integer) TO app_user;
+
+-- -----------------------------------------------------------------------------
+-- R2 switch-on (11 SCR-FA-06): once inventory or fixed assets are posted through their subledgers, the inventory,
+-- asset-cost and accumulated-depreciation accounts must not take manual journal lines (FR-GL-003). R1 leaves them
+-- open (direct_posting = true) because micro companies book purchases of goods and assets straight to G/L.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION platform.fn_mn_enable_r2_controls() RETURNS integer
+LANGUAGE plpgsql VOLATILE AS $$
+DECLARE
+    v_company uuid := platform.current_company_id();
+    v_rows    integer;
+BEGIN
+    UPDATE gl.gl_account a
+       SET direct_posting = false
+     WHERE a.company_id = v_company AND a.direct_posting
+       AND a.id IN (SELECT s.inventory_account_id FROM inv.inventory_posting_setup s
+                     WHERE s.company_id = v_company AND s.inventory_account_id IS NOT NULL
+                    UNION
+                    SELECT g.acquisition_cost_account_id FROM fa.fa_posting_group g
+                     WHERE g.company_id = v_company AND g.acquisition_cost_account_id IS NOT NULL
+                    UNION
+                    SELECT g.accum_depreciation_account_id FROM fa.fa_posting_group g
+                     WHERE g.company_id = v_company AND g.accum_depreciation_account_id IS NOT NULL);
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    RETURN v_rows;
+END $$;
+COMMENT ON FUNCTION platform.fn_mn_enable_r2_controls() IS
+    'MN localization package (R2): sets direct_posting = false on the inventory accounts of inv.inventory_posting_setup and on the acquisition-cost / accumulated-depreciation accounts of fa.fa_posting_group of the current company. Run when inventory or fixed assets are switched on; idempotent; returns the number of accounts changed.';
+GRANT EXECUTE ON FUNCTION platform.fn_mn_enable_r2_controls() TO app_user;

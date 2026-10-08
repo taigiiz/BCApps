@@ -24,6 +24,8 @@ CREATE TABLE sales.sales_setup (
     link_doc_date_to_posting_date   boolean NOT NULL DEFAULT true,
     stockout_warning                boolean NOT NULL DEFAULT true,
     ebarimt_on_posting              boolean NOT NULL DEFAULT true,   -- D-J1: create the eBarimt document when posting
+    walk_in_customer_id             uuid,           -- CR #81 (S-SAL-09): default customer of a cash sale ('C00000 Иргэн', B2C)
+    default_cash_sale_payment_method_id uuid,       -- CR #81: payment method preselected on a cash sale
     created_at                      timestamptz NOT NULL DEFAULT now(),
     created_by                      uuid DEFAULT platform.current_user_id(),
     updated_at                      timestamptz,
@@ -35,9 +37,13 @@ CREATE TABLE sales.sales_setup (
     FOREIGN KEY (company_id, credit_memo_nos_id) REFERENCES platform.number_series (company_id, id),
     FOREIGN KEY (company_id, posted_invoice_nos_id) REFERENCES platform.number_series (company_id, id),
     FOREIGN KEY (company_id, posted_credit_memo_nos_id) REFERENCES platform.number_series (company_id, id),
+    FOREIGN KEY (company_id, walk_in_customer_id) REFERENCES party.customer (company_id, id),
+    FOREIGN KEY (company_id, default_cash_sale_payment_method_id) REFERENCES party.payment_method (company_id, id),
     UNIQUE (company_id)
 );
 CREATE INDEX ix_sales_setup__customer_nos ON sales.sales_setup (company_id, customer_nos_id);
+CREATE INDEX ix_sales_setup__walk_in ON sales.sales_setup (company_id, walk_in_customer_id);
+CREATE INDEX ix_sales_setup__cash_method ON sales.sales_setup (company_id, default_cash_sale_payment_method_id);
 CREATE INDEX ix_sales_setup__invoice_nos ON sales.sales_setup (company_id, invoice_nos_id);
 CREATE INDEX ix_sales_setup__cm_nos ON sales.sales_setup (company_id, credit_memo_nos_id);
 CREATE INDEX ix_sales_setup__posted_invoice_nos ON sales.sales_setup (company_id, posted_invoice_nos_id);
@@ -64,6 +70,7 @@ CREATE TABLE sales.sales_header (
     prices_including_vat          boolean NOT NULL DEFAULT false,
     currency_code                 platform.currency_code,
     currency_factor               platform.exch_rate,
+    exchange_rate                 platform.exch_rate,                     -- CR #191: MNT per 1 FCY
     payment_terms_id              uuid,
     payment_method_id             uuid,
     bal_account_type              platform.account_type,                  -- cash sale (D-F5)
@@ -84,6 +91,7 @@ CREATE TABLE sales.sales_header (
     ebarimt_receipt_type          text CHECK (ebarimt_receipt_type IN ('B2C_RECEIPT','B2B_RECEIPT','B2C_INVOICE','B2B_INVOICE','NONE')),
     ebarimt_customer_tin          platform.tin,
     ebarimt_consumer_no           text CHECK (ebarimt_consumer_no ~ '^[0-9]{8}$'),
+    ebarimt_pos_id                uuid,                                   -- CR #15: POS of a multi-POS company (NULL = default POS), FK in 130
     amount                        platform.amount NOT NULL DEFAULT 0,     -- cached totals (excl. VAT)
     amount_including_vat          platform.amount NOT NULL DEFAULT 0,
     vat_amount                    platform.amount NOT NULL DEFAULT 0,
@@ -107,11 +115,14 @@ CREATE TABLE sales.sales_header (
     UNIQUE (company_id, document_type, no),
     UNIQUE (company_id, id),
     CHECK ((currency_code IS NULL) = (currency_factor IS NULL)),
+    CHECK ((currency_code IS NULL) = (exchange_rate IS NULL)),
+    CHECK (exchange_rate IS NULL OR (exchange_rate > 0 AND abs(currency_factor * exchange_rate - 1) <= 0.000000000001)),
     CHECK ((bal_account_type IS NULL) = (bal_account_id IS NULL)),
     CHECK (bal_account_type IS NULL OR bal_account_type IN ('GL_ACCOUNT','BANK_ACCOUNT')),
     CHECK (document_type = 'CREDIT_MEMO' OR corrected_invoice_id IS NULL)
 );
 CREATE INDEX ix_sales_header__customer ON sales.sales_header (company_id, customer_id);
+CREATE INDEX ix_sales_header__keyset ON sales.sales_header (company_id, document_type, document_date, id);   -- CR #73 (API-PAG-12)
 CREATE INDEX ix_sales_header__currency ON sales.sales_header (company_id, currency_code) WHERE currency_code IS NOT NULL;
 CREATE INDEX ix_sales_header__terms ON sales.sales_header (company_id, payment_terms_id);
 CREATE INDEX ix_sales_header__method ON sales.sales_header (company_id, payment_method_id);
@@ -161,6 +172,10 @@ CREATE TABLE sales.sales_line (
     classification_code         text CHECK (classification_code ~ '^[0-9]{7}$'),     -- БҮНА for eBarimt
     tax_product_code            text,
     barcode                     text,
+    applies_to_invoice_line_no  integer,                               -- CR #2: credit memo line -> line of corrected_invoice_id (NetState)
+    system_line_kind            text NOT NULL DEFAULT 'NONE' CHECK (system_line_kind IN ('NONE','INVOICE_ROUNDING')),   -- CR #9/#145
+    allow_invoice_disc          boolean NOT NULL DEFAULT true,         -- CR #136: BC Allow Invoice Disc. (R2 invoice discount)
+    appl_from_item_entry_no     bigint,                                -- CR #103: return line -> outbound item ledger entry (exact cost), FK in 110
     created_at                  timestamptz NOT NULL DEFAULT now(),
     created_by                  uuid DEFAULT platform.current_user_id(),
     updated_at                  timestamptz,
@@ -179,7 +194,8 @@ CREATE TABLE sales.sales_line (
     CHECK (quantity >= 0),
     CHECK ((line_type = 'GL_ACCOUNT') = (gl_account_id IS NOT NULL)),
     CHECK ((line_type = 'ITEM') = (item_id IS NOT NULL)),
-    CHECK ((line_type = 'FIXED_ASSET') = (fixed_asset_id IS NOT NULL))
+    CHECK ((line_type = 'FIXED_ASSET') = (fixed_asset_id IS NOT NULL)),
+    CHECK (applies_to_invoice_line_no IS NULL OR applies_to_invoice_line_no > 0)
 );
 CREATE INDEX ix_sales_line__gl_account ON sales.sales_line (company_id, gl_account_id);
 CREATE INDEX ix_sales_line__item ON sales.sales_line (company_id, item_id);
@@ -207,8 +223,8 @@ CREATE TABLE sales.sales_invoice_header (
     customer_no               platform.code20 NOT NULL,
     customer_name             text NOT NULL,
     customer_address          text,
-    customer_tin              text,
-    customer_registration_no  text,
+    customer_tin              text CHECK (customer_tin IS NULL OR customer_tin !~ '^[0-9]{12,14}$'),   -- CR #44: no plaintext personal TIN
+    customer_registration_no  text CHECK (customer_registration_no IS NULL OR customer_registration_no !~ '^[А-ЯЁӨҮ]{2}[0-9]{8}$'),  -- CR #44: no plaintext civil reg. no.
     posting_date              date NOT NULL,
     document_date             date NOT NULL,
     vat_date                  date NOT NULL,
@@ -216,8 +232,12 @@ CREATE TABLE sales.sales_invoice_header (
     prices_including_vat      boolean NOT NULL,
     currency_code             platform.currency_code,
     currency_factor           platform.exch_rate,
+    exchange_rate             platform.exch_rate,                     -- CR #191
     payment_terms_code        platform.code20,
     payment_method_code       platform.code20,
+    bal_account_type          platform.account_type,                  -- CR #141: balancing account of a cash sale (payment method)
+    bal_account_id            uuid,
+    payment_transaction_no    bigint,                                 -- CR #141: G/L transaction of the immediate payment (reprint МХ-1)
     customer_posting_group    platform.code20 NOT NULL,
     gen_bus_posting_group     platform.code20 NOT NULL,
     vat_bus_posting_group     platform.code20 NOT NULL,
@@ -238,6 +258,8 @@ CREATE TABLE sales.sales_invoice_header (
                               CHECK (ebarimt_receipt_type IN ('B2C_RECEIPT','B2B_RECEIPT','B2C_INVOICE','B2B_INVOICE','NONE')),
     ebarimt_customer_tin      platform.tin,
     ebarimt_consumer_no       text CHECK (ebarimt_consumer_no ~ '^[0-9]{8}$'),
+    ebarimt_none_reason       text CHECK (ebarimt_none_reason IN ('USER_OVERRIDE','CUSTOMER_DEFAULT','EXTERNAL_ISSUER',
+                                                                  'WINDOW_CLOSED_OVERRIDE','CHAIN_CANCELLED')),   -- CR #38 (TYP-03/07, CMP-037)
     created_at                timestamptz NOT NULL DEFAULT now(),
     created_by                uuid DEFAULT platform.current_user_id(),
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
@@ -247,10 +269,15 @@ CREATE TABLE sales.sales_invoice_header (
     FOREIGN KEY (company_id, dimension_set_id) REFERENCES gl.dimension_set (company_id, dimension_set_id),
     FOREIGN KEY (company_id, transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no),
     FOREIGN KEY (company_id, gl_register_no) REFERENCES gl.gl_register (company_id, no) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY (company_id, payment_transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no) DEFERRABLE INITIALLY DEFERRED,
     UNIQUE (company_id, no),
     UNIQUE (company_id, id),
     CHECK (ebarimt_receipt_type NOT IN ('B2B_RECEIPT','B2B_INVOICE') OR ebarimt_customer_tin IS NOT NULL),
-    CHECK ((currency_code IS NULL) = (currency_factor IS NULL))
+    CHECK ((ebarimt_receipt_type = 'NONE') = (ebarimt_none_reason IS NOT NULL)),
+    CHECK ((currency_code IS NULL) = (currency_factor IS NULL)),
+    CHECK ((currency_code IS NULL) = (exchange_rate IS NULL)),
+    CHECK (exchange_rate IS NULL OR abs(currency_factor * exchange_rate - 1) <= 0.000000000001),
+    CHECK ((bal_account_type IS NULL) = (bal_account_id IS NULL))
 );
 CREATE INDEX ix_sales_invoice_header__customer ON sales.sales_invoice_header (company_id, customer_id, posting_date);
 CREATE INDEX ix_sales_invoice_header__date ON sales.sales_invoice_header (company_id, posting_date);
@@ -261,6 +288,8 @@ CREATE INDEX ix_sales_invoice_header__transaction ON sales.sales_invoice_header 
 CREATE INDEX ix_sales_invoice_header__register ON sales.sales_invoice_header (company_id, gl_register_no);
 CREATE INDEX ix_sales_invoice_header__cle ON sales.sales_invoice_header (company_id, cust_ledger_entry_no);
 CREATE UNIQUE INDEX ux_sales_invoice_header__draft ON sales.sales_invoice_header (company_id, draft_id) WHERE draft_id IS NOT NULL;
+CREATE INDEX ix_sales_invoice_header__keyset ON sales.sales_invoice_header (company_id, document_date, id);   -- CR #73
+CREATE INDEX ix_sales_invoice_header__payment_tx ON sales.sales_invoice_header (company_id, payment_transaction_no) WHERE payment_transaction_no IS NOT NULL;
 COMMENT ON TABLE sales.sales_invoice_header IS 'Mirrors BC table 112 Sales Invoice Header (posted, immutable, with snapshots of customer/posting groups and eBarimt request data).';
 
 CREATE TABLE sales.sales_invoice_line (
@@ -301,6 +330,10 @@ CREATE TABLE sales.sales_invoice_line (
     tax_product_code          text,
     barcode                   text,
     ebarimt_tax_type          platform.ebarimt_tax_type,
+    system_line_kind          text NOT NULL DEFAULT 'NONE' CHECK (system_line_kind IN ('NONE','INVOICE_ROUNDING')),   -- CR #9
+    allow_invoice_disc        boolean NOT NULL DEFAULT true,                                                       -- CR #136
+    appl_from_item_entry_no   bigint,                                  -- CR #103, FK in 110
+    tax_parameter_id          uuid REFERENCES tax.tax_parameter (id),  -- CR #161: VAT rate parameter row used
     created_at                timestamptz NOT NULL DEFAULT now(),
     created_by                uuid DEFAULT platform.current_user_id(),
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
@@ -326,8 +359,8 @@ CREATE TABLE sales.sales_cr_memo_header (
     customer_no               platform.code20 NOT NULL,
     customer_name             text NOT NULL,
     customer_address          text,
-    customer_tin              text,
-    customer_registration_no  text,
+    customer_tin              text CHECK (customer_tin IS NULL OR customer_tin !~ '^[0-9]{12,14}$'),   -- CR #44: no plaintext personal TIN
+    customer_registration_no  text CHECK (customer_registration_no IS NULL OR customer_registration_no !~ '^[А-ЯЁӨҮ]{2}[0-9]{8}$'),  -- CR #44: no plaintext civil reg. no.
     posting_date              date NOT NULL,
     document_date             date NOT NULL,
     vat_date                  date NOT NULL,
@@ -335,8 +368,12 @@ CREATE TABLE sales.sales_cr_memo_header (
     prices_including_vat      boolean NOT NULL,
     currency_code             platform.currency_code,
     currency_factor           platform.exch_rate,
+    exchange_rate             platform.exch_rate,                     -- CR #191
     payment_terms_code        platform.code20,
     payment_method_code       platform.code20,
+    bal_account_type          platform.account_type,                  -- CR #141: balancing account of a cash sale (payment method)
+    bal_account_id            uuid,
+    payment_transaction_no    bigint,                                 -- CR #141: G/L transaction of the immediate payment (reprint МХ-1)
     customer_posting_group    platform.code20 NOT NULL,
     gen_bus_posting_group     platform.code20 NOT NULL,
     vat_bus_posting_group     platform.code20 NOT NULL,
@@ -360,6 +397,8 @@ CREATE TABLE sales.sales_cr_memo_header (
                               CHECK (ebarimt_receipt_type IN ('B2C_RECEIPT','B2B_RECEIPT','B2C_INVOICE','B2B_INVOICE','NONE')),
     ebarimt_customer_tin      platform.tin,
     ebarimt_consumer_no       text CHECK (ebarimt_consumer_no ~ '^[0-9]{8}$'),
+    ebarimt_none_reason       text CHECK (ebarimt_none_reason IN ('USER_OVERRIDE','CUSTOMER_DEFAULT','EXTERNAL_ISSUER',
+                                                                  'WINDOW_CLOSED_OVERRIDE','CHAIN_CANCELLED')),   -- CR #38 (TYP-03/07, CMP-037)
     created_at                timestamptz NOT NULL DEFAULT now(),
     created_by                uuid DEFAULT platform.current_user_id(),
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
@@ -370,9 +409,14 @@ CREATE TABLE sales.sales_cr_memo_header (
     FOREIGN KEY (company_id, dimension_set_id) REFERENCES gl.dimension_set (company_id, dimension_set_id),
     FOREIGN KEY (company_id, transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no),
     FOREIGN KEY (company_id, gl_register_no) REFERENCES gl.gl_register (company_id, no) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY (company_id, payment_transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no) DEFERRABLE INITIALLY DEFERRED,
     UNIQUE (company_id, no),
     UNIQUE (company_id, id),
-    CHECK ((currency_code IS NULL) = (currency_factor IS NULL))
+    CHECK ((ebarimt_receipt_type = 'NONE') = (ebarimt_none_reason IS NOT NULL)),
+    CHECK ((currency_code IS NULL) = (currency_factor IS NULL)),
+    CHECK ((currency_code IS NULL) = (exchange_rate IS NULL)),
+    CHECK (exchange_rate IS NULL OR abs(currency_factor * exchange_rate - 1) <= 0.000000000001),
+    CHECK ((bal_account_type IS NULL) = (bal_account_id IS NULL))
 );
 CREATE INDEX ix_sales_cr_memo_header__customer ON sales.sales_cr_memo_header (company_id, customer_id, posting_date);
 CREATE INDEX ix_sales_cr_memo_header__date ON sales.sales_cr_memo_header (company_id, posting_date);
@@ -384,6 +428,8 @@ CREATE INDEX ix_sales_cr_memo_header__transaction ON sales.sales_cr_memo_header 
 CREATE INDEX ix_sales_cr_memo_header__register ON sales.sales_cr_memo_header (company_id, gl_register_no);
 CREATE INDEX ix_sales_cr_memo_header__cle ON sales.sales_cr_memo_header (company_id, cust_ledger_entry_no);
 CREATE UNIQUE INDEX ux_sales_cr_memo_header__draft ON sales.sales_cr_memo_header (company_id, draft_id) WHERE draft_id IS NOT NULL;
+CREATE INDEX ix_sales_cr_memo_header__keyset ON sales.sales_cr_memo_header (company_id, document_date, id);   -- CR #73
+CREATE INDEX ix_sales_cr_memo_header__payment_tx ON sales.sales_cr_memo_header (company_id, payment_transaction_no) WHERE payment_transaction_no IS NOT NULL;
 COMMENT ON TABLE sales.sales_cr_memo_header IS 'Mirrors BC table 114 Sales Cr.Memo Header (posted credit memo / return, immutable).';
 
 CREATE TABLE sales.sales_cr_memo_line (LIKE sales.sales_invoice_line INCLUDING DEFAULTS INCLUDING CONSTRAINTS);
@@ -394,7 +440,11 @@ ALTER TABLE sales.sales_cr_memo_line
     ADD FOREIGN KEY (company_id, sales_cr_memo_header_id) REFERENCES sales.sales_cr_memo_header (company_id, id),
     ADD FOREIGN KEY (company_id, gl_account_id) REFERENCES gl.gl_account (company_id, id),
     ADD FOREIGN KEY (company_id, dimension_set_id) REFERENCES gl.dimension_set (company_id, dimension_set_id),
+    ADD FOREIGN KEY (tax_parameter_id) REFERENCES tax.tax_parameter (id),
     ADD UNIQUE (company_id, sales_cr_memo_header_id, line_no);
+-- CR #2/#20: the posted credit memo line keeps the invoice line it corrects (eBarimt NetState, RET-13)
+ALTER TABLE sales.sales_cr_memo_line
+    ADD COLUMN applies_to_invoice_line_no integer CHECK (applies_to_invoice_line_no > 0);
 CREATE INDEX ix_sales_cr_memo_line__gl_account ON sales.sales_cr_memo_line (company_id, gl_account_id);
 CREATE INDEX ix_sales_cr_memo_line__item ON sales.sales_cr_memo_line (company_id, item_id);
 CREATE INDEX ix_sales_cr_memo_line__fixed_asset ON sales.sales_cr_memo_line (company_id, fixed_asset_id);
@@ -422,5 +472,36 @@ ALTER TABLE sales.sales_invoice_header
     ADD FOREIGN KEY (company_id, cust_ledger_entry_no) REFERENCES party.cust_ledger_entry (company_id, entry_no) DEFERRABLE INITIALLY DEFERRED;
 ALTER TABLE sales.sales_cr_memo_header
     ADD FOREIGN KEY (company_id, cust_ledger_entry_no) REFERENCES party.cust_ledger_entry (company_id, entry_no) DEFERRABLE INITIALLY DEFERRED;
+
+-- CR #2/#20: applies_to_invoice_line_no must name an existing line of the invoice the credit memo corrects
+CREATE FUNCTION sales.fn_check_applies_to_invoice_line() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_row jsonb := to_jsonb(NEW);
+    v_inv uuid;
+BEGIN
+    IF NEW.applies_to_invoice_line_no IS NULL THEN
+        RETURN NEW;
+    END IF;
+    IF TG_TABLE_NAME = 'sales_line' THEN
+        SELECT h.corrected_invoice_id INTO v_inv FROM sales.sales_header h
+         WHERE h.company_id = NEW.company_id AND h.id = (v_row ->> 'sales_header_id')::uuid;
+    ELSE
+        SELECT h.corrected_invoice_id INTO v_inv FROM sales.sales_cr_memo_header h
+         WHERE h.company_id = NEW.company_id AND h.id = (v_row ->> 'sales_cr_memo_header_id')::uuid;
+    END IF;
+    IF v_inv IS NULL OR NOT EXISTS (SELECT 1 FROM sales.sales_invoice_line l
+                                     WHERE l.company_id = NEW.company_id AND l.sales_invoice_header_id = v_inv
+                                       AND l.line_no = NEW.applies_to_invoice_line_no) THEN
+        RAISE EXCEPTION 'applies_to_invoice_line_no % is not a line of the corrected invoice', NEW.applies_to_invoice_line_no
+            USING ERRCODE = '23503';
+    END IF;
+    RETURN NEW;
+END $$;
+COMMENT ON FUNCTION sales.fn_check_applies_to_invoice_line() IS 'BEFORE INSERT/UPDATE on sales_line and sales_cr_memo_line: the referenced invoice line exists on corrected_invoice_id of the header (CR #2).';
+CREATE TRIGGER trg_sales_line_applies_to_invoice_line BEFORE INSERT OR UPDATE OF applies_to_invoice_line_no ON sales.sales_line
+    FOR EACH ROW EXECUTE FUNCTION sales.fn_check_applies_to_invoice_line();
+CREATE TRIGGER trg_sales_cr_memo_line_applies_to_invoice_line BEFORE INSERT ON sales.sales_cr_memo_line
+    FOR EACH ROW EXECUTE FUNCTION sales.fn_check_applies_to_invoice_line();
 
 COMMENT ON TABLE sales.cancelled_document IS 'Mirrors BC table 1900 Cancelled Document (invoice <-> cancelling credit memo, D-F6). An invoice can be cancelled once.';

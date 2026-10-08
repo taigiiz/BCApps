@@ -1,0 +1,70 @@
+<title>Бичил ERP прототип</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="css/home.css">
+<link rel="stylesheet" href="css/sales.css">
+<link rel="stylesheet" href="css/gl.css">
+<link rel="stylesheet" href="css/sales-ar.css">
+<link rel="stylesheet" href="css/cash-bank.css">
+<link rel="stylesheet" href="css/reports-tax.css">
+
+<div class="app" id="app">
+  <header class="topbar">
+    <button class="tb-btn menu-btn" id="btn-menu" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="Цэс нээх">☰</button>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">Б</span>
+      <span class="brand-name">Бичил ERP</span>
+      <span class="company-badge"><span class="co" id="co-name">Наран Түмэн ХХК</span><span class="tin" id="co-tin">ТТД 00000000099</span></span>
+    </div>
+    <span class="sample-chip" data-note="shell.sample">Жишээ өгөгдөл — бодит компани биш</span>
+    <span class="spacer"></span>
+    <div class="topbar-tools">
+      <span class="workdate" id="workdate">Ажлын огноо 2026.10.08</span>
+      <span class="has-note" data-note="shell.role" style="display:inline-flex">
+        <label class="sr-only" for="role-select">Хэрэглэгчийн үүрэг</label>
+        <select class="tb-select" id="role-select" aria-label="Хэрэглэгчийн үүрэг">
+          <option value="OWNER">Эзэн — Б. Наранбаатар</option>
+          <option value="ACCOUNTANT">Нягтлан — Д. Сарнай</option>
+        </select>
+      </span>
+      <span class="has-note" data-note="shell.notes-toggle" style="display:inline-flex">
+        <button class="tb-btn" id="btn-notes" type="button" aria-pressed="true"><span aria-hidden="true">ⓘ</span><span>Тайлбар</span></button>
+      </span>
+      <button class="tb-btn" id="btn-theme" type="button" aria-label="Өнгөний горим"><span aria-hidden="true">◐</span><span class="tb-label">Өнгө: Систем</span></button>
+    </div>
+  </header>
+  <div class="shell">
+    <nav class="sidebar" id="sidebar" aria-label="Үндсэн цэс"></nav>
+    <div class="main">
+      <main class="content" id="content" tabindex="-1">
+        <div class="content-inner" id="page">
+          <div class="card"><div class="soon-card"><div class="big">Ачаалж байна…</div><p>Хөдөлгүүр жишээ гүйлгээнүүдийг (2026 оны 1–9-р сар) батлан ledger-үүдийг үүсгэж байна.</p></div></div>
+        </div>
+      </main>
+      <aside class="note-panel" id="note-panel" hidden aria-label="Тайлбар" aria-live="polite"></aside>
+    </div>
+  </div>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/annotations.js"></script>
+<script src="js/notes/home.js"></script>
+<script src="js/notes/sales.js"></script>
+<script src="js/notes/purchases.js"></script>
+<script src="js/notes/gl.js"></script>
+<script src="js/notes/sales-ar.js"></script>
+<script src="js/notes/cash-bank.js"></script>
+<script src="js/notes/reports-tax.js"></script>
+<script src="js/app.js"></script>
+<script src="js/screens/home.js"></script>
+<script src="js/screens/sales.js"></script>
+<script src="js/screens/purchases.js"></script>
+<script src="js/screens/system.js"></script>
+<script src="js/screens/gl.js"></script>
+<script src="js/screens/sales-ar.js"></script>
+<script src="js/screens/cash-bank.js"></script>
+<script src="js/screens/reports-tax.js"></script>

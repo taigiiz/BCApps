@@ -654,14 +654,14 @@ ROLLBACK;
 \set ON_ERROR_STOP on
 SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERP02', 'a SUBMITTED VAT return period is final (ERP02)');
 
--- 9.13 Cash account (kind CASH) can never go negative, even without prevent_negative_balance (D-G1)
+-- 9.13 Cash account (kind CASH) can never go negative (D-G1); the CASH kind requires prevent_negative_balance = true
 BEGIN;
 SET LOCAL ROLE app_user;
 SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'smoke-cash-setup') \gset
 INSERT INTO bank.bank_account_posting_group (tenant_id, company_id, code, gl_account_id)
 SELECT :tenant_a, :company_a1, 'CASH', id FROM gl.gl_account WHERE company_id = :company_a1 AND no = '1100';
-INSERT INTO bank.bank_account (tenant_id, company_id, no, name, kind, bank_account_posting_group_id)
-SELECT :tenant_a, :company_a1, 'CASH01', 'Касс', 'CASH', id FROM bank.bank_account_posting_group WHERE code = 'CASH'
+INSERT INTO bank.bank_account (tenant_id, company_id, no, name, kind, bank_account_posting_group_id, prevent_negative_balance)
+SELECT :tenant_a, :company_a1, 'CASH01', 'Касс', 'CASH', id, true FROM bank.bank_account_posting_group WHERE code = 'CASH'
 RETURNING id AS cash_id \gset
 COMMIT;
 \set ON_ERROR_STOP off
@@ -691,9 +691,10 @@ BEGIN;
 SET LOCAL ROLE app_user;
 SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'smoke-ebarimt-doc') \gset
 INSERT INTO ebarimt.ebarimt_document (tenant_id, company_id, source_type, source_id, source_document_no, ebarimt_type,
-                                      ebarimt_pos_id, bill_date, bill_seq, bill_id_suffix, merchant_tin, total_amount, total_vat)
+                                      ebarimt_pos_id, bill_date, bill_seq, bill_id_suffix, merchant_tin, total_amount, total_vat,
+                                      branch_no, pos_no, district_code)
 VALUES (:tenant_a, :company_a1, 'SALES_INVOICE', gen_random_uuid(), 'SI-2026-00002', 'B2C_RECEIPT',
-        :'pos_id', DATE '2026-03-26', :seq2, :seq2 % 1000000, '1234567', 550, 50)
+        :'pos_id', DATE '2026-03-26', :seq2, :seq2 % 1000000, '1234567', 550, 50, '001', '001', '2501')
 RETURNING id AS ebd_id \gset
 UPDATE ebarimt.ebarimt_document SET status = 'SENT', attempt_count = 1 WHERE id = :'ebd_id';
 COMMIT;
@@ -705,8 +706,10 @@ BEGIN;
 SET LOCAL ROLE app_user;
 SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'smoke-ebarimt-badsuffix') \gset
 INSERT INTO ebarimt.ebarimt_document (tenant_id, company_id, source_type, source_id, source_document_no, ebarimt_type,
-                                      ebarimt_pos_id, bill_date, bill_seq, bill_id_suffix, merchant_tin, total_amount)
-VALUES (:tenant_a, :company_a1, 'SALES_INVOICE', gen_random_uuid(), 'SI-X', 'B2C_RECEIPT', :'pos_id', DATE '2026-03-26', 3, 7, '1234567', 1);
+                                      ebarimt_pos_id, bill_date, bill_seq, bill_id_suffix, merchant_tin, total_amount,
+                                      branch_no, pos_no, district_code)
+VALUES (:tenant_a, :company_a1, 'SALES_INVOICE', gen_random_uuid(), 'SI-X', 'B2C_RECEIPT', :'pos_id', DATE '2026-03-26', 3, 7, '1234567', 1,
+        '001', '001', '2501');
 ROLLBACK;
 \set ON_ERROR_STOP on
 SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = '23514', 'bill_id_suffix must equal bill_seq mod 10^6');
@@ -728,5 +731,335 @@ SELECT pg_temp.assert((SELECT count(*) = 0 FROM party.v_cust_ledger_entry_check)
 SELECT pg_temp.assert((SELECT bool_and(difference = 0) FROM party.v_receivables_reconciliation), 'receivables subledger = G/L after applications');
 SELECT pg_temp.assert((SELECT count(*) = 0 FROM party.fn_customer_aging(DATE '2026-12-31')), 'AR aging empty: everything applied');
 COMMIT;
+
+-- -----------------------------------------------------------------------------
+-- 10. Change-request regressions (db/CHANGE_REQUESTS.md, 2026-10-08)
+-- -----------------------------------------------------------------------------
+-- 10.1 CR #90: a cash box must have prevent_negative_balance (D-G1 has no opt-out)
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-cash-flag') \gset
+INSERT INTO bank.bank_account (tenant_id, company_id, no, name, kind, bank_account_posting_group_id, prevent_negative_balance)
+SELECT :tenant_a, :company_a1, 'CASH02', 'Касс 2', 'CASH', id, false FROM bank.bank_account_posting_group WHERE code = 'CASH';
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = '23514', 'CR #90: CASH account without prevent_negative_balance is rejected');
+
+-- 10.2 CR #18: eBarimt status whitelist and attempt counting (no second network send at DB level)
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-ebarimt-wl1') \gset
+UPDATE ebarimt.ebarimt_document SET status = 'PENDING' WHERE id = :'ebd_id';
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERL01', 'CR #18: SENT -> PENDING is rejected (ERL01)');
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-ebarimt-wl2') \gset
+UPDATE ebarimt.ebarimt_document SET status = 'ERROR', error_code = 'X' WHERE id = :'ebd_id';
+UPDATE ebarimt.ebarimt_document SET status = 'PENDING' WHERE id = :'ebd_id';
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERL01', 'CR #18: ERROR -> PENDING (re-send) is rejected (ERL01)');
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-ebarimt-wl3') \gset
+INSERT INTO ebarimt.ebarimt_document (tenant_id, company_id, source_type, source_id, source_document_no, ebarimt_type, status,
+                                      ebarimt_pos_id, branch_no, pos_no, district_code, bill_date, bill_seq, bill_id_suffix,
+                                      merchant_tin, total_amount)
+VALUES (:tenant_a, :company_a1, 'SALES_INVOICE', gen_random_uuid(), 'SI-Y', 'B2C_RECEIPT', 'SENT', :'pos_id', '001', '001', '2501',
+        DATE '2026-03-26', 999, 999, '1234567', 1);
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERL01', 'CR #18: a new eBarimt document must start as PENDING (ERL01)');
+-- CR #3: B2B full cancellation recorded as MANUAL_VOID (no bill fields, no send)
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-ebarimt-void') \gset
+INSERT INTO ebarimt.ebarimt_document (tenant_id, company_id, source_type, source_id, source_document_no, operation, ebarimt_type, status,
+                                      ebarimt_pos_id, merchant_tin, customer_tin, total_amount, replaces_document_id, inactive_ddtd)
+VALUES (:tenant_a, :company_a1, 'SALES_CR_MEMO', gen_random_uuid(), 'SC-2026-00001', 'MANUAL_VOID', 'B2B_RECEIPT', 'SUCCESS',
+        :'pos_id', '1234567', '5555555', -550, :'ebd_id', repeat('1', 33))
+RETURNING id AS void_id \gset
+COMMIT;
+SELECT pg_temp.assert((SELECT operation = 'MANUAL_VOID' AND bill_seq IS NULL AND attempt_count = 0 FROM ebarimt.ebarimt_document WHERE id = :'void_id'),
+                      'CR #3: MANUAL_VOID recorded without billIdSuffix and without a send');
+
+-- 10.3 CR #132 / #119: yearly line created on first use; gapless numbers logged; no gaps
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-yearly-auto') \gset
+UPDATE platform.number_series SET yearly_prefix_pattern = 'GJ-{YYYY}-' WHERE code = 'GJ';
+SELECT platform.fn_next_document_no('GJ', DATE '2027-01-05') AS gj_2027 \gset
+SELECT pg_temp.assert(:'gj_2027' = 'GJ-2027-00001'
+                  AND (SELECT count(*) = 1 FROM platform.number_allocation WHERE document_no = 'GJ-2027-00001'),
+                      'CR #132: the 2027 line of a yearly series is created on first use (GJ-2027-00001), CR #119: number logged');
+ROLLBACK;
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-number-gap') \gset
+SELECT pg_temp.assert((SELECT count(*) FROM platform.number_allocation) = (SELECT sum(last_no_used) FROM platform.number_series_counter)
+                  AND NOT EXISTS (SELECT 1 FROM platform.v_number_series_gap),
+                      'CR #119/#125: every gapless number is in number_allocation; v_number_series_gap is empty');
+COMMIT;
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-alloc-direct') \gset
+INSERT INTO platform.number_allocation (tenant_id, company_id, number_series_line_id, no, document_no, allocated_on)
+SELECT :tenant_a, :company_a1, id, 999, 'FAKE', DATE '2026-03-01' FROM platform.number_series_line LIMIT 1;
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = '42501', 'CR #119: the allocation log is written only by fn_next_document_no (42501)');
+
+-- 10.4 CR #66 / #213 / #221: period and fiscal-year lock rules
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-lock-open') \gset
+UPDATE gl.accounting_period SET status = 'LOCKED' WHERE company_id = :company_a1 AND starting_date = DATE '2026-04-01';
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERP02', 'CR #66: an OPEN period cannot be locked directly (ERP02)');
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-lock-dec') \gset
+UPDATE gl.accounting_period SET status = 'CLOSED' WHERE company_id = :company_a1 AND starting_date = DATE '2026-12-01';
+UPDATE gl.accounting_period SET status = 'LOCKED' WHERE company_id = :company_a1 AND starting_date = DATE '2026-12-01';
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERP02', 'CR #213/#221: December cannot be locked before the year-end close (ERP02)');
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-lock-fy') \gset
+UPDATE gl.fiscal_year SET status = 'LOCKED' WHERE company_id = :company_a1 AND year = 2026;
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERP02', 'CR #66: a fiscal year is locked only when all its months are LOCKED (ERP02)');
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-lock-feb') \gset
+UPDATE gl.accounting_period SET status = 'LOCKED' WHERE company_id = :company_a1 AND starting_date = DATE '2026-02-01';
+SELECT pg_temp.assert((SELECT status = 'LOCKED' FROM gl.accounting_period WHERE company_id = :company_a1 AND starting_date = DATE '2026-02-01'),
+                      'CR #66: a CLOSED period can be locked');
+ROLLBACK;
+-- CR #134: machine-readable reason of ERP01 in DETAIL
+DO $$
+BEGIN
+    PERFORM gl.fn_assert_posting_date_allowed('a1000000-0000-0000-0000-000000000001', DATE '2026-02-10', false);
+    RAISE EXCEPTION 'FAIL: posting into February was accepted';
+EXCEPTION WHEN SQLSTATE 'ERP01' THEN
+    DECLARE v_detail text;
+    BEGIN
+        GET STACKED DIAGNOSTICS v_detail = PG_EXCEPTION_DETAIL;
+        IF v_detail IS DISTINCT FROM 'gl.period_closed' THEN
+            RAISE EXCEPTION 'FAIL: ERP01 detail is % instead of gl.period_closed', v_detail;
+        END IF;
+    END;
+END $$;
+SELECT 'PASS: CR #134: ERP01 carries DETAIL gl.period_closed' AS assert;
+
+-- 10.5 CR #50: column-level grants on tenant / app_user; MFA only through platform.fn_set_user_mfa
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-tenant-status') \gset
+UPDATE platform.tenant SET status = 'ACTIVE' WHERE id = :tenant_a;
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = '42501', 'CR #50: a tenant cannot change its own status (42501)');
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-user-mfa') \gset
+UPDATE platform.app_user SET mfa_enabled = true WHERE id = :user_1;
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = '42501', 'CR #50: a user cannot set its own MFA flag directly (42501)');
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-tenant-name') \gset
+UPDATE platform.tenant SET name = 'Tenant A ХХК' WHERE id = :tenant_a;
+UPDATE platform.app_user SET display_name = 'Нягтлан Б.' WHERE id = :user_1;
+SELECT pg_temp.assert((SELECT name = 'Tenant A ХХК' FROM platform.tenant), 'CR #50: tenant name and own display name stay editable');
+ROLLBACK;
+
+-- 10.6 CR #84: tenants never see PosAPI base_url / operator_tin
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-posapi-url') \gset
+SELECT base_url FROM ebarimt.posapi_instance;
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = '42501', 'CR #84: app_user cannot read posapi_instance.base_url (42501)');
+
+-- 10.7 CR #70 / #139: due-date edit of an open customer entry is change-logged
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-edit-cle') \gset
+SELECT platform.fn_next_entry_no('GL_REGISTER') AS r10, platform.fn_next_entry_no('GL_TRANSACTION') AS t10,
+       platform.fn_next_entry_no('GL_ENTRY', 2) AS e10, platform.fn_next_entry_no('CUST_LEDGER_ENTRY') AS cle10,
+       platform.fn_next_entry_no('DETAILED_CUST_LEDGER_ENTRY') AS d10 \gset
+INSERT INTO gl.gl_transaction (tenant_id, company_id, transaction_no, gl_register_no, posting_date, document_type, document_no, source_code)
+VALUES (:tenant_a, :company_a1, :t10, :r10, DATE '2026-05-04', 'INVOICE', 'SI-2026-00003', 'SALES');
+INSERT INTO gl.gl_entry (tenant_id, company_id, entry_no, transaction_no, gl_register_no, gl_account_id, posting_date, document_type,
+                         document_no, amount, source_code)
+SELECT :tenant_a, :company_a1, :e10 + v.i, :t10, :r10, a.id, DATE '2026-05-04', 'INVOICE', 'SI-2026-00003', v.amount, 'SALES'
+  FROM (VALUES (0, '1200', 200.00), (1, '5100', -200.00)) v(i, acc, amount)
+  JOIN gl.gl_account a ON a.company_id = :company_a1 AND a.no = v.acc;
+INSERT INTO party.cust_ledger_entry (tenant_id, company_id, entry_no, customer_id, customer_no, posting_date, due_date, document_type,
+                                     document_no, amount, amount_lcy, positive, customer_posting_group_id, transaction_no, gl_register_no, source_code)
+SELECT :tenant_a, :company_a1, :cle10, :'customer_id', 'C0001', DATE '2026-05-04', DATE '2026-06-03', 'INVOICE', 'SI-2026-00003',
+       200, 200, true, id, :t10, :r10, 'SALES' FROM party.customer_posting_group WHERE code = 'DOMESTIC';
+INSERT INTO party.detailed_cust_ledger_entry (tenant_id, company_id, entry_no, cust_ledger_entry_no, entry_type, posting_date, document_type,
+                                              document_no, amount, amount_lcy, customer_id, transaction_no, ledger_entry_amount, source_code,
+                                              customer_posting_group_id)
+SELECT :tenant_a, :company_a1, :d10, :cle10, 'INITIAL', DATE '2026-05-04', 'INVOICE', 'SI-2026-00003', 200, 200, :'customer_id', :t10, true, 'SALES',
+       id FROM party.customer_posting_group WHERE code = 'DOMESTIC';
+INSERT INTO gl.gl_register (tenant_id, company_id, no, from_entry_no, to_entry_no, source_code)
+VALUES (:tenant_a, :company_a1, :r10, :e10, :e10 + 1, 'SALES');
+COMMIT;
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-edit-cle-2') \gset
+SELECT party.fn_edit_ledger_entry('party.cust_ledger_entry', :cle10, '{"due_date": "2026-06-30"}') AS edited \gset
+SELECT pg_temp.assert(:edited = 1 AND (SELECT due_date = DATE '2026-06-30' FROM party.cust_ledger_entry WHERE entry_no = :cle10)
+                  AND EXISTS (SELECT 1 FROM audit.row_change WHERE table_name = 'cust_ledger_entry' AND request_id = 'cr-edit-cle-2'
+                                 AND changed_columns = ARRAY['due_date'] AND old_data ->> 'due_date' = '2026-06-03'),
+                      'CR #70/#139: due date edited through party.fn_edit_ledger_entry and written to audit.row_change');
+COMMIT;
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-edit-cle-3') \gset
+SELECT party.fn_edit_ledger_entry('party.cust_ledger_entry', :cle10, '{"amount": 1}');
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERL01', 'CR #70: only due_date / on_hold are user-editable (ERL01)');
+-- CR #143: an invoice number is used once in the receivables ledger
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-cle-dup') \gset
+SELECT platform.fn_next_entry_no('GL_REGISTER') AS r11, platform.fn_next_entry_no('GL_TRANSACTION') AS t11,
+       platform.fn_next_entry_no('CUST_LEDGER_ENTRY') AS cle11 \gset
+INSERT INTO gl.gl_transaction (tenant_id, company_id, transaction_no, gl_register_no, posting_date, document_type, document_no, source_code)
+VALUES (:tenant_a, :company_a1, :t11, :r11, DATE '2026-05-05', 'INVOICE', 'SI-2026-00003', 'GENJNL');
+INSERT INTO party.cust_ledger_entry (tenant_id, company_id, entry_no, customer_id, customer_no, posting_date, due_date, document_type,
+                                     document_no, amount, amount_lcy, positive, customer_posting_group_id, transaction_no, gl_register_no, source_code)
+SELECT :tenant_a, :company_a1, :cle11, :'customer_id', 'C0001', DATE '2026-05-05', DATE '2026-05-05', 'INVOICE', 'SI-2026-00003',
+       10, 10, true, id, :t11, :r11, 'GENJNL' FROM party.customer_posting_group WHERE code = 'DOMESTIC';
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = '23505', 'CR #143: a duplicate invoice number in the receivables ledger is rejected (23505)');
+
+-- 10.8 CR #117/#205/#217 trial balance and CR #118 integrity report
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-integrity') \gset
+SELECT pg_temp.assert((SELECT sum(opening_balance) = 0 AND sum(period_debit) = sum(period_credit)
+                         FROM rpt.fn_trial_balance(DATE '2026-04-01', DATE '2026-12-31', false, NULL, NULL)),
+                      'CR #205: trial balance from April: openings net to 0, debit = credit');
+SELECT string_agg(check_code || '=' || status, ' ' ORDER BY check_code) AS integrity FROM platform.fn_integrity_report() \gset
+SELECT pg_temp.assert((SELECT bool_and(status = 'PASS') FROM platform.fn_integrity_report()
+                        WHERE check_code IN ('I-01 GL_TRANSACTION_BALANCED','I-02 TRIAL_BALANCE','I-03 LEDGER_CACHE',
+                                             'I-04 SUBLEDGER_GL','I-06 LEDGER_NUMBER_GAPS','I-07 LEGAL_NUMBER_GAPS','I-08 UNROUNDED_MNT'))
+                  AND (SELECT count(*) = 8 FROM platform.fn_integrity_report())
+                  -- I-05 must FAIL here: the smoke data posts to 1100 directly (sections 1-4) before 9.13 links CASH01 to it
+                  AND (SELECT status = 'FAIL' FROM platform.fn_integrity_report() WHERE check_code = 'I-05 BANK_GL'),
+                      'CR #118: integrity report I-01..I-08 runs; I-01..I-04, I-06..I-08 PASS, I-05 detects the cash/G-L mismatch of the fixture: ' || :'integrity');
+COMMIT;
+
+-- 10.9 CR #39: role assignments are change-logged; CR #44/#58: secrets and encrypted PII are redacted in the log
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-audit-links') \gset
+INSERT INTO platform.role (tenant_id, code, name) VALUES (:tenant_a, 'CR_ROLE', 'CR role') RETURNING id AS cr_role \gset
+INSERT INTO platform.user_company_role (tenant_id, user_id, company_id, role_id, expires_at)
+VALUES (:tenant_a, :user_1, :company_a1, :'cr_role', now() + interval '30 days');
+INSERT INTO platform.tenant_secret (tenant_id, company_id, kind, ciphertext, key_version, last4)
+VALUES (:tenant_a, :company_a1, 'EBARIMT_TPI', '\x0102030405', 1, 'abcd');
+SELECT pg_temp.assert(EXISTS (SELECT 1 FROM audit.row_change WHERE table_name = 'user_company_role' AND request_id = 'cr-audit-links')
+                  AND (SELECT new_data ->> 'ciphertext' = '[redacted]' AND new_data ->> 'last4' = 'abcd'
+                         FROM audit.row_change WHERE table_name = 'tenant_secret' AND request_id = 'cr-audit-links'),
+                      'CR #39: user_company_role change-logged; CR #58: tenant_secret.ciphertext redacted in audit.row_change');
+ROLLBACK;
+
+-- 10.10 CR #42/#43: invitation found and accepted before a tenant context exists
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-invite') \gset
+INSERT INTO platform.role (tenant_id, code, name) VALUES (:tenant_a, 'VIEWER', 'Үзэгч') RETURNING id AS viewer_role \gset
+INSERT INTO platform.tenant_invitation (tenant_id, email, role_id, company_id, token_hash, expires_at, invited_by)
+VALUES (:tenant_a, 'new.user@example.mn', :'viewer_role', :company_a1, digest('token-1', 'sha256'), now() + interval '7 days', :user_1);
+COMMIT;
+INSERT INTO platform.app_user (id, email, display_name) VALUES ('c0000000-0000-0000-0000-000000000002', 'new.user@example.mn', 'Шинэ хэрэглэгч');
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT set_config('app.user_id', 'c0000000-0000-0000-0000-000000000002', true) \gset
+SELECT tenant_id AS inv_tenant FROM platform.fn_find_invitation(digest('token-1', 'sha256')) \gset
+SELECT platform.fn_accept_invitation(digest('token-1', 'sha256'), 'c0000000-0000-0000-0000-000000000002') AS joined \gset
+SELECT pg_temp.assert(:'inv_tenant' = :'joined' AND :'joined' = 'a0000000-0000-0000-0000-000000000001'
+                  AND (SELECT count(*) = 1 FROM platform.fn_list_user_tenants('c0000000-0000-0000-0000-000000000002')),
+                      'CR #42/#43: invitation found by token hash, accepted (membership + role), tenant listed for the new user');
+COMMIT;
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT set_config('app.user_id', 'c0000000-0000-0000-0000-000000000002', true) \gset
+SELECT * FROM platform.fn_list_user_tenants('c0000000-0000-0000-0000-000000000001');
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERT01', 'CR #42: another user''s tenants cannot be listed (ERT01)');
+
+-- 10.11 CR #56: attachments of posted documents cannot be deleted
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-attach') \gset
+INSERT INTO platform.attachment (tenant_id, company_id, owner_table, owner_id, file_name, media_type, byte_size, sha256, object_key)
+VALUES (:tenant_a, :company_a1, 'bank.posted_cash_voucher', gen_random_uuid(), 'scan.pdf', 'application/pdf', 1024,
+        digest('scan', 'sha256'), 'a1/scan.pdf') RETURNING id AS att_id \gset
+UPDATE platform.attachment SET av_status = 'CLEAN', av_checked_at = now() WHERE id = :'att_id';
+COMMIT;
+\set ON_ERROR_STOP off
+\set LAST_ERROR_SQLSTATE 'none'
+BEGIN;
+SET LOCAL ROLE app_user;
+SELECT platform.fn_set_context(:tenant_a, :company_a1, :user_1, 'cr-attach-del') \gset
+DELETE FROM platform.attachment WHERE id = :'att_id';
+ROLLBACK;
+\set ON_ERROR_STOP on
+SELECT pg_temp.assert(:'LAST_ERROR_SQLSTATE' = 'ERL01', 'CR #56: an attachment of a posted document cannot be deleted (ERL01)');
+
+-- 10.12 CR #49: the ops role reads aggregates only
+BEGIN;
+SET LOCAL ROLE app_ops;
+SELECT pg_temp.assert((SELECT count(*) >= 0 FROM integration.fn_ops_health()), 'CR #49: app_ops can call integration.fn_ops_health()');
+ROLLBACK;
+SELECT pg_temp.assert((SELECT count(*) = 0 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE c.relkind IN ('r','v','m','p') AND n.nspname NOT IN ('pg_catalog','information_schema')
+                          AND n.nspname NOT LIKE 'pg_%' AND has_table_privilege('app_ops', c.oid, 'SELECT')),
+                      'CR #49: app_ops has no SELECT on any table or view (aggregates only via fn_ops_health)');
 
 \echo 'SMOKE TEST: ALL CHECKS PASSED'

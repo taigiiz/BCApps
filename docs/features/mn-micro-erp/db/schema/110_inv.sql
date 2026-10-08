@@ -97,6 +97,9 @@ CREATE TABLE inv.inventory_setup (
     prevent_negative_inventory  boolean NOT NULL DEFAULT true,
     automatic_cost_posting      boolean NOT NULL DEFAULT true CHECK (automatic_cost_posting),
     item_nos_id                 uuid,
+    count_shortage_account_id   uuid,           -- CR #104 (OQ-INV-04): count shortage; NULL = general_posting_setup.inventory_adjmt_account
+    count_surplus_account_id    uuid,           -- CR #104: count surplus; NULL = inventory_adjmt_account
+    backdating_policy           text NOT NULL DEFAULT 'BLOCK' CHECK (backdating_policy IN ('BLOCK','RECOST')),   -- CR #105 (R3 recost job)
     created_at                  timestamptz NOT NULL DEFAULT now(),
     created_by                  uuid DEFAULT platform.current_user_id(),
     updated_at                  timestamptz,
@@ -104,9 +107,13 @@ CREATE TABLE inv.inventory_setup (
     row_version                 integer NOT NULL DEFAULT 1,
     FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
     FOREIGN KEY (company_id, item_nos_id) REFERENCES platform.number_series (company_id, id),
+    FOREIGN KEY (company_id, count_shortage_account_id) REFERENCES gl.gl_account (company_id, id),
+    FOREIGN KEY (company_id, count_surplus_account_id) REFERENCES gl.gl_account (company_id, id),
     UNIQUE (company_id)
 );
 CREATE INDEX ix_inventory_setup__item_nos ON inv.inventory_setup (company_id, item_nos_id);
+CREATE INDEX ix_inventory_setup__shortage ON inv.inventory_setup (company_id, count_shortage_account_id);
+CREATE INDEX ix_inventory_setup__surplus ON inv.inventory_setup (company_id, count_surplus_account_id);
 COMMENT ON TABLE inv.inventory_setup IS 'Mirrors BC table 313 Inventory Setup (costing switches; automatic cost posting always on).';
 
 CREATE TABLE inv.item (
@@ -152,6 +159,7 @@ CREATE TABLE inv.item (
     CHECK ((item_type = 'INVENTORY') = (inventory_posting_group_id IS NOT NULL))
 );
 CREATE INDEX ix_item__search ON inv.item (company_id, search_description);
+CREATE INDEX ix_item__search_trgm ON inv.item USING gin (company_id, search_description gin_trgm_ops);   -- CR #82
 CREATE INDEX ix_item__barcode ON inv.item (company_id, barcode) WHERE barcode IS NOT NULL;
 CREATE INDEX ix_item__uom ON inv.item (company_id, base_unit_of_measure_id);
 CREATE INDEX ix_item__inv_group ON inv.item (company_id, inventory_posting_group_id);
@@ -159,6 +167,7 @@ CREATE INDEX ix_item__gen_prod ON inv.item (company_id, gen_prod_posting_group_i
 CREATE INDEX ix_item__vat_prod ON inv.item (company_id, vat_prod_posting_group_id);
 CREATE INDEX ix_item__city_tax ON inv.item (company_id, city_tax_code_id);
 COMMENT ON TABLE inv.item IS 'Mirrors BC table 27 Item (types INVENTORY / SERVICE / NON_INVENTORY; costing AVERAGE or FIFO; eBarimt classification and tax product codes).';
+COMMENT ON COLUMN inv.item.search_description IS 'Search key: lower-case Cyrillic<->Latin transliteration skeleton of no + description (UX-FMT-14), maintained by the application; trigram-indexed.';
 
 CREATE TABLE inv.item_unit_of_measure (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -168,6 +177,7 @@ CREATE TABLE inv.item_unit_of_measure (
     unit_of_measure_id   uuid NOT NULL,
     qty_per_unit_of_measure platform.quantity NOT NULL DEFAULT 1 CHECK (qty_per_unit_of_measure > 0),
     barcode              text,
+    barcode_type         text NOT NULL DEFAULT 'UNDEFINED' CHECK (barcode_type IN ('GS1','ISBN','UNDEFINED')),   -- CR #37: eBarimt barCodeType
     created_at           timestamptz NOT NULL DEFAULT now(),
     created_by           uuid DEFAULT platform.current_user_id(),
     updated_at           timestamptz,
@@ -194,7 +204,7 @@ CREATE TABLE inv.item_ledger_entry (
     posting_date             date NOT NULL,
     entry_type               text NOT NULL CHECK (entry_type IN ('PURCHASE','SALE','POSITIVE_ADJMT','NEGATIVE_ADJMT','TRANSFER')),
     document_type            text NOT NULL CHECK (document_type IN ('NONE','SALES_INVOICE','SALES_CREDIT_MEMO','PURCHASE_INVOICE',
-                                                                    'PURCHASE_CREDIT_MEMO','INVENTORY_ADJUSTMENT','OPENING')),
+                                                                    'PURCHASE_CREDIT_MEMO','INVENTORY_ADJUSTMENT','OPENING','PHYS_INVENTORY')),   -- CR #97
     document_no              platform.document_no NOT NULL,
     document_line_no         integer,
     description              text,
@@ -248,7 +258,7 @@ CREATE TABLE inv.value_entry (
     posting_date                date NOT NULL,
     valuation_date              date NOT NULL,
     document_type               text NOT NULL CHECK (document_type IN ('NONE','SALES_INVOICE','SALES_CREDIT_MEMO','PURCHASE_INVOICE',
-                                                                    'PURCHASE_CREDIT_MEMO','INVENTORY_ADJUSTMENT','OPENING')),
+                                                                    'PURCHASE_CREDIT_MEMO','INVENTORY_ADJUSTMENT','OPENING','PHYS_INVENTORY')),   -- CR #97
     document_no                 platform.document_no NOT NULL,
     document_line_no            integer,
     valued_quantity             platform.quantity NOT NULL,
@@ -345,6 +355,7 @@ CREATE TABLE inv.item_cost_state (
     average_unit_cost      platform.unit_amount NOT NULL DEFAULT 0,
     last_item_ledger_entry_no bigint,
     last_posting_date      date,
+    last_outbound_date     date,                     -- CR #107 (INV-R-08): latest outbound posting date, read under the row lock
     needs_recost           boolean NOT NULL DEFAULT false,
     recost_from_date       date,
     created_at             timestamptz NOT NULL DEFAULT now(),
@@ -360,7 +371,161 @@ CREATE TABLE inv.item_cost_state (
 CREATE INDEX ix_item_cost_state__location ON inv.item_cost_state (company_id, location_id);
 COMMENT ON TABLE inv.item_cost_state IS 'Running moving-average state per item (qty, value) updated in the posting transaction; replaces BC Avg. Cost Adjmt. Entry Point (T5804) + Adjust Cost batch. Projection: rebuildable from value_entry.';
 
+-- -----------------------------------------------------------------------------
+-- Item journals: adjustments, opening stock, physical counts (CR #97, FR-INV-007/008, R2). Drafts are mutable;
+-- posted journals are append-only (910) and are the source of the БМ forms.
+-- -----------------------------------------------------------------------------
+CREATE TABLE inv.item_journal (
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id                   uuid NOT NULL,
+    company_id                  uuid NOT NULL,
+    no                          platform.document_no NOT NULL,          -- draft number (IA_DRAFT / IC_DRAFT)
+    journal_type                text NOT NULL CHECK (journal_type IN ('ADJUSTMENT','OPENING','PHYS_COUNT')),
+    description                 text,
+    posting_date                date,
+    reason_code_id              uuid,
+    location_id                 uuid,
+    bal_gl_account_id           uuid,                                   -- OPENING: balancing account of opening stock
+    status                      text NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','COUNTING')),
+    calculated_at               timestamptz,                            -- PHYS_COUNT: when qty_calculated was taken
+    calculated_max_ile_entry_no bigint,                                 -- stale-count detection
+    blind_count                 boolean NOT NULL DEFAULT false,
+    created_at                  timestamptz NOT NULL DEFAULT now(),
+    created_by                  uuid DEFAULT platform.current_user_id(),
+    updated_at                  timestamptz,
+    updated_by                  uuid,
+    row_version                 integer NOT NULL DEFAULT 1,
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    FOREIGN KEY (company_id, reason_code_id) REFERENCES platform.reason_code (company_id, id),
+    FOREIGN KEY (company_id, location_id) REFERENCES inv.location (company_id, id),
+    FOREIGN KEY (company_id, bal_gl_account_id) REFERENCES gl.gl_account (company_id, id),
+    UNIQUE (company_id, no),
+    UNIQUE (company_id, id),
+    CHECK (journal_type <> 'OPENING' OR bal_gl_account_id IS NOT NULL),
+    CHECK (status <> 'COUNTING' OR journal_type = 'PHYS_COUNT')
+);
+CREATE INDEX ix_item_journal__reason ON inv.item_journal (company_id, reason_code_id);
+CREATE INDEX ix_item_journal__location ON inv.item_journal (company_id, location_id);
+CREATE INDEX ix_item_journal__bal_account ON inv.item_journal (company_id, bal_gl_account_id);
+COMMENT ON TABLE inv.item_journal IS 'Simplified BC Item Journal (T83 batch/header part) and Phys. Inventory Journal: adjustment, opening stock and physical count drafts (CR #97, R2).';
+
+CREATE TABLE inv.item_journal_line (
+    id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id                 uuid NOT NULL,
+    company_id                uuid NOT NULL,
+    item_journal_id           uuid NOT NULL,
+    line_no                   integer NOT NULL,
+    item_id                   uuid NOT NULL,
+    entry_type                text NOT NULL CHECK (entry_type IN ('POSITIVE_ADJMT','NEGATIVE_ADJMT')),
+    description               text,
+    quantity                  platform.quantity NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+    unit_of_measure_code      platform.code20,
+    qty_per_unit_of_measure   platform.quantity NOT NULL DEFAULT 1 CHECK (qty_per_unit_of_measure > 0),
+    unit_cost                 platform.unit_amount NOT NULL DEFAULT 0 CHECK (unit_cost >= 0),
+    adjustment_gl_account_id  uuid,                                    -- override of the adjustment / count difference account
+    qty_calculated            platform.quantity,                       -- PHYS_COUNT: book quantity at calculated_at
+    qty_counted               platform.quantity CHECK (qty_counted >= 0),
+    dimension_set_id          bigint NOT NULL DEFAULT 0,
+    created_at                timestamptz NOT NULL DEFAULT now(),
+    created_by                uuid DEFAULT platform.current_user_id(),
+    updated_at                timestamptz,
+    updated_by                uuid,
+    row_version               integer NOT NULL DEFAULT 1,
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    FOREIGN KEY (company_id, item_journal_id) REFERENCES inv.item_journal (company_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id, item_id) REFERENCES inv.item (company_id, id),
+    FOREIGN KEY (company_id, adjustment_gl_account_id) REFERENCES gl.gl_account (company_id, id),
+    FOREIGN KEY (company_id, dimension_set_id) REFERENCES gl.dimension_set (company_id, dimension_set_id),
+    UNIQUE (company_id, item_journal_id, line_no)
+);
+-- one count line per item and count journal
+CREATE UNIQUE INDEX ux_item_journal_line__count_item ON inv.item_journal_line (company_id, item_journal_id, item_id)
+    WHERE qty_calculated IS NOT NULL;
+CREATE INDEX ix_item_journal_line__item ON inv.item_journal_line (company_id, item_id);
+CREATE INDEX ix_item_journal_line__account ON inv.item_journal_line (company_id, adjustment_gl_account_id);
+CREATE INDEX ix_item_journal_line__dimension_set ON inv.item_journal_line (company_id, dimension_set_id);
+COMMENT ON TABLE inv.item_journal_line IS 'Mirrors BC table 83 Item Journal Line (adjustment / opening / count line with Qty. (Calculated) and Qty. (Phys. Inventory)), CR #97.';
+
+CREATE TABLE inv.posted_item_journal (
+    id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id            uuid NOT NULL,
+    company_id           uuid NOT NULL,
+    no                   platform.document_no NOT NULL,            -- legal gapless number (IA / IC / OB)
+    pre_assigned_no      platform.document_no,
+    journal_type         text NOT NULL CHECK (journal_type IN ('ADJUSTMENT','OPENING','PHYS_COUNT')),
+    posting_date         date NOT NULL,
+    description          text,
+    reason_code_id       uuid,
+    location_id          uuid,
+    total_cost_amount    platform.amount NOT NULL DEFAULT 0,
+    transaction_no       bigint,                                   -- NULL for zero-cost documents (no G/L voucher)
+    gl_register_no       bigint,
+    created_at           timestamptz NOT NULL DEFAULT now(),
+    created_by           uuid DEFAULT platform.current_user_id(),
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    FOREIGN KEY (company_id, reason_code_id) REFERENCES platform.reason_code (company_id, id),
+    FOREIGN KEY (company_id, location_id) REFERENCES inv.location (company_id, id),
+    FOREIGN KEY (company_id, transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no),
+    FOREIGN KEY (company_id, gl_register_no) REFERENCES gl.gl_register (company_id, no) DEFERRABLE INITIALLY DEFERRED,
+    UNIQUE (company_id, no),
+    UNIQUE (company_id, id)
+);
+CREATE INDEX ix_posted_item_journal__reason ON inv.posted_item_journal (company_id, reason_code_id) WHERE reason_code_id IS NOT NULL;
+CREATE INDEX ix_posted_item_journal__location ON inv.posted_item_journal (company_id, location_id);
+CREATE INDEX ix_posted_item_journal__transaction ON inv.posted_item_journal (company_id, transaction_no);
+CREATE INDEX ix_posted_item_journal__register ON inv.posted_item_journal (company_id, gl_register_no);
+CREATE INDEX ix_posted_item_journal__date ON inv.posted_item_journal (company_id, posting_date);
+COMMENT ON TABLE inv.posted_item_journal IS 'Posted inventory adjustment / opening / count document (БМ forms source), immutable (CR #97). No direct BC table (BC keeps Item Register + ledger entries).';
+
+CREATE TABLE inv.posted_item_journal_line (
+    id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id                 uuid NOT NULL,
+    company_id                uuid NOT NULL,
+    posted_item_journal_id    uuid NOT NULL,
+    line_no                   integer NOT NULL,
+    item_id                   uuid NOT NULL,
+    entry_type                text NOT NULL CHECK (entry_type IN ('POSITIVE_ADJMT','NEGATIVE_ADJMT')),
+    description               text,
+    quantity                  platform.quantity NOT NULL,
+    unit_of_measure_code      platform.code20,
+    qty_per_unit_of_measure   platform.quantity NOT NULL DEFAULT 1,
+    unit_cost                 platform.unit_amount NOT NULL DEFAULT 0,
+    cost_amount               platform.amount NOT NULL DEFAULT 0,
+    qty_calculated            platform.quantity,
+    qty_counted               platform.quantity,
+    item_ledger_entry_no      bigint,
+    adjustment_gl_account_id  uuid,
+    dimension_set_id          bigint NOT NULL DEFAULT 0,
+    created_at                timestamptz NOT NULL DEFAULT now(),
+    created_by                uuid DEFAULT platform.current_user_id(),
+    FOREIGN KEY (tenant_id, company_id) REFERENCES platform.company (tenant_id, id),
+    FOREIGN KEY (company_id, posted_item_journal_id) REFERENCES inv.posted_item_journal (company_id, id),
+    FOREIGN KEY (company_id, item_id) REFERENCES inv.item (company_id, id),
+    FOREIGN KEY (company_id, item_ledger_entry_no) REFERENCES inv.item_ledger_entry (company_id, entry_no),
+    FOREIGN KEY (company_id, adjustment_gl_account_id) REFERENCES gl.gl_account (company_id, id),
+    FOREIGN KEY (company_id, dimension_set_id) REFERENCES gl.dimension_set (company_id, dimension_set_id),
+    UNIQUE (company_id, posted_item_journal_id, line_no)
+);
+CREATE INDEX ix_posted_item_journal_line__item ON inv.posted_item_journal_line (company_id, item_id);
+CREATE INDEX ix_posted_item_journal_line__ile ON inv.posted_item_journal_line (company_id, item_ledger_entry_no) WHERE item_ledger_entry_no IS NOT NULL;
+CREATE INDEX ix_posted_item_journal_line__account ON inv.posted_item_journal_line (company_id, adjustment_gl_account_id);
+CREATE INDEX ix_posted_item_journal_line__dimension_set ON inv.posted_item_journal_line (company_id, dimension_set_id);
+COMMENT ON TABLE inv.posted_item_journal_line IS 'Line of a posted inventory adjustment / count document with its item ledger entry and cost (CR #97). Immutable.';
+
 -- Foreign keys from earlier files
+-- CR #103: line-level return links to the item ledger entry being returned (exact cost on returns)
+ALTER TABLE sales.sales_line ADD FOREIGN KEY (company_id, appl_from_item_entry_no) REFERENCES inv.item_ledger_entry (company_id, entry_no);
+ALTER TABLE sales.sales_invoice_line ADD FOREIGN KEY (company_id, appl_from_item_entry_no) REFERENCES inv.item_ledger_entry (company_id, entry_no);
+ALTER TABLE sales.sales_cr_memo_line ADD FOREIGN KEY (company_id, appl_from_item_entry_no) REFERENCES inv.item_ledger_entry (company_id, entry_no);
+ALTER TABLE purchase.purchase_line ADD FOREIGN KEY (company_id, appl_to_item_entry_no) REFERENCES inv.item_ledger_entry (company_id, entry_no);
+ALTER TABLE purchase.purch_inv_line ADD FOREIGN KEY (company_id, appl_to_item_entry_no) REFERENCES inv.item_ledger_entry (company_id, entry_no);
+ALTER TABLE purchase.purch_cr_memo_line ADD FOREIGN KEY (company_id, appl_to_item_entry_no) REFERENCES inv.item_ledger_entry (company_id, entry_no);
+CREATE INDEX ix_sales_line__appl_from ON sales.sales_line (company_id, appl_from_item_entry_no) WHERE appl_from_item_entry_no IS NOT NULL;
+CREATE INDEX ix_sales_invoice_line__appl_from ON sales.sales_invoice_line (company_id, appl_from_item_entry_no) WHERE appl_from_item_entry_no IS NOT NULL;
+CREATE INDEX ix_sales_cr_memo_line__appl_from ON sales.sales_cr_memo_line (company_id, appl_from_item_entry_no) WHERE appl_from_item_entry_no IS NOT NULL;
+CREATE INDEX ix_purchase_line__appl_to ON purchase.purchase_line (company_id, appl_to_item_entry_no) WHERE appl_to_item_entry_no IS NOT NULL;
+CREATE INDEX ix_purch_inv_line__appl_to ON purchase.purch_inv_line (company_id, appl_to_item_entry_no) WHERE appl_to_item_entry_no IS NOT NULL;
+CREATE INDEX ix_purch_cr_memo_line__appl_to ON purchase.purch_cr_memo_line (company_id, appl_to_item_entry_no) WHERE appl_to_item_entry_no IS NOT NULL;
 ALTER TABLE sales.sales_line
     ADD FOREIGN KEY (company_id, item_id) REFERENCES inv.item (company_id, id),
     ADD FOREIGN KEY (company_id, location_id) REFERENCES inv.location (company_id, id);

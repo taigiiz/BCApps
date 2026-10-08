@@ -37,10 +37,15 @@ CREATE TABLE fx.official_exchange_rate (
     source           text NOT NULL DEFAULT 'MONGOLBANK' CHECK (source IN ('MONGOLBANK')),
     fetched_at       timestamptz NOT NULL DEFAULT now(),
     source_reference text,
-    UNIQUE (source, currency_code, rate_date)
+    revision         smallint NOT NULL DEFAULT 0 CHECK (revision >= 0),   -- CR #198 (BR-FX-14): Mongolbank correction = new revision
+    superseded_at    timestamptz,                                         -- set on the previous revision when a correction arrives
+    UNIQUE (source, currency_code, rate_date, revision)
 );
+-- at most one current (not superseded) rate per source, currency and day
+CREATE UNIQUE INDEX ux_official_exchange_rate__current ON fx.official_exchange_rate (source, currency_code, rate_date)
+    WHERE superseded_at IS NULL;
 CREATE INDEX ix_official_exchange_rate__lookup ON fx.official_exchange_rate (currency_code, rate_date DESC);
-COMMENT ON TABLE fx.official_exchange_rate IS 'Global Mongolbank official daily rates fetched once for all tenants (worker-written). Companies copy/link them into fx.currency_exchange_rate.';
+COMMENT ON TABLE fx.official_exchange_rate IS 'Global Mongolbank official daily rates fetched once for all tenants (worker-written). Companies copy/link them into fx.currency_exchange_rate. Corrections are appended as a new revision (02 §9.5); the old row gets superseded_at and is never updated otherwise.';
 
 -- Company currencies ----------------------------------------------------------
 CREATE TABLE fx.currency (
@@ -115,6 +120,7 @@ CREATE TABLE fx.exch_rate_adjmt_register (
     company_id              uuid NOT NULL,
     no                      bigint NOT NULL CHECK (no > 0),
     run_no                  bigint NOT NULL,                     -- one run creates one register row per (account type, group, currency)
+    reverses_run_no         bigint,                              -- CR #202 (BR-FX-54): rows of a reversal run point to the run they reverse
     posting_date            date NOT NULL,
     document_no             platform.document_no NOT NULL,
     account_type            text NOT NULL CHECK (account_type IN ('CUSTOMER','VENDOR','BANK_ACCOUNT','GL_ACCOUNT')),
@@ -133,9 +139,12 @@ CREATE TABLE fx.exch_rate_adjmt_register (
     FOREIGN KEY (company_id, transaction_no) REFERENCES gl.gl_transaction (company_id, transaction_no),
     FOREIGN KEY (company_id, gl_register_no) REFERENCES gl.gl_register (company_id, no) DEFERRABLE INITIALLY DEFERRED,
     UNIQUE (company_id, no),
-    UNIQUE (company_id, id)
+    UNIQUE (company_id, id),
+    CHECK (reverses_run_no IS NULL OR reverses_run_no < run_no)
 );
 CREATE INDEX ix_exch_rate_adjmt_register__run ON fx.exch_rate_adjmt_register (company_id, run_no);
+CREATE INDEX ix_exch_rate_adjmt_register__currency_run ON fx.exch_rate_adjmt_register (company_id, currency_code, run_no);
+CREATE INDEX ix_exch_rate_adjmt_register__reverses ON fx.exch_rate_adjmt_register (company_id, reverses_run_no) WHERE reverses_run_no IS NOT NULL;
 CREATE INDEX ix_exch_rate_adjmt_register__currency ON fx.exch_rate_adjmt_register (company_id, currency_code, posting_date);
 CREATE INDEX ix_exch_rate_adjmt_register__transaction ON fx.exch_rate_adjmt_register (company_id, transaction_no);
 CREATE INDEX ix_exch_rate_adjmt_register__gl_register ON fx.exch_rate_adjmt_register (company_id, gl_register_no);
@@ -175,3 +184,6 @@ COMMENT ON TABLE fx.exch_rate_adjmt_ledger_entry IS 'Mirrors BC table 186 Exch. 
 ALTER TABLE gl.journal_line
     ADD FOREIGN KEY (company_id, currency_code) REFERENCES fx.currency (company_id, code);
 CREATE INDEX ix_journal_line__currency ON gl.journal_line (company_id, currency_code) WHERE currency_code IS NOT NULL;
+ALTER TABLE tax.customs_declaration
+    ADD FOREIGN KEY (company_id, currency_code) REFERENCES fx.currency (company_id, code);
+CREATE INDEX ix_customs_declaration__currency ON tax.customs_declaration (company_id, currency_code) WHERE currency_code IS NOT NULL;
