@@ -1,10 +1,10 @@
 # 06. Борлуулалт ба авлага (Sales & Receivables) — модулийн тодорхойлолт
 
-> **Төлөв:** Хөгжүүлэлтэд бэлэн ноорог v1.0. **Огноо:** 2026-10-07.
+> **Төлөв:** Хөгжүүлэлтэд бэлэн ноорог v1.1 (adversarial review хийсэн, төгсгөлийн "Хяналтын тэмдэглэл"-ийг үзнэ үү). **Огноо:** 2026-10-07, хянасан 2026-10-08.
 > **Модуль:** `sales` (баримт) + `party` schema-ийн авлагын хэсэг (харилцагчийн дэд дэвтэр, тулгалт, насжилт, хуулга; D-K2).
 > **Нэг эх сурвалж:** [DECISIONS.md](./DECISIONS.md) (§K: нэршлийг [`db/schema/*.sql`](./db/schema/) тодорхойлно). Бусад баримттай зөрвөл DECISIONS → schema → энэ баримт гэсэн дарааллаар давамгайлна.
 > **Уншигч:** backend хөгжүүлэгч, QA, нягтлан зөвлөх.
-> **Холбоотой баримт:** [01-requirements.md](./01-requirements.md) (FR-SAL, FR-PTY, FR-TAX-004..008, FR-RPT-003/004, FR-EBR-002/003), [02-architecture.md](./02-architecture.md) §4.2.7, §4.2.11, §6, [03-domain-model.md](./03-domain-model.md) §3.4, §5, §6.1, [12-ebarimt-integration.md](./12-ebarimt-integration.md), [14-api.md](./14-api.md), [15-ui-ux.md](./15-ui-ux.md), [db/README.md](./db/README.md), [db/seed/README.md](./db/seed/README.md).
+> **Холбоотой баримт:** [01-requirements.md](./01-requirements.md) (FR-SAL, FR-PTY, FR-TAX-004..008, FR-RPT-003/004, FR-EBR-002/003), [02-architecture.md](./02-architecture.md) §4.2.7, §4.2.11, §6, [03-domain-model.md](./03-domain-model.md) §3.4, §5, §6.1, [05-posting-engine.md](./05-posting-engine.md) (`PostingDocument`, `ILedgerWriter`, `RunSubledgerOnlyAsync`), [07-purchases-payables.md](./07-purchases-payables.md), [08-tax-vat-mn.md](./08-tax-vat-mn.md), [09-bank-cash-fx.md](./09-bank-cash-fx.md), [10-periods-closing-reporting.md](./10-periods-closing-reporting.md), [12-ebarimt-integration.md](./12-ebarimt-integration.md), [14-api.md](./14-api.md), [15-ui-ux.md](./15-ui-ux.md), [db/README.md](./db/README.md), [db/seed/README.md](./db/seed/README.md).
 > **Судалгаа (BC эх):** [bc-sales-documents.md](./research/bc-sales-documents.md) (R-SALES-DOCUMENTS-nn), [bc-account-determination.md](./research/bc-account-determination.md) (R-ACCOUNT-DETERMINATION-nn), [bc-subledgers-application.md](./research/bc-subledgers-application.md) (R-SUBLEDGERS-APPLICATION-nn), [bc-vat.md](./research/bc-vat.md) (R-VAT-nn), [bc-gl-posting.md](./research/bc-gl-posting.md) (R-GL-POSTING-nn), [mn-integrations-market.md](./research/mn-integrations-market.md) (I-nn).
 
 ## Агуулга
@@ -24,6 +24,7 @@
 - [12. Schema change requests](#12-schema-change-requests)
 - [13. Нээлттэй асуулт](#13-нээлттэй-асуулт)
 - [Хавсралт А. Бусад баримттай зөрүү](#хавсралт-а-бусад-баримттай-зөрүү)
+- [Хяналтын тэмдэглэл (Review log)](#хяналтын-тэмдэглэл-review-log)
 
 ---
 
@@ -37,7 +38,7 @@
 | `BR-AR-nn` | Авлагын дэд дэвтэр, тулгалт, насжилт, хуулгын дүрэм (энэ баримт эзэмшинэ) |
 | `AT-SAL-nn`, `AT-AR-nn` | Хүлээн авах тест (Given/When/Then) |
 | `GS-SAL-nnn`, `GS-AR-nnn` | Golden scenario ([18-dev-setup.md](./18-dev-setup.md) §13.3-ын формат) |
-| `P1..P12` | §7-ийн posting-ийн жишээ |
+| `P1..P12` | §7-ийн posting-ийн жишээ (дэд жишээ P1a, P2b, P2c) |
 | `SCR-SAL-nn` | Энэ баримтын schema өөрчлөлтийн хүсэлт (§12) |
 | `OQ-SAL-nn` | Нээлттэй асуулт (§13) |
 | `r(x)` | `MoneyMath.Round(x, d)`, `MidpointRounding.AwayFromZero` (ADR-0006, 18-dev-setup §4.3). `d` = компанийн дүнгийн нарийвчлалын орон (0.01 → 2) |
@@ -79,14 +80,14 @@
 
 | Хүрээнд | Хүрээнээс гадуур (эзэмшигч) |
 |---|---|
-| `sales.*` хүснэгтүүд (ноорог, posted, `cancelled_document`, `sales_setup`) | Худалдан авалт ба өглөг (`11-purchases`; өглөгийн тулгалт нь энэ баримтын §5.13–5.14-ийг толин тусгалаар хэрэглэнэ) |
+| `sales.*` хүснэгтүүд (ноорог, posted, `cancelled_document`, `sales_setup`) | Худалдан авалт ба өглөг ([07-purchases-payables.md](./07-purchases-payables.md); өглөгийн тулгалт нь энэ баримтын §5.13–5.14-ийг толин тусгалаар хэрэглэнэ) |
 | `party.cust_ledger_entry`, `party.detailed_cust_ledger_entry`, `party.application_draft` (харилцагчийн хэсэг) | Харилцагчийн картын CRUD, ТТД татах, PII шифрлэлт (FR-PTY-001..004; 13-security-audit-tenancy) |
-| Харилцагчийн төлбөрийн **авлагын тал** (CLE, тулгалт); бэлэн борлуулалтын төлбөрийн гүйлгээг угсрах | Банк/кассын баримт, `bank.bank_ledger_entry`, МХ-1/МХ-2-ийн дугаар ба хэвлэмэл (банк/кассын spec) |
+| Харилцагчийн төлбөрийн **авлагын тал** (CLE, тулгалт); бэлэн борлуулалтын төлбөрийн гүйлгээг угсрах | Банк/кассын баримт, `bank.bank_ledger_entry`, МХ-1/МХ-2-ийн дугаар ба хэвлэмэл ([09-bank-cash-fx.md](./09-bank-cash-fx.md)) |
 | НӨАТ-ын баримтын тооцооны **хэрэглээ** (`ITaxCalculator`-ийн гэрээ, §6) | НӨАТ-ын тохиргоо, хувь, тайлан, хаалт, НӨАТ төлөгч бус горимын харгалзаа (`08-tax-vat-mn`) |
 | Данс тодорхойлох **хэрэглээ** (General Posting Setup, posting group) | Тохиргооны CRUD (08, 15 S-GL-13, S-TAX-01) |
 | eBarimt-ийн гох (trigger) ба `ReceiptRequest`-ийн өгөгдөл | PosAPI, төлөвийн машин, гинж, `billIdSuffix`, хэвлэх (12) |
-| Насжилт, хуулгын **тооцоолол** | Тайлангийн PDF/Excel хэлбэр, экспорт job (Reporting) |
-| Posting engine-ийн **хэрэглээ** (`IPostingService`) | Engine өөрөө, дугаарлалт, register, preview механизм (`05-gl-posting`, 02 §6) |
+| Насжилт, хуулгын **тооцоолол** | Тайлангийн PDF/Excel хэлбэр, экспорт job ([10-periods-closing-reporting.md](./10-periods-closing-reporting.md)) |
+| Posting engine-ийн **хэрэглээ** (`IPostingService`) | Engine өөрөө, дугаарлалт, register, preview механизм ([05-posting-engine.md](./05-posting-engine.md), 02 §6) |
 
 ### 1.3 Хувилбар (DECISIONS §H)
 
@@ -116,12 +117,12 @@
 | FR-SAL-015 | Ноорог устгах | R1 | BR-SAL-08 |
 | FR-SAL-016 | Нэхэмжлэхийн хөнгөлөлт | **R2** | §6.6, SCR-SAL-01 |
 | FR-SAL-017 | Захиалга, үнийн санал | **R3** | Хамрахгүй (D-A4) |
-| FR-PTY-005 | Posting group ба харилцагчийн данс | R1 | BR-SAL-43, BR-AR-02 |
+| FR-PTY-005 | Posting group ба харилцагчийн данс | R1 | BR-SAL-43, BR-AR-02, BR-AR-16 |
 | FR-PTY-006 | Төлбөрийн нөхцөл ба төлөх огноо | R1 | BR-SAL-05, §5.3 |
-| FR-PTY-007 | Авлагын дэд дэвтэр | R1 | BR-AR-01..12, §5.8 |
+| FR-PTY-007 | Авлагын дэд дэвтэр | R1 | BR-AR-01..16, §5.8 |
 | FR-PTY-009 | Тодорхой баримтад тулгах | R1 | BR-AR-20..33, §5.13, P5 |
 | FR-PTY-010 | Олон баримтад хуваарилах | R1 | BR-AR-34..38, §5.13.3, P8 |
-| FR-PTY-011 | Unapply | R1 | BR-AR-40..47, §5.14, P6 |
+| FR-PTY-011 | Unapply | R1 | BR-AR-40..48, §5.14, P6 |
 | FR-PTY-012 | Урьдчилгаа | R1 | BR-AR-50..53, §5.15, P7 |
 | FR-PTY-013 | Тулгалтын огноо ба үеийн хориг | R1 | BR-AR-26..28 |
 | FR-PTY-014 | Нээлттэй entry-ийн засвар | R1 (Should) | BR-AR-13..15, §5.16 |
@@ -200,7 +201,7 @@
 | Detailed мөрийг нэгтгэх (buffer merge) | Нэг тулгалтын хос бүрд тусдаа мөр; INITIAL нэг | R-SUBLEDGERS-APPLICATION-04 |
 | `Closed by …` (AllApplied логик) | Мэдээллийн зорилготой энгийн дүрэм (BR-AR-31) | R-SUBLEDGERS-APPLICATION-22 |
 | Payment Terms-ийн хөнгөлөлтийн хэсэг | Зөвхөн `due_date` | R-SALES-DOCUMENTS-47, 48 |
-| Customer Posting Group солих (Alt. group) | Ноорог дээр засагдахгүй, харилцагчаас | R-ACCOUNT-DETERMINATION-29 |
+| Customer Posting Group солих (Alt. group), олон posting group-ийн тулгалт (Allow Multiple Posting Groups) | Ноорог дээр засагдахгүй, харилцагчаас. Тулгалт зөвхөн **ижил авлагын данстай** entry хооронд (BR-AR-16); өөр данстай бол тулгахгүй (авлагын данс хооронд шилжүүлэх G/L R1-д үүсгэхгүй) | R-ACCOUNT-DETERMINATION-29 (SKIP); bc-subledgers §7 "Drop: multiple posting groups per customer"; R-SUBLEDGERS-APPLICATION-07 |
 
 ### 2.4 Хассан зүйл
 
@@ -323,6 +324,7 @@
 | `unit_cost_lcy`, `location_id` | R2 (бараа) |
 | `dimension_set_id` | Мөрийн dimension (анхдагч = толгойн) |
 | `classification_code`, `tax_product_code`, `barcode` | eBarimt-ийн шинж (бараанаас, засаж болно; 12 §5.4) |
+| *(байхгүй — 12 SCR-09)* `system_line_kind` | `NONE` / `INVOICE_ROUNDING`. Бэлэн мөнгөний бүхэлчлэлийн системийн мөрийг данснаас бус энэ тэмдгээр танина (BR-SAL-58). Энэ багана posted мөрөнд (`sales_invoice_line`, `sales_cr_memo_line`) ч хэрэгтэй: цуцлалт (BR-SAL-73), хуулах (BR-SAL-79), eBarimt (12 MAP-03). **SCR-09 хэрэгжихээс өмнө `invoice_rounding_enabled = true`-г тохируулах боломжгүй** (FR-SAL-013 нь Could; данс эсвэл дүнгээр таних heuristic хэрэглэхгүй) |
 
 ### 3.5 Батлагдсан баримт (BC T112–T115, T1900)
 
@@ -413,7 +415,7 @@ Posted мөр (`sales_invoice_line`, `sales_cr_memo_line`) нь ноорогий
 
 | Хүснэгт | Энэ модулийн өгөх өгөгдөл |
 |---|---|
-| `gl.gl_transaction` | `posting_date`, `document_type`, `document_no`, `source_code = 'SALES'`, `reason_code_id`, `description` |
+| `gl.gl_transaction` | `posting_date`, `document_type`, `document_no`, `source_code` (баримтын ваучер `SALES`; бэлэн борлуулалтын төлбөрийн ваучер харьцсан данс `kind = 'CASH'` бол `CASHVOUCHER`, бусад `PAYMENTREG` — 05 Z-PST-15, `PostingVoucher.SourceCode`), `reason_code_id`, `description`. `gl.gl_register.source_code = 'SALES'` (run-ийнх) |
 | `gl.gl_entry` | `gl_account_id`, тэмдэгтэй `amount`, `vat_amount`, `gen_posting_type = 'SALE'` (орлого/хөнгөлөлтийн мөр) эсвэл `NONE` (авлага, НӨАТ, касс, бөөрөнхийлөл), бүлгийн snapshot код, `vat_date`, `source_type = 'CUSTOMER'`, `source_id`, `source_no`, `dimension_set_id`, `system_created = true`, `external_document_no`, `description` (≤ 100) |
 | `tax.vat_entry` | `entry_type = 'SALE'`, `base`, `amount` (тэмдэгтэй), `vat_calculation_type`, `vat_percent`, `vat_identifier`, `vat_category`, `ebarimt_tax_type`, бүлгийн код, `bill_to_pay_to_type = 'CUSTOMER'`, `bill_to_pay_to_id/no`, `party_tin`, `country_code`, `gl_entry_no` (суурь G/L), `vat_date` |
 | `tax.gl_entry_vat_entry_link` | Суурь G/L entry ↔ VAT entry |
@@ -449,7 +451,7 @@ Posted мөр (`sales_invoice_line`, `sales_cr_memo_line`) нь ноорогий
 | `tax.vat_return_period.status` | НӨАТ-ын огноо OPEN үед (DB `ERV01`) |
 | `platform.number_series` (`SI`, `SC`, `SI_DRAFT`, `SC_DRAFT`) | `fn_next_document_no(code, date)` |
 | `platform.ledger_counter` ledger нэр | `GL_REGISTER`, `GL_TRANSACTION`, `GL_ENTRY`, `VAT_ENTRY`, `CUST_LEDGER_ENTRY`, `DETAILED_CUST_LEDGER_ENTRY`, `APPLICATION_NO`, `BANK_LEDGER_ENTRY` |
-| `platform.source_code` | `SALES`, `SALESAPPL`, `UNAPPSALES` |
+| `platform.source_code` | `SALES` (баримтын ваучер, register), `CASHVOUCHER` / `PAYMENTREG` (бэлэн борлуулалтын төлбөрийн ваучер, BR-SAL-56), `SALESAPPL`, `UNAPPSALES` (G/L-гүй run) |
 | `platform.reason_code` (seed) | `RETURN`, `PRICE_ADJ`, `CANCEL`, `CORRECTION`, `EBARIMT_FIX` |
 | `bank.bank_account` (`kind`, `currency_code`, `bank_account_posting_group_id`, `blocked`, `cash_receipt_no_series_id`, `cash_payment_no_series_id`) | Бэлэн борлуулалтын харьцсан данс |
 | `inv.item` (`item_type`, `unit_price`, `price_includes_vat`, `gen_prod_posting_group_id`, `vat_prod_posting_group_id`, `classification_code`, `tax_product_code`, `barcode`, `blocked`, `sales_blocked`) | Мөрийн анхдагч |
@@ -480,7 +482,7 @@ Posted мөр (`sales_invoice_line`, `sales_cr_memo_line`) нь ноорогий
 | ID | Дүрэм | Эх |
 |---|---|---|
 | BR-SAL-10 | `line_type`: `COMMENT` (дүнгүй, posting-д орохгүй, posted баримтад хуулагдана), `GL_ACCOUNT`, `ITEM`. `FIXED_ASSET` нь R2 (`sales.line_type_not_available`). | FR-SAL-002; R-SALES-DOCUMENTS-10, 18 |
-| BR-SAL-11 | `GL_ACCOUNT` мөрийн данс: `account_type = 'POSTING'`, `blocked = false`, **`direct_posting = true`** (хяналтын данс 1200, 2300, 1100 г.м. хориотой). Мөрт дансны `gen_prod_posting_group_id`, `vat_prod_posting_group_id` анхдагч; хоёулаа заавал (хоосон бол `sales.line_posting_groups_missing`). | FR-SAL-002 AC1; R-ACCOUNT-DETERMINATION-04, 34; R-GL-POSTING-07 |
+| BR-SAL-11 | `GL_ACCOUNT` мөрийн данс: `account_type = 'POSTING'` (`gl.account_not_posting`), `blocked = false` (`gl.account_blocked`), **`direct_posting = true`** (`gl.direct_posting_not_allowed`; хяналтын данс 1200, 2300, 1100, 8290 г.м. хориотой). Posting-д энэ мөрийн G/L нь `LineOrigin.UserEntered` тул engine дахин шалгана (05 BR-PST-15); бүхэлчлэлийн системийн мөр (BR-SAL-58) `SystemDerived` тул шалгалтаас чөлөөлөгдөнө (R-ACCOUNT-DETERMINATION-34). Мөрт дансны `gen_prod_posting_group_id`, `vat_prod_posting_group_id` анхдагч; хоёулаа заавал (хоосон бол `sales.line_posting_groups_missing`). | FR-SAL-002 AC1; R-ACCOUNT-DETERMINATION-04, 34; R-GL-POSTING-07 |
 | BR-SAL-12 | `ITEM` мөр: бараа `blocked = false`. `sales_blocked = true` бараа нэхэмжлэхэд хориотой, кредит нотод анхааруулгатай зөвшөөрнө. R1-д `item_type = 'INVENTORY'` бол `inv.inventory_not_enabled` (D-G5). Анхдагч: `description`, `unit_of_measure_code` (үндсэн нэгж), `unit_price` (BR-SAL-13), `gen_prod/vat_prod_posting_group_id`, `classification_code`, `tax_product_code`, `barcode`. | R-SALES-DOCUMENTS-10; pitfall 14; D-G5 |
 | BR-SAL-13 | Барааны үнэ баримтын үнийн горимоос өөр бол хөрвүүлнэ: `item.price_includes_vat = true` ба `header.prices_including_vat = false` → `unit_price = ru(item.unit_price × 100 / (100 + r))`; эсрэгээр `× (100 + r) / 100` (`ru` = нэгжийн үнийн нарийвчлал). | R-SALES-DOCUMENTS-17 |
 | BR-SAL-14 | `quantity ≥ 0` (CHECK). `quantity = 0` мөрийн бүх дүн 0 (тооцоолол автоматаар). `unit_price < 0` нь **зөвхөн** `GL_ACCOUNT` мөрөнд (жишээ: "Хөнгөлөлт" мөр) бөгөөд тэр мөрийн `line_discount_percent = 0`. `ITEM` мөрөнд сөрөг үнэ `sales.negative_line_not_allowed`. | R-SALES-DOCUMENTS-18; R-VAT-13; 12 MAP-04 |
@@ -499,10 +501,10 @@ Posted мөр (`sales_invoice_line`, `sales_cr_memo_line`) нь ноорогий
 | BR-SAL-22 | НӨАТ-ыг баримтын түвшинд **бүлэг** бүрд нэг удаа бөөрөнхийлнө. Бүлгийн түлхүүр = (`vat_identifier`, `vat_calculation_type`, `sign`), `sign` = `line_amount ≥ 0`. Мөрүүдэд `line_no` дарааллаар running remainder-ээр хуваарилна (§6.3–6.5). | D-E3 ⚠; R-VAT-08, 13; R-SALES-DOCUMENTS-14; FR-TAX-004 |
 | BR-SAL-23 | Инвариант: бүлэг бүрд `Σ мөрийн НӨАТ = бүлгийн НӨАТ`; баримтад `vat_amount = Σ мөрийн (amount_including_vat − amount)`; `amount_including_vat = amount + vat_amount`. Хэвлэх, preview, posting, eBarimt-ийн НӨАТ ижил. | FR-TAX-004 AC2; 12 AMT-05, 08 |
 | BR-SAL-24 | Нэг (`vat_bus`, `vat_prod`) хослолд `tax.vat_posting_setup` мөр заавал, `blocked = false`; байхгүй/блоклосон бол мөр хадгалахад анхааруулга, release/posting-д алдаа. НӨАТ ≠ 0 бүлэгт `sales_vat_account_id` заавал. | R-VAT-01, 05; R-ACCOUNT-DETERMINATION-08 |
-| BR-SAL-25 | НӨАТ-ын хувь = `vat_rate_param_code` байвал `tax.tax_parameter`-ийн `vat_date`-нд хүчинтэй (`status = 'verified'`) утга × 100, үгүй бол `vat_posting_setup.vat_percent`. Нэг бүлэгт хоёр өөр хувь гарвал `tax.vat_identifier_rate_conflict`. | D-E7; R-VAT-03, 04 |
+| BR-SAL-25 | НӨАТ-ын хувь = `vat_rate_param_code` байвал `tax.tax_parameter`-ийн `vat_date`-нд хүчинтэй утга (`value_numeric`, нэгж `ratio`) × 100, үгүй бол `vat_posting_setup.vat_percent`. Хүчинтэй мөр байхгүй бол `tax.parameter_not_effective`; posting/release-д `status ≠ 'verified'` бол `tax.parameter_unverified` (08 BR-TAX-11, -12; ноорог хадгалахад анхааруулга). Нэг бүлэгт хоёр өөр хувь гарвал `tax.vat_identifier_rate_conflict`. | D-E7; R-VAT-03, 04; 08 BR-TAX-11, 12 |
 | BR-SAL-26 | Үнэ НӨАТ-тэй баримтад: бүлгийн `VAT = rv(G × r/(100 + r))`, `base = G − VAT`; мөрийн `amount = amount_including_vat − VAT_мөр` (мөр бүрийг `/1.1` хийхгүй). | R-VAT-10; FR-TAX-005; pitfall 5 |
 | BR-SAL-27 | `prices_including_vat`-ийг мөртэй ноорог дээр солиход хүсэлтэд `recalculatePrices` (true/false) заавал (`sales.prices_including_vat_change_mode_required`): true бол `unit_price` × (100 + r)/100 эсвэл ÷ (нэгжийн нарийвчлалаар), false бол үнэ хэвээр, дүн дахин тооцогдоно. Мөрийн VAT Prod бүлэг өөрчлөгдөхөд НӨАТ-тэй үнийг `(100 + r_new)/(100 + r_old)`-оор масштаблана. | R-SALES-DOCUMENTS-17; R-VAT-10 |
-| BR-SAL-28 | НӨАТ төлөгч бус компанид (`company_setup.vat_registered = false`, эсвэл `posting_date < vat_registered_from`) борлуулалтын бүх мөрийн НӨАТ = 0; `ITaxCalculator` нь НӨАТ төлөгч бус горимын категори ба eBarimt `taxType`-ийг (08, 12 OQ-04; анхдагч `NOT_VAT`) буцаана. VAT entry суурьтай, 0 дүнтэй бичигдэнэ (босгын хяналт FR-TAX-012). | D-E5 ⚠; FR-EBR-015 |
+| BR-SAL-28 | НӨАТ төлөгч бус компанид (`company_setup.vat_registered = false`, эсвэл баримтын `vat_date < vat_registered_from`; хувь тодорхойлох огноо BR-SAL-25-тай ижил `vat_date`) борлуулалтын бүх мөрийн НӨАТ = 0; `ITaxCalculator` нь НӨАТ төлөгч бус горимын категори ба eBarimt `taxType`-ийг (08, 12 OQ-04; анхдагч `NOT_VAT`) буцаана. VAT entry суурьтай, 0 дүнтэй бичигдэнэ (босгын хяналт FR-TAX-012). | D-E5 ⚠; FR-EBR-015 |
 | BR-SAL-29 | R1-д борлуулалтын `vat_difference = 0` (хэрэглэгч НӨАТ-ыг гараар засахгүй). | bc-vat §7.5; R-VAT-14 |
 
 ### 4.4 Батлах (posting)
@@ -514,11 +516,11 @@ Posted мөр (`sales_invoice_line`, `sales_cr_memo_line`) нь ноорогий
 | BR-SAL-32 | Нэг ноорог нэг л удаа батлагдана: posted header-ийн `draft_id = sales_header.id` (UNIQUE). Ноорог устсаны дараа дахин батлах хүсэлт 409 `api.document_already_posted` (өөр Idempotency-Key) эсвэл хадгалсан хариу (ижил түлхүүр). | 14 API-ACT-04; 02 §8.5 |
 | BR-SAL-33 | Заавал: `posting_date` (`sales.posting_date_required`), `document_date`, `customer_id`; нэхэмжлэхэд `due_date` (NULL бол BR-SAL-05-аар тооцно); `ext_doc_no_mandatory` бол `external_document_no`. | R-SALES-DOCUMENTS-22, 25, 28 |
 | BR-SAL-34 | `vat_date` NULL бол `= posting_date`. Нэхэмжлэхэд `vat_date = posting_date` заавал. Кредит нотын `vat_date` нь `posting_date`-ээс өмнө байж болох цорын ганц тохиолдол нь 12 §12.6-ын `reportMonth` засвар (тэр сарын эцсийн өдөр). `vat_date` нь OPEN НӨАТ-ын үед (`tax.vat_period_closed`, ERV01). | D-E9; FR-TAX-008; 12 §12.6 |
-| BR-SAL-35 | `posting_date` нь OPEN нягтлан бодох үед ба компанийн `allow_posting_from/to` дотор (`gl.period_closed` / `gl.posting_date_outside_window`; DB `ERP01`). | D-D3; R-SALES-DOCUMENTS-22; R-GL-POSTING-18 |
+| BR-SAL-35 | `posting_date` нь OPEN нягтлан бодох үед ба компанийн `allow_posting_from/to` дотор (`gl.period_closed` / `gl.period_locked` / `gl.posting_date_outside_window`; DB `ERP01`). | D-D3; R-SALES-DOCUMENTS-22; R-GL-POSTING-18; 05 BR-PST-18 |
 | BR-SAL-36 | Батлах мөр байх: `line_type ≠ 'COMMENT'` ба `quantity ≠ 0` мөр ≥ 1 (`sales.no_lines`). Нэхэмжлэхийн `amount_including_vat < 0` эсвэл Σ `line_amount < 0` бол `sales.negative_total` (кредит нот хэрэглэнэ). Кредит нотын нийт мөн ≥ 0 (баримтын тэмдгээр). | R-SALES-DOCUMENTS-19, 24; FR-SAL-005 AC3 |
-| BR-SAL-37 | `amount_including_vat = 0` нэхэмжлэх (бүх мөр 100 % хөнгөлөлттэй г.м.) зөвшөөрөгдөнө: CLE ба INITIAL 0 дүнтэй, авлагын G/L entry 0 дүнтэй (ваучер хоосон биш байх, INV-01); preview-д `sales.document_total_zero` анхааруулга. eBarimt-д мөр орохгүй (12 MAP-04). | R-SUBLEDGERS-APPLICATION-03, 08 (нэмэлт) |
+| BR-SAL-37 | `amount_including_vat = 0` баримт (бүх мөр 100 % хөнгөлөлттэй, эерэг ба сөрөг мөр тэнцсэн г.м.) **батлагдахгүй**: 422 `sales.document_total_zero` (A үе, release-д ч). Учир: engine G/L мөр бүр `Amount ≠ 0`, ваучер ≥ 2 тэг биш мөртэй, `ISubledgerLine` бүр G/L мөртэй байхыг шаарддаг (05 BR-PST-05, -24, -25, -41), CLE-ийн `transaction_no NOT NULL`; eBarimt 0 дүнтэй баримт авахгүй (12 MAP-04). BC 0 дүнтэй нэхэмжлэх зөвшөөрдөг ч MN-ийн бичил бизнест хэрэгцээгүй (үнэгүй бараа өгөхийг гүйлгээгүйгээр/дотоод баримтаар). Ноорог хадгалахад анхааруулга хэвээр. | 05 BR-PST-05, 24, 41; R-SUBLEDGERS-APPLICATION-03 (BC-ээс зөрүүтэй) |
 | BR-SAL-38 | Posting бүр баримтыг **дахин тооцно** (BR-SAL-19); ноорогт кэшлэсэн утга зөрвөл тооцоолсон утгаар бичнэ, preview-д ялгааг харуулна. | pitfall 16; R-SALES-DOCUMENTS-20 |
-| BR-SAL-39 | `customer.credit_limit_lcy > 0` ба `v_customer_balance.balance_lcy + amount_including_vat > credit_limit_lcy` бол нэхэмжлэхийг батлахад **анхааруулга** `sales.credit_limit_exceeded` (блоклохгүй). | BC Credit Limit (мэдэгдэл); 15 §16.2 |
+| BR-SAL-39 | Шууд төлбөргүй (`bal_account_id IS NULL`) нэхэмжлэхэд: `customer.credit_limit_lcy > 0` ба `v_customer_balance.balance_lcy + amount_including_vat > credit_limit_lcy` бол нэхэмжлэхийг батлахад **анхааруулга** `sales.credit_limit_exceeded` (блоклохгүй). | BC Credit Limit (мэдэгдэл); 15 §16.2 |
 
 ### 4.5 Данс тодорхойлох
 
@@ -527,22 +529,22 @@ Posted мөр (`sales_invoice_line`, `sales_cr_memo_line`) нь ноорогий
 | BR-SAL-40 | Орлогын данс: `GL_ACCOUNT` мөр → мөрийн `gl_account_id`. `ITEM` мөр → `general_posting_setup` (`gen_bus`, `gen_prod`) мөрийн `sales_account_id` (нэхэмжлэх) эсвэл `sales_credit_memo_account_id` (кредит нот). Хайх дараалал: яг таарсан мөр, үгүй бол `gen_bus_posting_group_id IS NULL` (`'*'`) мөр. | D-F1; R-ACCOUNT-DETERMINATION-01, 03; FR-SAL-004 AC1 |
 | BR-SAL-41 | General Posting Setup мөр (яг эсвэл `'*'`) **бүх** мөрийн төрөлд заавал ба `blocked = false` (`GL_ACCOUNT` мөрөнд ч). Байхгүй бол `sales.gen_posting_setup_missing`, блоклосон бол `sales.gen_posting_setup_blocked`, данс хоосон бол `sales.sales_account_missing`. Бүх алдааг цуглуулж нэг дор буцаана. | R-ACCOUNT-DETERMINATION-03, 09, 15; pitfall 8 |
 | BR-SAL-42 | НӨАТ-ын данс = `vat_posting_setup.sales_vat_account_id` (BR-SAL-24). | R-ACCOUNT-DETERMINATION-08 |
-| BR-SAL-43 | Авлагын данс = **баримтын** `customer_posting_group_id`-ийн `receivables_account_id` (харилцагчийн одоогийн бүлэг биш). Төлбөр нь тулгаж буй entry-ийн бүлгийн дансанд бичигдэнэ. | D-F1; R-ACCOUNT-DETERMINATION-06; FR-PTY-005 AC1; pitfall 6 |
+| BR-SAL-43 | Авлагын данс = **баримтын** `customer_posting_group_id`-ийн `receivables_account_id` (харилцагчийн одоогийн бүлэг биш). Тодорхой entry-д тулгах төлбөр (applies-to, бэлэн борлуулалтын төлбөр) нь **тулгаж буй entry-ийн** `customer_posting_group_id`-ийг авна (09 нь `CustomerLedgerLine`-д үүнийг тавина); тулгалтгүй төлбөр (урьдчилгаа) харилцагчийн одоогийн бүлгийг авна. Олон target-ийн авлагын данс өөр бол BR-AR-16. | D-F1; R-ACCOUNT-DETERMINATION-06; FR-PTY-005 AC1; pitfall 6 |
 | BR-SAL-44 | Posting buffer-ийн түлхүүр: (`row_kind` ∈ {MAIN, LINE_DISC}, `line_type`, `gl_account_id`, `gen_bus`, `gen_prod`, `vat_bus`, `vat_prod`, `dimension_set_id`). Ижил түлхүүртэй мөрүүдийн `amount`, `vat_amount`, `vat_base`, `quantity`-г нэмж нэг G/L entry ба нэг VAT entry болгоно. Тэмдэг түлхүүрт орохгүй. | R-ACCOUNT-DETERMINATION-17, 18; R-VAT-18 (тэмдэглэл); FR-SAL-004 AC2 |
 
 ### 4.6 Бэлэн борлуулалт (харьцсан данс)
 
 | ID | Дүрэм | Эх |
 |---|---|---|
-| BR-SAL-50 | Толгойн `bal_account_type/id` бөглөгдсөн (төлбөрийн хэлбэрээс эсвэл гараар) баримт нь "шууд төлбөртэй". Батлахад баримтын гүйлгээний **дараа** ижил DB transaction-д хоёр дахь ваучер: `document_type = 'PAYMENT'` (нэхэмжлэх) / `'REFUND'` (кредит нот), `document_no` = posted баримтын дугаар, огноо ижил. | D-F5; R-SALES-DOCUMENTS-37; R-ACCOUNT-DETERMINATION-25; FR-SAL-006 |
+| BR-SAL-50 | Толгойн `bal_account_type/id` бөглөгдсөн (төлбөрийн хэлбэрээс эсвэл гараар) баримт нь "шууд төлбөртэй". Батлахад баримтын гүйлгээний **дараа** ижил DB transaction-д хоёр дахь ваучер: `document_type = 'PAYMENT'` (нэхэмжлэх) / `'REFUND'` (кредит нот), `document_no` = posted баримтын дугаар (`VoucherNumbering.SameAsVoucher("V1")`, 05 Z-PST-15), огноо ижил. Анхааруулга: seed-д зөвхөн `CASH` хэлбэр харьцсан данстай; хэрэглэгч `BANK` г.м. хэлбэрт данс тохируулбал тэр хэлбэртэй **бүх** нэхэмжлэх шууд төлбөртэй болно. Тиймээс `bal_account_id IS NOT NULL` ба `due_date > posting_date` бол ноорог хадгалах, release, posting-д `sales.immediate_payment_with_credit_terms` анхааруулга өгнө. | D-F5; R-SALES-DOCUMENTS-37; R-ACCOUNT-DETERMINATION-25; FR-SAL-006; 05 Z-PST-15 |
 | BR-SAL-51 | Харьцсан данс `BANK_ACCOUNT`: `blocked = false`, `currency_code` = баримтын валют (R1: NULL), G/L данс нь `bank_account_posting_group.gl_account_id`. `GL_ACCOUNT`: posting, блоклоогүй, `direct_posting = true`. | R-SALES-DOCUMENTS-08 |
-| BR-SAL-52 | Төлбөрийн дүн = шинэ баримтын CLE-ийн **applies-to тулгалтын дараах үлдэгдэл** (Z-04). Үлдэгдэл 0 бол төлбөрийн ваучер үүсэхгүй (`sales.balancing_payment_nothing_to_pay` анхааруулга). Шууд төлбөртэй баримтад `APPLY_TO_OLDEST` автомат тулгалт **хийгдэхгүй** (кассын дүн зөрөхгүйн тулд). | Z-04; R-SUBLEDGERS-APPLICATION-11 |
+| BR-SAL-52 | Төлбөрийн дүн = шинэ баримтын CLE-ийн **applies-to тулгалтын дараах үлдэгдэл** (Z-04). Ваучерын дүн B үеэс өмнө тогтох ёстой (05: ваучер A үед угсрагдана) тул A үед target-ийн `remaining_amount`-ыг уншиж `ExpectedRemaining` болгон `ApplyInstruction`-д хадгална; B үед түгжээний дор (`ValidateLockedAsync`) өөр бол 409 `party.application_target_changed` (клиент шинэ Idempotency-Key-ээр дахин илгээнэ; ROLLBACK тул дугаар зарцуулагдахгүй). Үлдэгдэл 0 бол төлбөрийн ваучер үүсэхгүй (`sales.balancing_payment_nothing_to_pay` анхааруулга). Шууд төлбөртэй баримтад `APPLY_TO_OLDEST` автомат тулгалт **хийгдэхгүй** (кассын дүн зөрөхгүйн тулд). | Z-04; R-SUBLEDGERS-APPLICATION-11 |
 | BR-SAL-53 | Төлбөрийн ваучер: харьцсан данс Дт / авлага Кт (кредит нотод эсрэг). Төлбөрийн CLE (`PAYMENT`/`REFUND`) тухайн баримтын CLE-д тулгагдаж хоёулаа хаагдана (APPLICATION мөр `transaction_no` = төлбөрийн ваучер). | R-SALES-DOCUMENTS-37; FR-SAL-006 AC1 |
 | BR-SAL-54 | Харьцсан данс `kind = 'CASH'` бол Cash&Bank writer МХ-1 (нэхэмжлэх) / МХ-2 (кредит нот) баримтыг `cash_receipt_no_series_id` / `cash_payment_no_series_id` цувралаас олгоно (`bank.posted_cash_voucher`). Касс сөрөг болбол `bank.cash_negative_balance` (ERC01). | D-G1; FR-SAL-006; FR-BNK-002, 003 |
 | BR-SAL-55 | Шууд төлбөртэй баримтын eBarimt `payments[].code` = `payment_method.ebarimt_payment_code`, `status = 'PAID'` (12 MAP-11). | FR-EBR-004 |
-| BR-SAL-56 | Шууд төлбөрийн CLE-ийн `due_date = posting_date`, `payment_method_code`, `bal_account_type/id` бөглөгдөнө; `source_code = 'SALES'`. | R-SALES-DOCUMENTS-37 |
+| BR-SAL-56 | Шууд төлбөрийн CLE-ийн `due_date = posting_date`, `payment_method_code`, `bal_account_type/id`, `customer_posting_group_id` = баримтын CLE-ийнх (BR-SAL-43) бөглөгдөнө; ваучер 2-ын `source_code` = `CASHVOUCHER` (харьцсан данс `kind = 'CASH'`) эсвэл `PAYMENTREG` (бусад); CLE, detailed, bank entry нь ваучерынхыг авна (05 W3, Z-PST-15). | R-SALES-DOCUMENTS-37; 05 Z-PST-15; 09 BR-BNK-31 |
 | BR-SAL-57 | Бэлэн мөнгөний бүхэлчлэл (`company_setup.invoice_rounding_enabled = true`) зөвхөн харьцсан данс нь `kind = 'CASH'` баримтад: `IR = −r(T − round(T, invoice_rounding_precision, NEAREST))`, `T` = бүхэлчлэхээс өмнөх `amount_including_vat`. `IR ≠ 0` бол системийн мөр нэмнэ (§6.10). | D-C2 ⚠; FR-SAL-013 AC1; R-SALES-DOCUMENTS-40 |
-| BR-SAL-58 | Бүхэлчлэлийн мөр: данс `customer_posting_group.invoice_rounding_account_id` (seed 8290; хоосон бол `sales.invoice_rounding_account_missing`), **НӨАТ-гүй** (VAT entry үүсэхгүй, `gen_posting_type = 'NONE'`), posted мөрөнд хуулагдана, eBarimt-д орохгүй (12 MAP-03). | Z-07; R-VAT-15; 12 MAP-03 |
+| BR-SAL-58 | Бүхэлчлэлийн мөр: `system_line_kind = 'INVOICE_ROUNDING'` (12 SCR-09), `line_type = 'GL_ACCOUNT'`, данс `customer_posting_group.invoice_rounding_account_id` (seed 8290, `direct_posting = false` — системийн мөр тул BR-SAL-11 хамаарахгүй; хоосон бол `sales.invoice_rounding_account_missing`), `quantity = 1`, `unit_price = line_amount = amount = amount_including_vat = IR`, `vat_percent = 0`, бүлгийн талбар NULL. **НӨАТ-гүй** (§5.4-ийн бүлэгт орохгүй, posting buffer-т орохгүй, VAT entry үүсэхгүй, G/L `gen_posting_type = 'NONE'`, `LineOrigin.SystemDerived`), posted мөрөнд хуулагдана, eBarimt-д орохгүй (12 MAP-03). Хэрэглэгч энэ мөрийг засах/устгах боломжгүй; posting бүрд дахин үүснэ (ноорогт хадгалахгүй). | Z-07; R-VAT-15; R-ACCOUNT-DETERMINATION-28, 34; 12 MAP-03, SCR-09 |
 | BR-SAL-59 | Бүхэлчлэл нь толгойн `amount`, `amount_including_vat`-д орно (`vat_amount`-д орохгүй); CLE = бүхэлчилсэн дүн. | R-SALES-DOCUMENTS-40 |
 
 ### 4.7 Кредит нот
@@ -552,7 +554,7 @@ Posted мөр (`sales_invoice_line`, `sales_cr_memo_line`) нь ноорогий
 | BR-SAL-60 | Кредит нот нь өөрийн мөрийн дүнгээр, ижил тооцооллоор (§6) НӨАТ-ыг тооцно; posting-д мөрийг урвуулахгүй тул орлого/НӨАТ **дебит**, авлага **кредит**. | R-SALES-DOCUMENTS-36 (pitfall 1); FR-TAX-006 AC1 |
 | BR-SAL-61 | `reason_code_id` заавал (`sales.reason_code_required`); шалтгаан блоклогдоогүй. | FR-SAL-007; 010_platform `reason_code` COMMENT |
 | BR-SAL-62 | `corrected_invoice_id` ба/эсвэл `applies_to_doc_type = 'INVOICE'` + `applies_to_doc_no`: ижил харилцагчийн posted нэхэмжлэх байх; хоёулаа өгвөл нэг нэхэмжлэхийг заана (`sales.corrected_invoice_invalid`). Цуцлагдсан нэхэмжлэхийг засахгүй (`sales.corrected_invoice_cancelled`). | R-SALES-DOCUMENTS-44; 12 RET-03 |
-| BR-SAL-63 | Нэхэмжлэхийг заасан кредит нот батлахад нэхэмжлэхийн CLE-д **автоматаар** тулгагдана: тулгах дүн = `min(abs(CM үлдэгдэл), нэхэмжлэхийн үлдэгдэл)`. Илүү дүн нь харилцагчийн нээлттэй кредит болж үлдэнэ. Нэхэмжлэх хаагдсан бол тулгалтгүй. | D-F6; FR-SAL-007 AC1, AC2; R-SUBLEDGERS-APPLICATION-12 |
+| BR-SAL-63 | Нэхэмжлэхийг заасан кредит нот батлахад нэхэмжлэхийн CLE-д **автоматаар** тулгагдана: тулгах дүн = `min(abs(CM үлдэгдэл), нэхэмжлэхийн үлдэгдэл)`, нэхэмжлэхийн үлдэгдлийг B үед **түгжээний дор** уншина (A үеийн утгыг cap болгохгүй — зэрэг төлбөр тулгагдсан бол `party.application_exceeds_remaining` гарахаас сэргийлнэ). Илүү дүн нь харилцагчийн нээлттэй кредит болж үлдэнэ. Нэхэмжлэх хаагдсан бол тулгалтгүй (алдаагүй). | D-F6; FR-SAL-007 AC1, AC2; R-SUBLEDGERS-APPLICATION-12 |
 | BR-SAL-64 | Нэхэмжлэхийг заасан кредит нотуудын нийт `amount_including_vat` ≤ нэхэмжлэхийн `amount_including_vat` (`sales.credit_exceeds_invoice`). eBarimt идэвхтэй компанид мөр/`taxType` бүрийн шалгалтыг 12 `NetState` (`ebarimt.correction_exceeds_receipt`) нэмж хийнэ. | 12 RET-11, §12.3 |
 | BR-SAL-65 | eBarimt идэвхтэй компанид кредит нот нэхэмжлэхгүй (холбоосгүй) байж болохгүй (`ebarimt.cr_memo_invoice_link_required`), нэхэмжлэх нь eBarimt-гүй (NONE) байснаас бусад үед. | 12 RET-03 |
 | BR-SAL-66 | Кредит нотын `posting_date` ≥ засаж буй нэхэмжлэхийн `posting_date` (тулгалтын огнооны дүрэм, BR-AR-26). | R-SUBLEDGERS-APPLICATION-16 |
@@ -562,16 +564,16 @@ Posted мөр (`sales_invoice_line`, `sales_cr_memo_line`) нь ноорогий
 
 | ID | Дүрэм | Эх |
 |---|---|---|
-| BR-SAL-70 | Цуцлах боломжтой нь: posted нэхэмжлэх (`api.document_not_posted`), өмнө цуцлагдаагүй (`sales.invoice_already_cancelled`, INV-21), CLE буцаагдаагүй. | R-SALES-DOCUMENTS-43; FR-SAL-008 |
+| BR-SAL-70 | Цуцлах боломжтой нь: posted нэхэмжлэх (`api.document_not_posted`), өмнө цуцлагдаагүй (`sales.invoice_already_cancelled`, INV-21), CLE буцаагдаагүй (`party.entry_reversed`), харилцагч `blocked ≠ 'ALL'` (`sales.customer_blocked`; кредит нот тул BR-SAL-03, R-SALES-DOCUMENTS-43), eBarimt гинж чөлөөтэй (BR-SAL-76). | R-SALES-DOCUMENTS-43; FR-SAL-008 |
 | BR-SAL-71 | Нэхэмжлэхийн CLE-д **unapplied биш APPLICATION мөр байхгүй** ба `remaining_amount = amount` (`sales.invoice_has_applications`: "Эхлээд төлбөрийн тулгалтыг буцаана уу"). Бэлэн борлуулалт ч ялгаагүй (автомат төлбөр нь тулгалт). | FR-SAL-008 AC2; R-SALES-DOCUMENTS-43 |
 | BR-SAL-72 | Цуцлалтын кредит нотын огноо = хүсэлтийн `postingDate ?? өнөөдөр` (Asia/Ulaanbaatar); `document_date = posting_date`; ≥ нэхэмжлэхийн огноо; OPEN үе/цонх (`gl.period_closed`). | D-F6; Z-01; FR-SAL-008 AC1 |
-| BR-SAL-73 | Кредит нот нь нэхэмжлэхийн мөрүүдийг **1:1** хуулна: `line_no`, төрөл, данс/бараа, тайлбар, нэгж, тоо, үнэ, хөнгөлөлт, бүлгийн (кодоор → id) утга, `vat_percent` (snapshot, одоогийн хувь биш), `dimension_set_id`, eBarimt шинж. Толгой: харилцагч, PIV, `dimension_set_id`, `external_document_no`, `corrected_invoice_id`, `applies_to_doc_type = 'INVOICE'`, `applies_to_doc_no`. Харьцсан данс **хуулахгүй**. | R-SALES-DOCUMENTS-44; 12 TYP-06 |
+| BR-SAL-73 | Кредит нот нь нэхэмжлэхийн мөрүүдийг **1:1** хуулна: `line_no`, төрөл, данс/бараа, тайлбар, нэгж, тоо, үнэ, хөнгөлөлт, бүлгийн (кодоор → id) утга, `vat_percent`, `vat_identifier`, `vat_calculation_type` (snapshot, одоогийн setup/хувь биш — setup дараа өөрчлөгдсөн ч НӨАТ-ын бүлэглэл ижил байна), `dimension_set_id`, eBarimt шинж, `system_line_kind`. Бүхэлчлэлийн мөрийг (`INVOICE_ROUNDING`) ижил дүнгээр **системийн мөр хэвээр** хуулна (Recalculate-д орохгүй, НӨАТ-гүй; кассын төлбөргүй CM ч бай) — ингэснээр BR-SAL-74 бүхэлчилсэн нэхэмжлэхэд ч биелнэ. НӨАТ-ын G/L данс нь одоогийн `vat_posting_setup.sales_vat_account_id` (блоклосон бол цуцлалт `tax.vat_posting_setup_blocked`). Толгой: харилцагч, PIV, `dimension_set_id`, `external_document_no`, `corrected_invoice_id`, `applies_to_doc_type = 'INVOICE'`, `applies_to_doc_no`. Харьцсан данс **хуулахгүй**. | R-SALES-DOCUMENTS-44; 12 TYP-06 |
 | BR-SAL-74 | Цуцлалтын кредит нотын тооцоолсон `amount`, `vat_amount`, `amount_including_vat` нэхэмжлэхийнхтэй **яг** тэнцүү; зөрвөл `sales.cancel_amount_mismatch` (500, алгоритмын алдаа). | R-SALES-DOCUMENTS-44; bc-vat pitfall 3 |
 | BR-SAL-75 | Цуцлалт нэг transaction-д: кредит нот угсрах (ноорог хадгалахгүй, posted CM-ийн `draft_id = NULL`), батлах, бүтэн тулгах (хоёр entry хаагдана), `sales.cancelled_document` бичих, eBarimt-ийн засвар/буцаалтыг enqueue (12 §12). | D-F6; R-SALES-DOCUMENTS-44; FR-SAL-008 AC1 |
 | BR-SAL-76 | eBarimt-ийн гинжинд `SENT`/`UNKNOWN` баримт байвал цуцлах (ба кредит нот батлах) хориотой (`ebarimt.predecessor_in_flight` / `ebarimt.predecessor_unknown`). | 12 §12.8; 14 API-ACT-14 |
 | BR-SAL-77 | R1-д `ITEM`(`SERVICE`/`NON_INVENTORY`) ба `GL_ACCOUNT` мөртэй нэхэмжлэх цуцлагдана. R2-т `INVENTORY` мөрд барааны өртгийг яг буцаана (exact cost reversal), `FIXED_ASSET` мөртэй нэхэмжлэх цуцлагдахгүй. | R-SALES-DOCUMENTS-43 |
-| BR-SAL-78 | Засварлах (`createCorrectiveDraft = true`) = цуцлах + эх мөрүүдийг хуулсан шинэ нэхэмжлэхийн **ноорог** (`OPEN`, шинэ ноорогийн дугаар, `posting_date` = BR-SAL-06) нэг transaction-д. | R-SALES-DOCUMENTS-45; FR-SAL-009 |
-| BR-SAL-79 | Хуулах (`:copy`): posted эсвэл ноорог баримтаас шинэ ноорог; хуулийн дугаар, eBarimt өгөгдөл, `corrected_invoice_id` хуулагдахгүй; үнэ, хөнгөлөлт хуулагдаж дүн одоогийн хувиар дахин тооцогдоно. | FR-SAL-010 AC1 |
+| BR-SAL-78 | Засварлах (`createCorrectiveDraft = true`) = цуцлах + эх мөрүүдийг (бүхэлчлэлийн системийн мөрөөс бусад, BR-SAL-79-ийн дүрмээр) хуулсан шинэ нэхэмжлэхийн **ноорог** (`OPEN`, шинэ ноорогийн дугаар, `posting_date` = BR-SAL-06) нэг transaction-д. | R-SALES-DOCUMENTS-45; FR-SAL-009 |
+| BR-SAL-79 | Хуулах (`:copy`): posted эсвэл ноорог баримтаас шинэ ноорог; хуулийн дугаар, eBarimt өгөгдөл, `corrected_invoice_id`, бүхэлчлэлийн системийн мөр (BR-SAL-58) хуулагдахгүй; үнэ, хөнгөлөлт хуулагдаж дүн одоогийн хувиар дахин тооцогдоно. | FR-SAL-010 AC1 |
 
 ### 4.9 Ноорогийн төлөв ба жагсаалт
 
@@ -603,7 +605,7 @@ Posted мөр (`sales_invoice_line`, `sales_cr_memo_line`) нь ноорогий
 | BR-AR-04 | `remaining_amount(_lcy)` ба `open` нь **зөвхөн** detailed-ийн trigger-ээр (INV-04). Апп эдгээрийг бичихгүй, `party.v_cust_ledger_entry_check` үргэлж хоосон. | D-C4; D-F3; INV-04 |
 | BR-AR-05 | Үлдэгдэл ба нээлттэй байдлын эх сурвалж нь detailed entry. Огноо D-ийн үлдэгдэл = Σ detailed (`posting_date ≤ D`) — header-ийн `open`/`closed_at_date`-аас **гаргахгүй**. | R-SUBLEDGERS-APPLICATION-01, 34; pitfall "aging must use detailed" |
 | BR-AR-06 | Хэтрүүлж тулгахгүй: `remaining_amount` нь эх тэмдгээ хадгалж `abs(remaining) ≤ abs(amount)` (DB CHECK, 23514 → `party.application_exceeds_remaining`). | INV-26; R-SUBLEDGERS-APPLICATION-19 |
-| BR-AR-07 | Авлагын G/L entry (тухайн ваучер, CLE бүрд) = тухайн ваучерт үүссэн бүх detailed мөрийн `amount_lcy`-ийн нийлбэр (MNT-д тулгалтын мөр 0 болж хасагдана). | R-SUBLEDGERS-APPLICATION-07; FR-PTY-007 |
+| BR-AR-07 | Авлагын G/L entry (тухайн ваучер, CLE бүрд) = тухайн ваучерт үүссэн бүх detailed мөрийн `amount_lcy`-ийн нийлбэр (MNT-д тулгалтын мөр 0 болж хасагдана). Ваучерын бүх detailed мөр нэг авлагын дансанд хамаарна (BR-AR-16) тул нэг авлагын G/L мөр хангалттай; `v_receivables_reconciliation` (detailed-ийн `customer_posting_group_id` → данс) тэнцэнэ. | R-SUBLEDGERS-APPLICATION-07; FR-PTY-007 |
 | BR-AR-08 | INV-11: `party.v_receivables_reconciliation.difference = 0` (авлагын данс `direct_posting = false`). Шөнийн шалгалт зөрүүг P1 alert болгоно. | INV-11; R-SUBLEDGERS-APPLICATION-07 |
 | BR-AR-09 | Баримтын (`INVOICE`, `CREDIT_MEMO`) (`document_type`, `document_no`) нь харилцагчийн ledger-т давтагдахгүй (хамгаалалтын шалгалт; эхний үлдэгдлийн импортоос үүсэх давхардлыг барина, `sales.document_no_already_in_ledger`). | R-SALES-DOCUMENTS-38 |
 | BR-AR-10 | Detailed мөр, түүний тулгасан entry ба `application_draft` нэг харилцагчийнх (нийлмэл FK). | INV-27 |
@@ -612,6 +614,7 @@ Posted мөр (`sales_invoice_line`, `sales_cr_memo_line`) нь ноорогий
 | BR-AR-13 | Нээлттэй (`open = true`) CLE-ийн `due_date`, `on_hold`-ийг `ACTION party.ledger_entry.edit`-тэй хэрэглэгч засна (`platform.fn_ledger_update`). Хаалттай entry-д `party.entry_closed`. Дүнгийн талбар засагдахгүй. | FR-PTY-014 AC1; R-SUBLEDGERS-APPLICATION-10 |
 | BR-AR-14 | Засвар бүр аудитад (хуучин/шинэ утга, хэрэглэгч, цаг) бичигдэнэ (SCR-SAL-04 хүртэл апп `audit.row_change`-д бичнэ). | FR-PTY-014 AC1; D-I3 |
 | BR-AR-15 | Due date-ийн бүх логик (насжилт, хугацаа хэтэрсэн, Apply to Oldest дараалал) `cust_ledger_entry.due_date`-ийг уншина; `detailed.initial_entry_due_date` нь insert үеийн snapshot (мэдээллийн). | R-SUBLEDGERS-APPLICATION-09; SCR-SAL-05 |
+| BR-AR-16 | **Авлагын дансны нэгдэл.** Тулгалтын хос (posting доторх ба `:apply`) хоёр entry-ийн `customer_posting_group.receivables_account_id` ижил байна; өөр бол `party.application_posting_group_mismatch` (422). Posting доторх `Oldest` хайлт ижил дансны entry-ийг л сонгоно; `ToDocument`/`Entries` target өөр дансных бол алдаа. Учир: detailed мөр өөрийн CLE-ийн бүлгээр (BR-AR-02) тайлагдах ба G/L-гүй тулгалт/unapply авлагын данс хооронд дүн шилжүүлж чадахгүй — эс бөгөөс INV-11 (`v_receivables_reconciliation`) данс бүрээр зөрнө. Харилцагчийн бүлгийг солих нь (FR-PTY-005) хуучин нээлттэй entry-д нөлөөлөхгүй; тэдгээрийг хуучин бүлгээр төлнө (BR-SAL-43). R2: данс хооронд шилжүүлэх G/L-тэй тулгалт (BC Allow Multiple Posting Groups). | INV-11; R-SUBLEDGERS-APPLICATION-07; R-ACCOUNT-DETERMINATION-06, 29 |
 
 ### 4.12 Тулгалт
 
@@ -633,8 +636,8 @@ Posted мөр (`sales_invoice_line`, `sales_cr_memo_line`) нь ноорогий
 | BR-AR-33 | Тулгалт нь буцаагдсан (`reversed = true`) entry-д хориотой (`party.entry_reversed`). | R-SUBLEDGERS-APPLICATION-30, 32 |
 | BR-AR-34 | Хуваарилах (FR-PTY-010): target-уудыг `MANUAL` (хэрэглэгчийн дараалал, `sequence_no`) эсвэл `DUE_DATE` (`due_date`, дараа нь `entry_no` өсөхөөр) дарааллаар New-ийн үлдэгдэл дуустал тулгана. | FR-PTY-010 AC1; bc-subledgers §7.5 |
 | BR-AR-35 | Target-ийн `amountToApply` нь эерэг (API) дүн, entry-ийн үлдэгдлээс их байж болохгүй (`party.application_exceeds_remaining`); NULL = бүх үлдэгдэл. | R-SUBLEDGERS-APPLICATION-14 |
-| BR-AR-36 | Сонголтын ажлын хуудас `party.application_draft`-д (SPA); нэг entry нэг л draft-д (UNIQUE; өөр хэрэглэгчийн 30 минутаас хуучин draft-ыг автоматаар чөлөөлнө, шинэ бол `party.entry_in_other_application_draft`). Тулгалт батлагдах эсвэл болих үед draft-ын мөрүүд устна. `sales_header.applies_to_id` R1-д NULL. | FR-PTY-010; 14 Q18; R-SUBLEDGERS-APPLICATION-23 (тэмдэглэл) |
-| BR-AR-37 | `customer.application_method = 'APPLY_TO_OLDEST'` бөгөөд шинэ entry-д applies-to байхгүй ба шууд төлбөргүй бол posting-д: эсрэг тэмдэгтэй, нээлттэй, `posting_date ≤ шинэ огноо`, `application_draft`-д ороогүй entry-үүдийг `due_date`, `entry_no`-оор New-ийн үлдэгдэл дуустал тулгана. | R-SUBLEDGERS-APPLICATION-11, 13; BR-SAL-52 |
+| BR-AR-36 | Сонголтын ажлын хуудас `party.application_draft`-д (SPA); нэг entry нэг л draft-д (UNIQUE; өөр хэрэглэгчийн мөр `coalesce(updated_at, created_at) < now() − 30 мин` бол автоматаар чөлөөлнө — `updated_at` нь INSERT-д NULL; шинэ бол `party.entry_in_other_application_draft`). Тулгалт батлагдах эсвэл болих үед draft-ын мөрүүд устна. `sales_header.applies_to_id` R1-д NULL. | FR-PTY-010; 14 Q18; R-SUBLEDGERS-APPLICATION-23 (тэмдэглэл) |
+| BR-AR-37 | `customer.application_method = 'APPLY_TO_OLDEST'` бөгөөд шинэ entry-д applies-to байхгүй ба шууд төлбөргүй бол posting-д: эсрэг тэмдэгтэй, нээлттэй, буцаагдаагүй, ижил авлагын данстай (BR-AR-16), `posting_date ≤ шинэ огноо`, `application_draft`-д ороогүй entry-үүдийг `due_date`, `entry_no`-оор New-ийн үлдэгдэл дуустал тулгана. | R-SUBLEDGERS-APPLICATION-11, 13; BR-SAL-52 |
 | BR-AR-38 | Тулгалтын хариуд хос бүрийн `appliedAmount`, entry-ийн шинэ `remainingAmount`, `open`, New-ийн тулгагдаагүй дүн (`unappliedAmount`) буцна. | 14 §17.2 |
 
 ### 4.13 Unapply
@@ -649,6 +652,7 @@ Posted мөр (`sales_invoice_line`, `sales_cr_memo_line`) нь ноорогий
 | BR-AR-45 | MNT-д unapply G/L үүсгэхгүй (`transaction_no = NULL`); авлагын G/L нөлөө 0. | R-SUBLEDGERS-APPLICATION-31; FR-PTY-011 |
 | BR-AR-46 | Үлдэгдэл ≠ 0 болсон entry-ийн `closed_by_entry_no`, `closed_at_date`, `closed_by_amount(_lcy)`-г NULL болгоно. | R-SUBLEDGERS-APPLICATION-31 |
 | BR-AR-47 | Буцаасан тулгалт нь баримтын буцаалт биш: эх баримт (нэхэмжлэх, төлбөр) хэвээр, дахин тулгах боломжтой. Төлбөрийг буцаах (reverse) бол эхлээд unapply (D-D5, R-SUBLEDGERS-APPLICATION-32). | R-SUBLEDGERS-APPLICATION-32 |
+| BR-AR-48 | Цуцлалтын тулгалт (нэхэмжлэх ↔ `sales.cancelled_document`-ийн CM) буцаагдахгүй: 409 `party.unapply_cancellation_not_allowed`. Цуцлалт нь эцсийн; алдаатай цуцалсан бол шинэ нэхэмжлэх (`:copy`) гаргана. | D-F6; BR-SAL-75 (энэ системийн дүрэм) |
 
 ### 4.14 Урьдчилгаа
 
@@ -747,7 +751,9 @@ void AddLine(SalesHeader h, LineInput i) {
     switch (i.LineType) {
       case "GL_ACCOUNT":
         var a = gl.GetAccount(i.GlAccountId);
-        Guard(a.AccountType != "POSTING" || a.Blocked || !a.DirectPosting, "gl.direct_posting_not_allowed"); // BR-SAL-11
+        Guard(a.AccountType != "POSTING", "gl.account_not_posting");                         // BR-SAL-11
+        Guard(a.Blocked, "gl.account_blocked");
+        Guard(!a.DirectPosting, "gl.direct_posting_not_allowed");
         Guard(a.GenProdPostingGroupId is null || a.VatProdPostingGroupId is null, "sales.line_posting_groups_missing");
         l.GlAccountId = a.Id; l.Description ??= a.Name;
         l.GenProdPostingGroupId = a.GenProdPostingGroupId; l.VatProdPostingGroupId = a.VatProdPostingGroupId; break;
@@ -756,7 +762,8 @@ void AddLine(SalesHeader h, LineInput i) {
         Guard(it.Blocked, "sales.item_blocked");
         Guard(it.SalesBlocked && h.DocumentType == INVOICE, "sales.item_sales_blocked");   // BR-SAL-12
         Guard(it.ItemType == "INVENTORY", "inv.inventory_not_enabled");                     // R1
-        l.ItemId = it.Id; l.Description ??= it.Description; l.UnitOfMeasureCode ??= it.BaseUomCode;
+        l.ItemId = it.Id; l.Description ??= it.Description;
+        l.UnitOfMeasureCode ??= uoms.CodeOf(it.BaseUnitOfMeasureId);   // inv.item.base_unit_of_measure_id → код
         l.GenProdPostingGroupId = it.GenProdPostingGroupId; l.VatProdPostingGroupId = it.VatProdPostingGroupId;
         l.ClassificationCode ??= it.ClassificationCode; l.TaxProductCode ??= it.TaxProductCode; l.Barcode ??= it.Barcode;
         l.UnitPrice = i.UnitPrice ?? ConvertPrice(it.UnitPrice, it.PriceIncludesVat, h.PricesIncludingVat,
@@ -772,6 +779,9 @@ void AddLine(SalesHeader h, LineInput i) {
     h.Lines.Add(l);
 }
 ```
+
+- `Guard(cond, code)` нь `cond = true` үед `DomainError(code)` буцаана (02 §5.3 №7 "Алдааны загвар"). Release/posting-д ижил шалгалтыг `ErrorBag`-д цуглуулна.
+- `system_line_kind = 'INVOICE_ROUNDING'` мөрийг API-аар үүсгэх, засах, устгахыг хориглоно (`api.request_invalid`); ноорогт хэзээ ч хадгалагдахгүй (BR-SAL-58).
 
 - **Засвар (PATCH):** ноорог `OPEN` (BR-SAL-07), `If-Match` = `row_version` (412 `api.etag_mismatch`). Мөр нэмэх/засах/устгах бүр header-ийн `row_version`-ийг өсгөж, бүхэл баримтыг дахин тооцно.
 - **Харилцагч солих:** `ApplyCustomerDefaults` → `Recalculate` (BR-SAL-04).
@@ -804,6 +814,8 @@ DateOnly DueDate(SalesHeader h) =>
 
 Жишээ (R-SALES-DOCUMENTS C12; FR-PTY-006 AC1): `document_date = 2027-03-10`, `30D` → 2027-04-09; `2026-01-31` + `1M` → 2026-02-28; `CM` → 2026-01-31; `CM+10D` → 2026-02-10. Буруу томьёог payment terms хадгалахад `party.invalid_date_formula`.
 
+Анхаар (BC-тэй ижил): токенууд зүүнээс баруун тийш дараалан хэрэглэгдэнэ, `M` нь сарын эцсээр хавчдаг тул `CM+1M` нь "дараа сарын эцэс" **биш**: 2026-02-10 → `CM` 02-28 → `+1M` **03-28**. "Дараа сарын эцэс"-ийг `1M+CM` гэж бичнэ (02-10 → 03-10 → 03-31). Payment terms-ийн UI энэ ялгааг жишээгээр харуулна; seed-д зөвхөн `0D`, `7D`, `15D`, `30D`, `CM` бий.
+
 ### 5.4 Баримтын тооцоолол (`ISalesDocumentCalculator`)
 
 Цэвэр функц (DB-гүй, I/O-гүй): UI-ийн хадгалалт, release, preview, posting, PDF, eBarimt бүгд үүнийг дуудна (18-dev-setup §4.2 №5). НӨАТ-ын бүлэглэл ба хуваарилалтыг Tax-ийн `ITaxCalculator.ComputeDocument` гүйцэтгэнэ; доорх нь Sales-ийн талын гэрээ ба Tax-ийн хүлээх алгоритм.
@@ -815,22 +827,24 @@ sealed record CalcContext(decimal P /*0.01|1*/, decimal UnitP, VatRounding VatRo
 
 void Recalculate(SalesHeader h) {
     var ctx = BuildContext(h);
-    // 1) Мөрийн дүн (§6.2)
-    foreach (var l in h.Lines.Where(x => x.LineType != "COMMENT").OrderBy(x => x.LineNo)) {
+    // 1) Мөрийн дүн (§6.2). Бүхэлчлэлийн системийн мөр (BR-SAL-58) тооцоололд хэзээ ч орохгүй
+    var calcLines = h.Lines.Where(x => x.LineType != "COMMENT" && x.SystemLineKind == "NONE").OrderBy(x => x.LineNo).ToList();
+    foreach (var l in calcLines) {
         if (l.Quantity == 0) { ZeroAmounts(l); continue; }                  // R-SALES-DOCUMENTS-18
         var g   = R(l.Quantity * l.UnitPrice, ctx.P);
         l.LineDiscountAmount = R(g * l.LineDiscountPercent / 100m, ctx.P); // давхар бөөрөнхийлөлт
         l.LineAmount = g - l.LineDiscountAmount;
         l.InvDiscountAmount = 0m;                                          // R1 (BR-SAL-21)
+        if (ctx.Rates == RateSource.Snapshot) continue;                    // цуцлалт: VatPercent, VatIdentifier, VatCalculationType
+                                                                           // posted мөрийн snapshot хэвээр (BR-SAL-73)
         var setup = vatSetup.Get(l.VatBusPostingGroupId, l.VatProdPostingGroupId);   // BR-SAL-24
         l.VatCalculationType = setup.VatCalculationType;                   // NORMAL (BR-SAL-15)
         l.VatIdentifier = setup.VatIdentifier;
-        l.VatPercent = ctx.Rates == RateSource.Snapshot ? l.VatPercent
-                     : !ctx.CompanyVatRegistered ? 0m
+        l.VatPercent = !ctx.CompanyVatRegistered ? 0m
                      : taxParams.EffectiveRatePercent(setup, ctx.VatDate);   // BR-SAL-25, 28
     }
     // 2) НӨАТ: бүлэглэх, бөөрөнхийлөх, хуваарилах (§6.3–6.5)
-    var lines = h.Lines.Where(x => x.LineType != "COMMENT" && x.Quantity != 0).OrderBy(x => x.LineNo).ToList();
+    var lines = calcLines.Where(x => x.Quantity != 0).ToList();
     var result = tax.ComputeDocument(lines.Select(l => new TaxLine(l.LineNo, l.VatIdentifier, l.VatCalculationType,
                                      l.VatPercent, Cla: l.LineAmount - l.InvDiscountAmount)).ToList(),
                                      ctx.PricesInclVat, ctx.P, ctx.VatRound);
@@ -839,10 +853,12 @@ void Recalculate(SalesHeader h) {
         l.Amount = t.Amount; l.AmountIncludingVat = t.AmountIncludingVat;
         l.VatBaseAmount = t.Amount; l.VatDifference = 0m;                   // BR-SAL-29
     }
-    // 3) Толгойн нийлбэр (§6.8) — бүхэлчлэлийн мөрийг posting үед нэмнэ (§5.10)
-    h.Amount = lines.Sum(l => l.Amount);
-    h.AmountIncludingVat = lines.Sum(l => l.AmountIncludingVat);
-    h.VatAmount = h.AmountIncludingVat - h.Amount;
+    // 3) Толгойн нийлбэр (§6.8) — бүхэлчлэлийн мөрийг posting үед нэмнэ (§5.10);
+    //    цуцлалтад хуулагдсан бүхэлчлэлийн мөрийн дүнг (BR-SAL-73) энд нэмнэ
+    var rnd = h.Lines.Where(x => x.SystemLineKind == "INVOICE_ROUNDING").Sum(x => x.AmountIncludingVat);
+    h.VatAmount = lines.Sum(l => l.AmountIncludingVat - l.Amount);
+    h.Amount = lines.Sum(l => l.Amount) + rnd;
+    h.AmountIncludingVat = lines.Sum(l => l.AmountIncludingVat) + rnd;
     h.CityTaxAmount = 0m;                                                  // R2
 }
 ```
@@ -905,10 +921,10 @@ async Task ReleaseAsync(Guid id, string ifMatch) {
 **A үе — transaction-гүй, түгжээгүй** (02 §6.3):
 
 1. Ноорог, харилцагч, setup, бүлэг, данс, хувийг унших; `row_version`-ийг санах.
-2. Бүх урьдчилсан шалгалтыг **цуглуулж** (BR-SAL-03, 09..15, 21, 24, 33..36, 40..42, 51, 58, 61..66): алдаа ≥ 1 бол 422, transaction эхлэхгүй, дугаар зарцуулагдахгүй.
+2. Бүх урьдчилсан шалгалтыг **цуглуулж** (BR-SAL-03, 09..15, 21, 24, 25, 33..37, 40..42, 51, 58, 61..66; BR-AR-16, 26, 29): алдаа ≥ 1 бол 422, transaction эхлэхгүй, дугаар зарцуулагдахгүй.
 3. `Recalculate` (§5.4); бэлэн борлуулалтад бүхэлчлэл (§5.10).
 4. `PostingBuffer`-аар G/L ба VAT мөрийг угсрах (§5.7).
-5. Авлагын мөр (`CustomerLedgerLine`), тулгалтын заавар, шууд төлбөрийн ваучер (§5.8–5.9), eBarimt-ийн `ReceiptRequest` (§9.4), outbox-ийн event-ийг угсарч `PostingBatch` болгох.
+5. Авлагын мөр (`CustomerLedgerLine`), тулгалтын заавар, шууд төлбөрийн ваучер (§5.8–5.9), eBarimt-ийн `ReceiptRequest` (§9.4), outbox-ийн event-ийг угсарч `PostingDocument` (05 §5.1) болгох; `IPostingService.ValidateAsync` (engine-ийн санах ойн шалгалт, 05 §5.3).
 
 **B үе — нэг DB transaction** (`IPostingService.PostAsync`, READ COMMITTED):
 
@@ -941,17 +957,21 @@ async Task<SalesPostResult> PostAsync(Guid draftId, string ifMatch, PostOptions 
     PrecheckAll(h, ctx, errors);                                  // §5.6 A.2
     errors.ThrowIfAny();                                          // 422
     calculator.Recalculate(h);                                    // BR-SAL-38
+    Guard(h.AmountIncludingVat == 0, "sales.document_total_zero"); // BR-SAL-37 (бүхэлчлэлээс өмнө)
     var rounding = CashRounding(h, ctx);                          // §5.10 (null бол байхгүй)
-    var docVoucher = BuildDocumentVoucher(h, ctx, rounding);      // §5.7: G/L + VAT + CLE мөр
-    var payVoucher = BuildBalancingVoucher(h, ctx, docVoucher);   // §5.9 (null бол байхгүй)
-    var batch = new PostingBatch(
-        SourceCode: "SALES",
-        Vouchers: payVoucher is null ? [docVoucher] : [docVoucher, payVoucher],
-        PostedDocument: new SalesPostedDocumentWriter(h, ifMatch, docVoucher.Key, ebarimtRequestFactory),
-        Outbox: [ Event(h.DocumentType == INVOICE ? "event.sales_invoice.posted" : "event.sales_credit_memo.posted") ],
-        Idempotency: o.Idempotency);
+    var docVoucher = BuildDocumentVoucher(h, ctx, rounding);      // §5.7: V1 = G/L + VAT + CLE мөр, FromSeries(SI|SC)
+    var payVoucher = BuildBalancingVoucher(h, ctx, docVoucher);   // §5.9: V2, SameAsVoucher("V1") (null бол байхгүй)
+    var doc = new PostingDocument {                               // 05 §5.1 (Idempotency-Key-ийг pipeline эзэмшинэ)
+        Run = new PostingRun(SourceCode: "SALES",
+                             PostingType: h.DocumentType == INVOICE ? "SALES_INVOICE" : "SALES_CR_MEMO",
+                             Source: new SourceRef("SALES_HEADER", h.Id, h.No), null, null),
+        Vouchers = payVoucher is null ? [docVoucher] : [docVoucher, payVoucher],
+        PostedDocument = new SalesPostedDocumentWriter(h, ifMatch, docVoucher.Key, ebarimtRequestFactory),
+        Outbox = [ Event(h.DocumentType == INVOICE ? "event.sales_invoice.posted" : "event.sales_credit_memo.posted") ],
+        Warnings = ctx.Warnings };
+    errors.AddRange(await postingService.ValidateAsync(doc, ct)); errors.ThrowIfAny();   // 05 A үе
     // ---------- B үе ----------
-    var result = await postingService.PostAsync(batch, o.Preview ? PostingMode.Preview : PostingMode.Post, ct);
+    var result = await postingService.PostAsync(doc, o.Preview ? PostingMode.Preview : PostingMode.Post, ct);
     // ---------- C үе ----------
     if (!o.Preview && result.Ebarimt?.SyncFirst == true && o.EbarimtPrint == "sync")
         result = result with { Print = await ebarimtPrint.DispatchNowAsync(result.Ebarimt.DocumentId, ct) };
@@ -959,7 +979,7 @@ async Task<SalesPostResult> PostAsync(Guid draftId, string ifMatch, PostOptions 
 }
 ```
 
-> **Олон ваучер нэг posting-д.** Бэлэн борлуулалт нь 2 `gl_transaction` (баримт + төлбөр) нэг `gl_register`, нэг DB transaction-д (03 §7). 02 §6.2-ын `PostingDocument` нэг толгойтой тул `PostingBatch(Vouchers[])` өргөтгөл шаардлагатай; эцсийн гэрээг `05-gl-posting.md` тогтооно (Хавсралт А).
+> **Олон ваучер нэг posting-д.** Бэлэн борлуулалт нь 2 `gl_transaction` (баримт + төлбөр) нэг `gl_register`, нэг DB transaction-д (03 §7). Гэрээг [05-posting-engine.md](./05-posting-engine.md) §5.1 тогтоосон: `PostingDocument.Vouchers[]` (Z-PST-10), ваучер 2-ын дугаар `VoucherNumbering.SameAsVoucher("V1")`, source code `CASHVOUCHER`/`PAYMENTREG` (Z-PST-15, BR-SAL-56). Ledger writer-ийн `entry_no`-г зөвхөн `ctx.ReserveEntryNumbersAsync`-ээр ledger бүрд **нэг удаа, блокоор** нөөцөлнө (05 W4, W9) — §5.8.
 
 ### 5.7 Posting buffer ба G/L, VAT мөр
 
@@ -968,7 +988,8 @@ async Task<SalesPostResult> PostAsync(Guid draftId, string ifMatch, PostOptions 
 VoucherDraft BuildDocumentVoucher(SalesHeader h, PostingContext c, RoundingLine? rnd) {
     int sgn = h.DocumentType == INVOICE ? -1 : +1;
     var buf = new Dictionary<BufferKey, BufferRow>();
-    foreach (var l in h.Lines.Where(x => x.LineType != "COMMENT" && x.Quantity != 0).OrderBy(x => x.LineNo)) {
+    foreach (var l in h.Lines.Where(x => x.LineType != "COMMENT" && x.SystemLineKind == "NONE" && x.Quantity != 0)
+                             .OrderBy(x => x.LineNo)) {                                   // бүхэлчлэлийн мөрийг доор `rnd`-ээр
         var gps = c.GenPostingSetup(l.GenBusPostingGroupId, l.GenProdPostingGroupId);     // яг → '*' (BR-SAL-40, 41)
         var acc = l.LineType == "GL_ACCOUNT" ? l.GlAccountId
                 : h.DocumentType == INVOICE ? gps.SalesAccountId : gps.SalesCreditMemoAccountId;
@@ -983,20 +1004,31 @@ VoucherDraft BuildDocumentVoucher(SalesHeader h, PostingContext c, RoundingLine?
     }
     var gl = new List<GlPostingLine>(); var vatLines = new List<VatLedgerLine>();
     foreach (var row in buf.Values.OrderBy(r => r.Key, BufferKeyComparer.Canonical)) {   // тогтвортой дараалал (hash chain)
-        var baseLine = Gl(row.Key.AccountId, row.Amount, GenPostingType.Sale, row.Key, vatAmount: row.Vat);
-        gl.Add(baseLine);
+        var origin = row.Key.LineType == "GL_ACCOUNT" && row.Key.RowKind == MAIN
+                   ? LineOrigin.UserEntered : LineOrigin.SystemDerived;                   // BR-SAL-11; 05 §5.1
+        GlPostingLine? baseLine = row.Amount != 0                                         // 05 BR-PST-05, -24
+            ? Gl(row.Key.AccountId, row.Amount, GenPostingType.Sale, row.Key, vatAmount: row.Vat, origin) : null;
+        if (baseLine is not null) gl.Add(baseLine);
         var vs = c.VatSetup(row.Key.VatBus, row.Key.VatProd);
-        vatLines.Add(new VatLedgerLine(EntryType: "SALE", Base: row.Base, Amount: row.Vat, Setup: vs,
-                     Party: ("CUSTOMER", h.CustomerId, c.Customer.No, c.Customer.Tin), GlLineKey: baseLine.Key)); // R-VAT-20
-        if (row.Vat != 0) gl.Add(Gl(vs.SalesVatAccountId, row.Vat, GenPostingType.None, row.Key));              // R-ACCOUNT-DETERMINATION-08
+        GlPostingLine? vatGl = row.Vat != 0                                                 // R-ACCOUNT-DETERMINATION-08
+            ? Gl(vs.SalesVatAccountId, row.Vat, GenPostingType.None, row.Key, origin: LineOrigin.SystemDerived) : null;
+        if (vatGl is not null) gl.Add(vatGl);
+        if (row.Base != 0 || row.Vat != 0)                                                 // 05 BR-PST-24
+            vatLines.Add(new VatLedgerLine(EntryType: "SALE", Base: row.Base, Amount: row.Vat, Setup: vs,
+                         Party: ("CUSTOMER", h.CustomerId, c.Customer.No, c.Customer.Tin),
+                         GlLineKey: (baseLine ?? vatGl)!.Key));                            // R-VAT-20: суурь мөр; суурь 0 бол НӨАТ-ын мөр
     }
-    if (rnd is not null) gl.Add(Gl(rnd.AccountId, sgn * rnd.Amount, GenPostingType.None, systemCreated: true)); // §5.10, VAT-гүй
-    var total = gl.Sum(x => x.AmountLcy);                         // = −(авлага)
-    var arLine = Gl(c.ReceivablesAccountId, -total, GenPostingType.None, sourceCustomer: h.CustomerId);       // BR-SAL-43, BR-AR-07
+    if (rnd is not null)                                                                    // §5.10, VAT-гүй, 8290 direct_posting=false
+        gl.Add(Gl(rnd.AccountId, sgn * rnd.Amount, GenPostingType.None, systemCreated: true, origin: LineOrigin.SystemDerived));
+    var total = gl.Sum(x => x.AmountLcy);                         // = −(авлага); BR-SAL-37-ээр ≠ 0
+    var arLine = Gl(c.ReceivablesAccountId, -total, GenPostingType.None, sourceCustomer: h.CustomerId,
+                    origin: LineOrigin.SystemDerived);            // BR-SAL-43, BR-AR-07
     gl.Add(arLine);
     var cle = new CustomerLedgerLine(h.DocumentType, Amount: -total, SalesLcy: -sgn * h.Amount /*баримтын тэмдэгтэй*/,
-                                     DueDate: h.DueDate, Apply: ApplyInstructionFor(h), GlLineKey: arLine.Key, …);
-    return new VoucherDraft(DocumentType: h.DocumentType, Gl: gl, Vat: vatLines, Customer: [cle]);
+                                     DueDate: h.DueDate, CustomerPostingGroupId: h.CustomerPostingGroupId,
+                                     Apply: ApplyInstructionFor(h), GlLineKey: arLine.Key, …);
+    return new VoucherDraft(Key: "V1", Numbering: new VoucherNumbering.FromSeries(PostingSeriesCode(h)),
+                            DocumentType: h.DocumentType, Gl: gl, Vat: vatLines, Customer: [cle]);
 }
 ```
 
@@ -1007,54 +1039,66 @@ VoucherDraft BuildDocumentVoucher(SalesHeader h, PostingContext c, RoundingLine?
 - `gl_entry.vat_amount` = мөрийн НӨАТ (суурь entry дээр); `vat_date` = толгойн.
 - VAT entry: buffer-ийн мөр бүрд (НӨАТ 0 байсан ч); НӨАТ-ын G/L entry зөвхөн `vat ≠ 0` (FR-TAX-007 AC1).
 - `tax.vat_entry.gl_entry_no` = суурь G/L entry; `tax.gl_entry_vat_entry_link` (суурь ↔ VAT entry).
-- Тэг дүнтэй buffer мөр (жишээ нь 100 % хөнгөлөлттэй, тусдаа хөнгөлөлтгүй) G/L-д бичигдэхгүй; гэхдээ ваучерт авлагын мөр (0 байсан ч) үргэлж байна (BR-SAL-37).
+- Тэг дүнтэй buffer мөр (жишээ нь 100 % хөнгөлөлттэй, тусдаа хөнгөлөлтгүй) G/L ба VAT entry-д бичигдэхгүй (05 BR-PST-24). Суурь 0 боловч НӨАТ ≠ 0 мөр (эерэг/сөрөг мөр нэг buffer түлхүүрт нийлж, тэмдгийн бүлгийн бөөрөнхийллөөс 0.01 үлдсэн) VAT entry-ээ НӨАТ-ын G/L мөртэй холбоно. Баримтын нийт 0 бол posting хориотой (BR-SAL-37) тул авлагын мөр үргэлж ≠ 0.
+- `LineOrigin` (05 §5.1): `GL_ACCOUNT` мөрийн орлогын (MAIN) мөр `UserEntered` (engine `direct_posting`, dimension дүрэм шалгана), бусад (бараа→General Posting Setup, хөнгөлөлт, НӨАТ, авлага, бүхэлчлэл, харьцсан данс) `SystemDerived`.
+- `GlPostingLine.Key` (05): `V1/R{n}/BASE`, `V1/R{n}/VAT`, `V1/RND`, `V1/PARTY`; ваучер 2: `V2/BAL`, `V2/PARTY`.
 - Мөрийн дараалал нь тогтвортой (`BufferKeyComparer.Canonical`: данс → бүлгүүд → dimension → `row_kind`); тест дараалалд тулгуурлахгүй (R-ACCOUNT-DETERMINATION-33).
 
 ### 5.8 Авлагын ledger writer (`ILedgerWriter<CustomerLedgerLine>`, Parties)
 
 ```csharp
 // Erp.Parties.Infrastructure.Ledger.CustomerLedgerWriter — engine-ийн transaction дотор
-async Task ValidateLockedAsync(IPostingContext ctx, IReadOnlyList<CustomerLedgerLine> lines, CancellationToken ct) {
+async ValueTask<IReadOnlyList<PostingError>> ValidateLockedAsync(IPostingContext ctx, IReadOnlyList<CustomerLedgerLine> lines,
+                                                                CancellationToken ct) {
+    var errors = new List<PostingError>();
     foreach (var x in lines) {
         var c = await customers.GetForShareAsync(x.CustomerId);               // SELECT … FOR SHARE
-        Guard(c.Blocked == "ALL" || (c.Blocked == "INVOICE" && x.DocumentType == "INVOICE"), "party.customer_blocked");
-        if (x.DocumentType is "INVOICE" or "CREDIT_MEMO")
-            Guard(await ledger.ExistsAsync(x.DocumentType, x.DocumentNo), "sales.document_no_already_in_ledger"); // BR-AR-09
-        foreach (var t in x.Apply.ExplicitTargets)                            // posted entry-үүд
-            await ledger.LockOpenAsync(t.EntryNo, x.CustomerId);              // FOR UPDATE; хаагдсан/буцаагдсан → алдаа
+        if (c.Blocked == "ALL" || (c.Blocked == "INVOICE" && x.DocumentType == "INVOICE")) errors.Add(Err("party.customer_blocked"));
+        var rcv = postingGroups.ReceivablesAccountOf(x.CustomerPostingGroupId);
+        foreach (var t in x.Apply.ExplicitTargets) {                          // posted entry-үүд, entry_no өсөхөөр (deadlock-гүй)
+            var s = await ledger.LockStateAsync(t.EntryNo, x.CustomerId);    // FOR UPDATE
+            if (!s.Open && !t.AllowClosed) errors.Add(Err("party.entry_closed", t));
+            if (s.Reversed)                 errors.Add(Err("party.entry_reversed", t));
+            if (postingGroups.ReceivablesAccountOf(s.CustomerPostingGroupId) != rcv)
+                errors.Add(Err("party.application_posting_group_mismatch", t));                 // BR-AR-16
+            if (t.ExpectedRemaining is decimal exp && s.Remaining != exp)
+                errors.Add(Err("party.application_target_changed", t));                         // BR-SAL-52 (бэлэн төлбөрийн дүн)
+        }
     }
+    return errors;                                                            // ≠ ∅ → ROLLBACK, 409/422
 }
 
-async Task WriteAsync(IPostingContext ctx, IReadOnlyList<CustomerLedgerLine> lines, CancellationToken ct) {
+// 05 W4/W9: ledger бүрийн дугаарыг run-д НЭГ УДАА блокоор нөөцөлнө → эхлээд санах ойд төлөвлөж, дараа нь бичнэ.
+async ValueTask WriteAsync(IPostingContext ctx, IReadOnlyList<CustomerLedgerLine> lines, CancellationToken ct) {
+    // 1) Төлөвлөх (дугааргүй, түр индекстэй). Ваучерын дараалал = lines-ийн дараалал (V1 нэхэмжлэх, V2 төлбөр)
+    var plan = new LedgerPlan();                                              // CLE, INITIAL, APPLICATION, closed_by_* заавар
     foreach (var x in lines) {
-        var tx = ctx.TransactionOf(x.GlLineKey);                              // ваучерын transaction_no, огноо
-        var cleNo = await counters.NextAsync("CUST_LEDGER_ENTRY");
-        await ledger.InsertEntryAsync(new CustLedgerEntry {
-            EntryNo = cleNo, CustomerId = x.CustomerId, CustomerNo = x.CustomerNo,
-            PostingDate = tx.PostingDate, DocumentDate = x.DocumentDate, DueDate = x.DueDate,
-            DocumentType = x.DocumentType, DocumentNo = ctx.DocumentNo, ExternalDocumentNo = x.ExternalDocumentNo,
-            Description = x.Description, Amount = x.Amount, AmountLcy = x.Amount, SalesLcy = x.SalesLcy,
-            Positive = x.Amount > 0, CustomerPostingGroupId = x.CustomerPostingGroupId,
-            PaymentMethodCode = x.PaymentMethodCode, BalAccountType = x.BalAccountType, BalAccountId = x.BalAccountId,
-            TransactionNo = tx.No, GlRegisterNo = ctx.RegisterNo, DimensionSetId = x.DimensionSetId,
-            SourceCode = ctx.SourceCode, ReasonCodeId = x.ReasonCodeId });    // remaining = 0, open = true (кэш)
-        await detailed.InsertAsync(Initial(cleNo, x, tx));                    // trigger: remaining = amount, open
-        ctx.Register(x.GlLineKey, cleNo);                                     // ижил batch-ийн дараагийн ваучерт
-        await application.ApplyInPostingAsync(ctx, cleNo, x, tx);             // §5.13.2
+        var v = ctx.Voucher(x.VoucherKey);                                    // TransactionNo, DocumentNo, PostingDate, SourceCode
+        if (x.DocumentType is "INVOICE" or "CREDIT_MEMO" && await ledger.ExistsAsync(x.DocumentType, v.DocumentNo))
+            throw Conflict("sales.document_no_already_in_ledger");            // BR-AR-09 (дугаар олгогдсоны дараа)
+        var e = plan.AddEntry(x, v);                                          // remaining = x.Amount (санах ойн төлөв)
+        plan.AddInitial(e, x, v);
+        await application.PlanInPostingAsync(ctx, plan, e, x, v);           // §5.13.2: target түгжих, ApplyPair → plan
     }
+    // 2) Дугаар нөөцлөх — ledger бүрд нэг дуудлага (count = 0 бол дуудахгүй, W9)
+    long cle0 = await ctx.ReserveEntryNumbersAsync("CUST_LEDGER_ENTRY", plan.Entries.Count, ct);
+    long det0 = await ctx.ReserveEntryNumbersAsync("DETAILED_CUST_LEDGER_ENTRY", plan.DetailedRows.Count, ct);
+    long app0 = plan.ApplicationCount > 0 ? await ctx.ReserveEntryNumbersAsync("APPLICATION_NO", plan.ApplicationCount, ct) : 0;
+    plan.AssignNumbers(cle0, det0, app0);                                     // түр индекс → entry_no / application_no
+    // 3) Бичих: DB CHECK-ийн дараалал
+    await ledger.InsertEntriesAsync(plan.Entries);                            // CLE (remaining 0, open true — кэш)
+    await detailed.InsertAsync(plan.DetailedRows.OrderBy(r => r.EntryNo));    // INITIAL дараа нь APPLICATION; trigger remaining
+    foreach (var u in plan.ClosedByUpdates) ledgerUpdate.Exec("party.cust_ledger_entry", u.EntryNo, u.Changes); // BR-AR-31
+    foreach (var e in plan.Entries) ctx.Produced("CUST_LEDGER_ENTRY", e.LineKey, e.EntryNo);   // posted header-ийн cust_ledger_entry_no
+    foreach (var m in plan.Outbox) ctx.AddOutbox(m);                          // §5.13.2-ын event-үүд
 }
-
-DetailedRow Initial(long cleNo, CustomerLedgerLine x, TxInfo tx) => new() {
-    EntryNo = counters.Next("DETAILED_CUST_LEDGER_ENTRY"), CustLedgerEntryNo = cleNo, EntryType = "INITIAL",
-    PostingDate = tx.PostingDate, DocumentType = x.DocumentType, DocumentNo = tx.DocumentNo,
-    Amount = x.Amount, AmountLcy = x.Amount, CustomerId = x.CustomerId, TransactionNo = tx.No,
-    LedgerEntryAmount = true, InitialEntryDueDate = x.DueDate, InitialDocumentType = x.DocumentType,
-    CustomerPostingGroupId = x.CustomerPostingGroupId, SourceCode = tx.SourceCode };
 ```
 
-- **Insert-ийн дараалал** (DB CHECK-ийн улмаас): CLE (remaining 0) → INITIAL detailed (trigger remaining-ийг тавина) → APPLICATION мөрүүд → `fn_ledger_update` (`closed_by_*`).
-- `ctx.Register` нь бэлэн борлуулалтын төлбөрийн ваучер "энэ batch-ийн нэхэмжлэхийн CLE"-д (`ApplyTo.LineKey`) тулгахыг боломжтой болгоно.
-- Writer нь `remaining_amount`, `open`-ийг **хэзээ ч** бичихгүй (BR-AR-04).
+- **Insert-ийн дараалал** (DB CHECK-ийн улмаас): CLE (remaining 0) → INITIAL detailed (trigger remaining-ийг тавина) → APPLICATION мөрүүд → `fn_ledger_update` (`closed_by_*`). Detailed мөрийн `entry_no` нь төлөвлөсөн дарааллаар (INITIAL V1, APPLICATION V1, INITIAL V2, APPLICATION V2) — P2-ийн 9010..9013-тай ижил.
+- Ваучер 2-ын тулгалт (`ApplyInstruction.ToLineKey`) нь ижил run-ий V1-ийн CLE-г **төлөвлөгөөн дотроос** (санах ойн төлөв) авна; DB-ээс уншихгүй.
+- CLE ба detailed мөрийн `transaction_no`, `posting_date`, `source_code`, `reason_code_id` = ваучерынх (05 W1, W3); `gl_register_no = ctx.RegisterNo`.
+- INITIAL мөр: `entry_type = 'INITIAL'`, `amount = amount_lcy = CLE.amount`, `ledger_entry_amount = true`, `document_type/no` = CLE-ийнх, `initial_entry_due_date = due_date`, `initial_document_type = document_type`, `customer_posting_group_id` = CLE-ийнх (BR-AR-02), `application_no = NULL`.
+- Writer нь `remaining_amount`, `open`-ийг **хэзээ ч** бичихгүй (BR-AR-04). Санах ойн `remaining` нь зөвхөн төлөвлөлтөд; DB-ийн кэшийг trigger тавина, CHECK (`abs(remaining) ≤ abs(amount)`) эцсийн хамгаалалт.
 
 ### 5.9 Бэлэн борлуулалт (харьцсан дансны төлбөр)
 
@@ -1062,25 +1106,33 @@ DetailedRow Initial(long cleNo, CustomerLedgerLine x, TxInfo tx) => new() {
 VoucherDraft? BuildBalancingVoucher(SalesHeader h, PostingContext c, VoucherDraft doc) {
     if (h.BalAccountType is null) return null;                                  // BR-SAL-50
     var cle = doc.Customer.Single();                                            // нэхэмжлэх: +T, кредит нот: −T
-    // Applies-to тулгалт posting-д хийгдсэний ДАРААХ үлдэгдлийг урьдчилан тооцно (A үе, түгжээний дор дахин шалгана)
+    // Applies-to тулгалт posting-д хийгдсэний ДАРААХ үлдэгдлийг A үед тооцно; target-ийн уншсан үлдэгдлийг
+    // cle.Apply-д ExpectedRemaining болгон хадгалж B үед түгжээний дор тулгана (BR-SAL-52, party.application_target_changed)
     decimal applied = PreviewExplicitApplication(cle, c);                       // BR-SAL-52, 63 (≥ 0, эсрэг тэмдгийн дүн)
     decimal pay = cle.Amount - Math.Sign(cle.Amount) * applied;                 // үлдэгдэл (тэмдэгтэй)
     if (pay == 0) { c.Warnings.Add("sales.balancing_payment_nothing_to_pay"); return null; }
     var balGl = h.BalAccountType == "BANK_ACCOUNT" ? c.BankGlAccount(h.BalAccountId) : h.BalAccountId;  // BR-SAL-51
     var docType = h.DocumentType == INVOICE ? "PAYMENT" : "REFUND";
-    var gl = new[] { Gl(balGl, +pay, GenPostingType.None), Gl(c.ReceivablesAccountId, -pay, GenPostingType.None) };
+    var isCash = h.BalAccountType == "BANK_ACCOUNT" && c.IsCash(h.BalAccountId);
+    var gl = new[] {
+        Gl("V2/BAL", balGl, +pay, GenPostingType.None, origin: LineOrigin.SystemDerived),
+        Gl("V2/PARTY", c.ReceivablesAccountId, -pay, GenPostingType.None, sourceCustomer: h.CustomerId, origin: LineOrigin.SystemDerived) };
     var bank = h.BalAccountType == "BANK_ACCOUNT"
         ? new BankLedgerLine(h.BalAccountId, Amount: +pay, DocumentType: docType, CounterpartyName: h.CustomerName,
-                             Purpose: "Борлуулалт " + DocNoPlaceholder, CashVoucher: c.IsCash(h.BalAccountId)) : null;   // BR-SAL-54
+                             Purpose: "Борлуулалт " + DocNoPlaceholder, CashVoucher: isCash, GlLineKey: "V2/BAL") : null; // BR-SAL-54
     var payCle = new CustomerLedgerLine(docType, Amount: -pay, SalesLcy: 0, DueDate: h.PostingDate,           // BR-SAL-56
-                                        Apply: ApplyInstruction.ToLineKey(cle.GlLineKey, -pay),               // BR-SAL-53
+                                        CustomerPostingGroupId: h.CustomerPostingGroupId,                      // BR-SAL-43
+                                        Apply: ApplyInstruction.ToLineKey(cle.GlLineKey),                      // BR-SAL-53 (бүх үлдэгдэл)
                                         PaymentMethodCode: c.PaymentMethodCode, BalAccountType: h.BalAccountType,
-                                        BalAccountId: h.BalAccountId, …);
-    return new VoucherDraft(docType, gl, Vat: [], Customer: [payCle], Bank: bank is null ? [] : [bank]);
+                                        BalAccountId: h.BalAccountId, GlLineKey: "V2/PARTY", …);
+    return new VoucherDraft(Key: "V2", Numbering: new VoucherNumbering.SameAsVoucher("V1"),             // 05 Z-PST-15
+                            SourceCode: isCash ? "CASHVOUCHER" : "PAYMENTREG",                          // BR-SAL-56
+                            DocumentType: docType, Gl: gl, Vat: [], Customer: [payCle], Bank: bank is null ? [] : [bank]);
 }
 ```
 
-- Ваучер 2-ийн `document_no` = posted баримтын дугаар (ижил), `posting_date` ижил, `source_code = 'SALES'`.
+- Ваучер 2-ийн `document_no` = posted баримтын дугаар (ижил, `SameAsVoucher`), `posting_date` ижил, `source_code` = `CASHVOUCHER` / `PAYMENTREG` (BR-SAL-56); `gl_register.source_code = 'SALES'`.
+- Ваучер 2-ын тулгалтын дүн = V1-ийн CLE-ийн **төлөвлөгөөн дэх** үлдэгдэл = `|pay|` (V1-ийн applies-to-гийн дараа). Ингэснээр хоёр CLE үргэлж хаагдана; хаагдаагүй бол кодын алдаа (500).
 - Кассын МХ-1/МХ-2 нь Cash&Bank writer-ийн хэрэгжүүлэлт (`bank.posted_cash_voucher`: `voucher_type`, `no`, `counterparty_name`, `purpose`, `amount > 0`, `bank_ledger_entry_no`, `transaction_no`).
 - Касс сөрөг болох (кредит нотын бэлэн буцаалт) нь COMMIT-д ERC01 → 422 `bank.cash_negative_balance`.
 
@@ -1088,13 +1140,17 @@ VoucherDraft? BuildBalancingVoucher(SalesHeader h, PostingContext c, VoucherDraf
 
 ```csharp
 RoundingLine? CashRounding(SalesHeader h, PostingContext c) {
+    // Цуцлалтын CM: нэхэмжлэхээс хуулсан бүхэлчлэлийн мөр аль хэдийн байна (BR-SAL-73) — дахин тооцохгүй, түүнийг ашиглана
+    var copied = h.Lines.SingleOrDefault(x => x.SystemLineKind == "INVOICE_ROUNDING");
+    if (copied is not null) return new RoundingLine(copied.GlAccountId, copied.AmountIncludingVat);   // h.Amount-д §5.4 нэмсэн
     if (!c.Company.InvoiceRoundingEnabled || h.BalAccountType != "BANK_ACCOUNT" || !c.IsCash(h.BalAccountId)) return null; // BR-SAL-57
     decimal T = h.AmountIncludingVat;
     decimal ir = -R(T - MoneyMath.RoundTo(T, c.Company.InvoiceRoundingPrecision, Nearest), c.P);
     if (ir == 0) return null;
     var acc = c.CustomerPostingGroup.InvoiceRoundingAccountId ?? throw Domain("sales.invoice_rounding_account_missing");
-    h.AddSystemLine(new SalesLine { LineType = "GL_ACCOUNT", GlAccountId = acc, Quantity = 1, UnitPrice = ir,
-                                    LineAmount = ir, Amount = ir, AmountIncludingVat = ir, VatPercent = 0,
+    h.AddSystemLine(new SalesLine { LineType = "GL_ACCOUNT", SystemLineKind = "INVOICE_ROUNDING", GlAccountId = acc,
+                                    LineNo = h.Lines.Max(x => x.LineNo) + 10000, Quantity = 1, UnitPrice = ir,
+                                    LineAmount = ir, Amount = ir, AmountIncludingVat = ir, VatBaseAmount = 0, VatPercent = 0,
                                     Description = "Бэлэн мөнгөний бүхэлчлэл" });          // posted мөрөнд хуулна (BR-SAL-58)
     h.Amount += ir; h.AmountIncludingVat += ir;                                           // BR-SAL-59
     return new RoundingLine(acc, ir);
@@ -1102,12 +1158,13 @@ RoundingLine? CashRounding(SalesHeader h, PostingContext c) {
 ```
 
 - Бүхэлчлэлийн мөр НӨАТ-ын бүлэгт орохгүй (§5.4-ийн дараа нэмнэ), VAT entry үүсгэхгүй, eBarimt-ийн `ReceiptRequest`-д `IsInvoiceRounding = true` тэмдэгтэй (12 MAP-03; SCR-09).
-- Кредит нот (бэлэн буцаалт) ижил дүрмээр (тэмдэг эсрэг).
+- Кредит нот (бэлэн буцаалт) ижил дүрмээр (тэмдэг эсрэг; `sgn` §5.7).
+- `T` нь `vat_registered = false` компанид ч ижил (НӨАТ 0). `IR` нь `|IR| ≤ invoice_rounding_precision / 2` байна; `T` бүхэл бол мөр үүсэхгүй.
 
 ### 5.11 Кредит нот батлах
 
 1. §5.6-ийн урсгал, `sgn = +1` (орлого/НӨАТ дебит, авлага кредит).
-2. Нэхэмжлэхийг заасан бол (`corrected_invoice_id` эсвэл `applies_to_*`): `ApplyInstruction.ToDocument("INVOICE", no, cap: invoiceRemaining)` (BR-SAL-63). Нэхэмжлэх хаагдсан бол тулгалтгүй (алдаагүй).
+2. Нэхэмжлэхийг заасан бол (`corrected_invoice_id` эсвэл `applies_to_*`): `ApplyInstruction.ToDocument("INVOICE", no, AllowClosed: true)` — cap **өгөхгүй**, тулгах дүнг B үед түгжээний дорх нэхэмжлэхийн үлдэгдлээр `ApplyPair` тооцно (BR-SAL-63). Нэхэмжлэх хаагдсан бол тулгалтгүй (алдаагүй). Харьцсан данстай CM-д л `ExpectedRemaining` тавина (BR-SAL-52).
 3. Харьцсан данс байвал үлдсэн кредитийг `REFUND` ваучераар буцаан олгоно (BR-SAL-52; P9).
 4. eBarimt: `ReceiptRequest(SourceType = SALES_CR_MEMO, CorrectedInvoiceId)`; гинж, `DELETE`/`inactiveId`/`reportMonth`-ийг 12 §12 шийднэ. 12 `reportMonth` шаардвал `vat_date`-ийг тэр сарын эцсийн өдөр болгоно (BR-SAL-34) — энэ шийдвэрийг **A үед** `IEbarimtCorrectionPlanner.Plan(invoice, memo, now)`-оор урьдчилж авна (VAT entry-ийн огноо posting-оос өмнө тогтох ёстой).
 5. Outbox `event.sales_credit_memo.posted`.
@@ -1126,6 +1183,7 @@ async Task<CancelResult> CancelAsync(Guid invoiceApiId, CancelCommand cmd, Cance
     Guard(cle.RemainingAmount != cle.Amount || await partyQuery.HasLiveApplicationsAsync(cle.EntryNo),
           "sales.invoice_has_applications");                                                         // BR-SAL-71
     Guard(cmd.ReasonCodeId is null, "sales.reason_code_required");                                   // BR-SAL-61
+    Guard((await parties.GetCustomerAsync(inv.CustomerId)).Blocked == "ALL", "sales.customer_blocked"); // BR-SAL-70
     var date = cmd.PostingDate ?? calendar.Today;                                                    // BR-SAL-72
     Guard(date < inv.PostingDate, "party.application_target_after_posting_date");
     // ---------- Кредит нот угсрах (санах ойд; ноорог хадгалахгүй) ----------
@@ -1135,22 +1193,25 @@ async Task<CancelResult> CancelAsync(Guid invoiceApiId, CancelCommand cmd, Cance
     cm.ExternalDocumentNo = inv.ExternalDocumentNo; cm.ReasonCodeId = cmd.ReasonCodeId;
     cm.CorrectedInvoiceId = inv.Id; cm.AppliesToDocType = "INVOICE"; cm.AppliesToDocNo = inv.No;
     cm.CopyPostingGroupsFromSnapshot(inv);                                    // код → id; устсан бол sales.posting_group_missing
-    foreach (var pl in inv.Lines.OrderBy(x => x.LineNo)) cm.Lines.Add(SalesLine.CopyFromPosted(pl)); // BR-SAL-73 (VatPercent snapshot)
-    calculator.Recalculate(cm, RateSource.Snapshot);
+    foreach (var pl in inv.Lines.OrderBy(x => x.LineNo)) cm.Lines.Add(SalesLine.CopyFromPosted(pl)); // BR-SAL-73 (VatPercent,
+                                                         // VatIdentifier, VatCalculationType, SystemLineKind snapshot)
+    calculator.Recalculate(cm, RateSource.Snapshot);     // бүхэлчлэлийн мөр тооцоололд орохгүй, нийлбэрт нэмэгдэнэ (§5.4)
     Guard(cm.Amount != inv.Amount || cm.VatAmount != inv.VatAmount || cm.AmountIncludingVat != inv.AmountIncludingVat,
           "sales.cancel_amount_mismatch");                                                           // BR-SAL-74
     // ---------- B үе: нэг transaction ----------
-    var batch = BuildCreditMemoBatch(cm, apply: ApplyInstruction.ToEntry(cle.EntryNo, exact: cle.Amount),
+    // PostingDocument (05 §5.1): V1 = CM (FromSeries(SC)), PostedDocument = CM writer + cancelled_document + засварын ноорог
+    var doc = BuildCreditMemoDocument(cm, apply: ApplyInstruction.ToEntry(cle.EntryNo, exact: cle.Amount),
                                      extraWrites: new CancelledDocumentWriter(inv.Id),                // BR-SAL-75
                                      correctiveDraft: cmd.CreateCorrectiveDraft ? CopyAsDraft(inv) : null, // BR-SAL-78
                                      outbox: [ Event("event.sales_invoice.cancelled") ]);
-    var r = await postingService.PostAsync(batch, PostingMode.Post, ct);
+    var r = await postingService.PostAsync(doc, PostingMode.Post, ct);
     return new CancelResult(CreditMemoId: r.PostedId, CorrectiveDraftId: r.CorrectiveDraftId);
 }
 ```
 
 - Цуцлалтын кредит нот нь posted CM-ийн `draft_id = NULL`, `pre_assigned_no = NULL`; API-ийн id = posted id (14 API-URL-10).
-- B үеийн түгжээний дор: нэхэмжлэхийн CLE `FOR UPDATE`, үлдэгдэл = дүн, цуцлагдаагүй (UNIQUE) гэдгийг дахин шалгана; eBarimt гинж (BR-SAL-76).
+- B үеийн түгжээний дор: нэхэмжлэхийн CLE `FOR UPDATE`, үлдэгдэл = дүн, цуцлагдаагүй (UNIQUE) гэдгийг дахин шалгана; eBarimt гинж (BR-SAL-76); BR-AR-16 (CM нь нэхэмжлэхийн бүлгийг хуулсан тул үргэлж биелнэ).
+- Бэлэн борлуулалтын нэхэмжлэхийг цуцлах дараалал: (1) автомат төлбөрийн тулгалтыг unapply (§5.14), (2) цуцлах — нэхэмжлэх CM-ээр хаагдана, (3) төлбөрийн CLE (`PAYMENT −T`) нээлттэй кредит болж үлдэнэ; мөнгийг буцааж өгөх бол 09-ийн `REFUND` (касс бол МХ-2) баримтыг тэр төлбөрт тулгана. Бүхэлчлэлтэй (P2b) бол CM нь бүхэлчлэлийн мөрийг хуулж 46 993.00-аар хаана.
 - `exact: cle.Amount` — кредит нот нэхэмжлэхийг **бүтэн** хаах ёстой; хаагдаагүй бол алгоритмын алдаа.
 
 #### 5.12.2 Засварлах
@@ -1163,82 +1224,93 @@ async Task<CancelResult> CancelAsync(Guid invoiceApiId, CancelCommand cmd, Cance
 
 #### 5.12.4 Хуулах (`:copy`)
 
-Эх (ноорог/posted, нэхэмжлэх/кредит нот) → шинэ ноорог (сонгосон төрөл). Мөр: төрөл, данс/бараа, тайлбар, тоо, үнэ, хөнгөлөлт, dimension, eBarimt шинж. Хуулахгүй: хуулийн дугаар, огноо (BR-SAL-06), eBarimt-ийн толгойн өгөгдөл, `corrected_invoice_id`, `applies_to_*`, харьцсан данс (тухайн харилцагчийн анхдагчаас). Дүн одоогийн хувиар дахин тооцогдоно (BR-SAL-79).
+Эх (ноорог/posted, нэхэмжлэх/кредит нот) → шинэ ноорог (сонгосон төрөл). Мөр: төрөл, данс/бараа, тайлбар, тоо, үнэ, хөнгөлөлт, dimension, eBarimt шинж. Хуулахгүй: хуулийн дугаар, огноо (BR-SAL-06), eBarimt-ийн толгойн өгөгдөл, `corrected_invoice_id`, `applies_to_*`, харьцсан данс (тухайн харилцагчийн анхдагчаас), бүхэлчлэлийн системийн мөр (`system_line_kind ≠ 'NONE'`). Дүн одоогийн хувиар дахин тооцогдоно (BR-SAL-79).
 
 ### 5.13 Тулгалт (`IApplicationService`, Parties)
 
 #### 5.13.1 Хосын тулгалт (цөм)
 
 ```csharp
-// Parties.Domain.Application — түгжээний дор, нэг transaction дотор
+// Parties.Domain.Application — цэвэр функц: түгжигдсэн санах ойн төлөв дээр ажиллаж мөрийг `sink`-д нэмнэ.
+// DB-д бичихгүй, дугаар олгохгүй: дуудагч (§5.8 WriteAsync, §5.13.3, §5.14) дугаарыг нэг удаа блокоор нөөцөлж бичнэ (05 W4/W9).
 sealed record PairResult(long OldEntryNo, long NewEntryNo, decimal Applied, bool OldClosed, bool NewClosed);
 
 PairResult ApplyPair(LedgerEntryState newE, LedgerEntryState oldE, decimal? oldAmountToApply,
-                     ApplicationScope s /* ApplicationNo, PostingDate, TransactionNo?, SourceCode, DocType, DocNo */) {
+                     ApplicationScope s /* ApplicationRef, PostingDate, TransactionNo?, SourceCode, DocType, DocNo */,
+                     ApplicationSink sink) {
     Guard(newE.CustomerId != oldE.CustomerId, "party.application_customer_mismatch");     // INV-27
     Guard(newE.Positive == oldE.Positive, "party.application_sign_mismatch");             // BR-AR-20
     Guard(!oldE.Open || !newE.Open, "party.entry_closed");
     Guard(oldE.Reversed || newE.Reversed, "party.entry_reversed");                         // BR-AR-33
     Guard(newE.CurrencyCode != oldE.CurrencyCode, "party.application_currency_mismatch");  // BR-AR-21
+    Guard(newE.ReceivablesAccountId != oldE.ReceivablesAccountId,
+          "party.application_posting_group_mismatch");                                     // BR-AR-16
     decimal oldCap = Math.Abs(oldAmountToApply ?? oldE.Remaining);
     Guard(oldCap > Math.Abs(oldE.Remaining), "party.application_exceeds_remaining");       // BR-AR-35
     decimal a = Math.Min(Math.Abs(newE.Remaining), oldCap);                                 // BR-AR-22
     if (a == 0) return new(oldE.EntryNo, newE.EntryNo, 0, false, false);
     int so = Math.Sign(oldE.Remaining);
-    var dOld = AppRow(oldE.EntryNo, appliedTo: newE.EntryNo, amount: -so * a, s);          // BR-AR-23
-    var dNew = AppRow(newE.EntryNo, appliedTo: oldE.EntryNo, amount: +so * a, s);
-    detailed.Insert(dOld); detailed.Insert(dNew);                                          // trigger → remaining
-    oldE.Remaining += dOld.Amount; newE.Remaining += dNew.Amount;
-    if (oldE.Remaining == 0) MarkClosed(oldE, by: newE.EntryNo, s.PostingDate, closedBy: -dOld.Amount); // BR-AR-31
-    if (newE.Remaining == 0) MarkClosed(newE, by: oldE.EntryNo, s.PostingDate, closedBy: -dNew.Amount);
+    var dOld = AppRow(oldE, appliedTo: newE, amount: -so * a, s);                           // BR-AR-23
+    var dNew = AppRow(newE, appliedTo: oldE, amount: +so * a, s);
+    sink.Rows.Add(dOld); sink.Rows.Add(dNew);                                              // INSERT дараа нь (trigger → remaining)
+    oldE.Remaining += dOld.Amount; newE.Remaining += dNew.Amount;                          // санах ойн төлөв
+    if (oldE.Remaining == 0) sink.Closed.Add(new(oldE, by: newE, s.PostingDate, closedBy: -dOld.Amount)); // BR-AR-31
+    if (newE.Remaining == 0) sink.Closed.Add(new(newE, by: oldE, s.PostingDate, closedBy: -dNew.Amount));
     return new(oldE.EntryNo, newE.EntryNo, a, oldE.Remaining == 0, newE.Remaining == 0);
 }
 
-DetailedRow AppRow(long cle, long appliedTo, decimal amount, ApplicationScope s) => new() {
-    EntryNo = counters.Next("DETAILED_CUST_LEDGER_ENTRY"), CustLedgerEntryNo = cle, EntryType = "APPLICATION",
+DetailedRow AppRow(LedgerEntryState e, LedgerEntryState appliedTo, decimal amount, ApplicationScope s) => new() {
+    /* EntryNo, ApplicationNo: дуудагч блокоос олгоно */ CustLedgerEntryNo = e.EntryNo, EntryType = "APPLICATION",
     PostingDate = s.PostingDate, DocumentType = s.DocType, DocumentNo = s.DocNo, Amount = amount, AmountLcy = amount,
-    TransactionNo = s.TransactionNo /* NULL = G/L-гүй */, ApplicationNo = s.ApplicationNo,
-    AppliedCustLedgerEntryNo = appliedTo, LedgerEntryAmount = false, SourceCode = s.SourceCode };
+    TransactionNo = s.TransactionNo /* NULL = G/L-гүй */, ApplicationRef = s.ApplicationRef,
+    AppliedCustLedgerEntryNo = appliedTo.EntryNo, LedgerEntryAmount = false, SourceCode = s.SourceCode,
+    CustomerId = e.CustomerId, CustomerPostingGroupId = e.CustomerPostingGroupId,                // BR-AR-02
+    InitialEntryDueDate = e.DueDate, InitialDocumentType = e.DocumentType };                    // snapshot (BR-AR-15)
 
-void MarkClosed(LedgerEntryState e, long by, DateOnly at, decimal closedBy) =>
-    ledgerUpdate.Exec("party.cust_ledger_entry", e.EntryNo, new { closed_by_entry_no = by, closed_at_date = at,
-                      closed_by_amount = closedBy, closed_by_amount_lcy = closedBy });      // platform.fn_ledger_update
+// Дуудагч бичсэний дараа sink.Closed бүрд: platform.fn_ledger_update('party.cust_ledger_entry', e.EntryNo,
+//   {closed_by_entry_no, closed_at_date, closed_by_amount, closed_by_amount_lcy}) — нэг entry олон удаа хаагдвал сүүлийнх нь.
 ```
+
+- `LedgerEntryState` = `entry_no`, `customer_id`, `positive`, `open`, `reversed`, `currency_code`, `remaining_amount` (түгжсэн үеийн), `customer_posting_group_id` + түүний `receivables_account_id`, `due_date`, `document_type/no`, `posting_date`. Posting доторх шинэ entry-ийн төлөв нь төлөвлөгөөнөөс (DB-д хараахан байхгүй).
 
 #### 5.13.2 Posting доторх тулгалт
 
 ```csharp
-async Task ApplyInPostingAsync(IPostingContext ctx, long newCle, CustomerLedgerLine x, TxInfo tx) {
+// §5.8 WriteAsync-аас дуудагдана: DB-д бичихгүй, plan-д нэмнэ (05 W4/W9)
+async Task PlanInPostingAsync(IPostingContext ctx, LedgerPlan plan, LedgerEntryState n, CustomerLedgerLine x, VoucherInfo v) {
     var targets = x.Apply switch {
-        ApplyInstruction.None                       => [],
-        ApplyInstruction.ToLineKey k                => [ (ctx.EntryOf(k.Key), (decimal?)null) ],          // бэлэн төлбөр
-        ApplyInstruction.ToDocument d               => [ (await FindOpenByDocAsync(x.CustomerId, d.Type, d.No, d.AllowClosed), d.Cap) ], // BR-AR-29, BR-SAL-63
-        ApplyInstruction.ToEntry e                  => [ (e.EntryNo, e.Exact) ],                           // цуцлалт
-        ApplyInstruction.Entries list               => list.Items.Select(i => (i.EntryNo, i.AmountToApply)).ToList(), // банкны төлбөр
-        ApplyInstruction.Oldest                     => await OldestCandidatesAsync(x.CustomerId, newCle, tx.PostingDate), // BR-AR-37
+        ApplyInstruction.None          => [],
+        ApplyInstruction.ToLineKey k   => [ (plan.StateOf(k.Key), (decimal?)null) ],                     // бэлэн төлбөр → V1-ийн CLE (санах ой)
+        ApplyInstruction.ToDocument d  => [ (await FindByDocAsync(x.CustomerId, d.Type, d.No, d.AllowClosed), (decimal?)null) ], // BR-AR-29, BR-SAL-63 (cap-гүй)
+        ApplyInstruction.ToEntry e     => [ (await ledger.LockStateAsync(e.EntryNo), (decimal?)e.Exact) ], // цуцлалт
+        ApplyInstruction.Entries list  => await LockAllAsync(list.Items.OrderBy(i => i.EntryNo)),          // банкны төлбөр (entry_no өсөхөөр түгжинэ)
+        ApplyInstruction.Oldest        => await OldestCandidatesAsync(n, v.PostingDate),                   // BR-AR-37 (FOR UPDATE)
     };
-    if (targets.Count == 0) return;
-    var scope = new ApplicationScope(ApplicationNo: await counters.NextAsync("APPLICATION_NO"),           // BR-AR-24
-                                     PostingDate: tx.PostingDate, TransactionNo: tx.No,                  // BR-AR-25
-                                     SourceCode: tx.SourceCode, DocType: x.DocumentType, DocNo: tx.DocumentNo);
-    var n = await ledger.LockStateAsync(newCle);
-    foreach (var (entryNo, cap) in targets) {
-        if (entryNo is null) continue;                                                // нээлттэй баримт алга (кредит нот)
-        var o = await ledger.LockStateAsync(entryNo.Value);
-        Guard(o.PostingDate > tx.PostingDate, "party.application_target_after_posting_date");          // BR-AR-26
-        var r = ApplyPair(n, o, cap, scope);
-        if (x.Apply is ApplyInstruction.ToEntry { Exact: not null } ex && !r.OldClosed)
-            throw Internal("sales.cancel_amount_mismatch");                           // BR-SAL-75
-        if (r.OldClosed && o.DocumentType == "INVOICE") ctx.Outbox(Event("event.sales_invoice.paid", o));
-        if (n.Remaining == 0) break;                                                  // R-SUBLEDGERS-APPLICATION-23
+    targets = targets.Where(t => t.State is not null && t.State.Open).ToList();       // AllowClosed: хаагдсан нэхэмжлэх → тулгалтгүй
+    if (targets.Count == 0) return;                                                    // APPLICATION_NO нөөцлөхгүй
+    var scope = new ApplicationScope(ApplicationRef: plan.NewApplication(),            // BR-AR-24: шинэ entry бүрд нэг application_no
+                                     PostingDate: v.PostingDate, TransactionNo: v.TransactionNo,         // BR-AR-25
+                                     SourceCode: v.SourceCode, DocType: x.DocumentType, DocNo: v.DocumentNo);
+    var closedInvoices = new List<LedgerEntryState>();
+    foreach (var (o, cap) in targets) {
+        Guard(o.PostingDate > v.PostingDate, "party.application_target_after_posting_date");          // BR-AR-26
+        var r = ApplyPair(n, o, cap, scope, plan.Sink);                                // BR-AR-16, 20..23
+        if (x.Apply is ApplyInstruction.ToEntry { Exact: not null } && !r.OldClosed)
+            throw Internal("sales.cancel_amount_mismatch");                            // BR-SAL-75
+        if (r.OldClosed && o.DocumentType == "INVOICE") closedInvoices.Add(o);
+        if (r.NewClosed && n.DocumentType == "INVOICE") closedInvoices.Add(n);         // урьдчилгаагаар хаагдсан шинэ нэхэмжлэх (P7)
+        if (n.Remaining == 0) break;                                                   // R-SUBLEDGERS-APPLICATION-23
     }
-    ctx.Outbox(Event("event.customer_entries.applied", scope.ApplicationNo));
+    if (x.Apply is not ApplyInstruction.ToEntry { Exact: not null })                   // цуцлалт = "paid" биш (event.sales_invoice.cancelled)
+        foreach (var inv in closedInvoices) plan.Outbox.Add(Event("event.sales_invoice.paid", inv, closedBy: x.DocumentType));
+    plan.Outbox.Add(Event("event.customer_entries.applied", scope.ApplicationRef));
 }
 ```
 
-- `ApplyInstructionFor(h)`: `applies_to_doc_*` эсвэл `corrected_invoice_id` байвал `ToDocument`; бэлэн төлбөргүй ба харилцагч `APPLY_TO_OLDEST` бол `Oldest`; бусад `None`.
-- Кредит нотын `ToDocument` нь `AllowClosed = true` (хаагдсан нэхэмжлэх → тулгалтгүй, алдаагүй); нэхэмжлэхийн (урьдчилгаа) `ToDocument` хаагдсан бол `party.entry_closed`.
-- `OldestCandidatesAsync`: `open AND customer_id = $c AND positive <> $newPositive AND posting_date ≤ $date AND entry_no <> $new AND NOT EXISTS (application_draft …)` ORDER BY `due_date, entry_no` FOR UPDATE.
+- `ApplyInstructionFor(h)`: `applies_to_doc_*` эсвэл `corrected_invoice_id` байвал `ToDocument`; бэлэн төлбөргүй ба харилцагч `APPLY_TO_OLDEST` бол `Oldest`; бусад `None`. Харьцсан данстай баримтын `ToDocument` нь A үед уншсан `ExpectedRemaining`-тэй (BR-SAL-52).
+- Кредит нотын `ToDocument` нь `AllowClosed = true` (хаагдсан нэхэмжлэх → тулгалтгүй, алдаагүй); нэхэмжлэхийн (урьдчилгаа) `ToDocument` хаагдсан бол `party.entry_closed` (§5.8 `ValidateLockedAsync`).
+- `OldestCandidatesAsync`: `open AND NOT reversed AND customer_id = $c AND positive <> $newPositive AND posting_date ≤ $date AND entry_no <> $new AND customer_posting_group_id IN (ижил receivables_account_id-тай бүлгүүд) AND NOT EXISTS (application_draft …)` ORDER BY `due_date, entry_no` FOR UPDATE (BR-AR-16, 37).
+- Түгжих дараалал: target CLE-үүдийг `entry_no` өсөхөөр `FOR UPDATE` (компанийн advisory lock-ийн дор тул deadlock-гүй ч тогтвортой дараалал).
 
 #### 5.13.3 Батлагдсан entry хооронд (`POST /customer-ledger-entries:apply`)
 
@@ -1249,35 +1321,49 @@ async Task<ApplicationResult> ApplyPostedAsync(ApplyRequest req, CancellationTok
     return await postingService.RunSubledgerOnlyAsync("SALESAPPL", async ctx => {
         var newE = await ledger.LockStateAsync(EntryNo(req.ApplyingEntryId));
         var targets = (req.Entries.Count > 0 ? req.Entries
-                       : await ledger.OpenOppositeAsync(newE)).ToList();               // хоосон + DUE_DATE = бүх нээлттэй
+                       : await ledger.OpenOppositeAsync(newE)).ToList();               // хоосон + DUE_DATE = бүх нээлттэй, эсрэг тэмдэгтэй,
+                                                                                        // буцаагдаагүй, ижил авлагын данстай (BR-AR-16), draft-гүй
         var ordered = req.Allocation == "DUE_DATE"
             ? targets.OrderBy(t => t.DueDate).ThenBy(t => t.EntryNo) : targets;        // BR-AR-34
-        var date = req.PostingDate ?? Max(newE.PostingDate, ordered.Max(t => t.PostingDate));   // BR-AR-27
-        Guard(date < Max(newE.PostingDate, ordered.Max(t => t.PostingDate)), "party.application_date_before_entries");
-        var scope = new ApplicationScope(await counters.NextAsync("APPLICATION_NO"), date, TransactionNo: null,
+        Guard(ordered.Count == 0, "party.application_nothing_to_apply");
+        var minDate = Max(newE.PostingDate, ordered.Max(t => t.PostingDate));
+        var date = req.PostingDate ?? minDate;                                                      // BR-AR-27
+        Guard(date < minDate, "party.application_date_before_entries");
+        await ctx.AssertPostingDateAsync(date, ct);                                                 // BR-AR-28 (05 BR-PST-70; DB ERP01 давхар)
+        var sink = new ApplicationSink();
+        var scope = new ApplicationScope(ApplicationRef: 0, date, TransactionNo: null,
                                          "SALESAPPL", newE.DocumentType, newE.DocumentNo);          // BR-AR-25
         var results = new List<PairResult>();
+        foreach (var t in ordered.OrderBy(t => t.EntryNo).Select(t => t.EntryNo))
+            await ledger.LockStateAsync(t);                                                          // FOR UPDATE, entry_no өсөхөөр
         foreach (var t in ordered) {
             if (newE.Remaining == 0) break;
-            var o = await ledger.LockStateAsync(t.EntryNo);
-            results.Add(ApplyPair(newE, o, t.AmountToApply /* эерэг дүн; null = бүх үлдэгдэл */, scope));
+            var o = await ledger.GetLockedStateAsync(t.EntryNo);
+            results.Add(ApplyPair(newE, o, t.AmountToApply /* эерэг дүн; null = бүх үлдэгдэл */, scope, sink));
         }
         Guard(results.Sum(r => r.Applied) == 0, "party.application_nothing_to_apply");             // BR-AR-30
+        // Дугаар: ledger бүрд нэг удаа (05 W4/W9)
+        long appNo = await ctx.ReserveEntryNumbersAsync("APPLICATION_NO", 1, ct);
+        long det0  = await ctx.ReserveEntryNumbersAsync("DETAILED_CUST_LEDGER_ENTRY", sink.Rows.Count, ct);
+        await detailed.InsertAsync(sink.AssignNumbers(appNo, det0));                                // trigger → remaining, open
+        foreach (var c in sink.Closed) ledgerUpdate.Exec("party.cust_ledger_entry", c.EntryNo, c.Changes); // BR-AR-31
         await drafts.DeleteForEntriesAsync(results.SelectMany(r => new[]{ r.OldEntryNo, r.NewEntryNo }));   // BR-AR-36
-        ctx.AuditPostingLog("APPLICATION", scope.ApplicationNo);
-        ctx.Outbox(Event("event.customer_entries.applied", scope.ApplicationNo));
-        return ApplicationResult.From(scope, results, newE);                                        // BR-AR-38
+        ctx.SetLogSource(null, appNo.ToString());                                                   // posting_log-ийг engine бичнэ (05 BR-PST-72)
+        foreach (var inv in sink.ClosedInvoices) ctx.AddOutbox(Event("event.sales_invoice.paid", inv, closedBy: newE.DocumentType));
+        ctx.AddOutbox(Event("event.customer_entries.applied", appNo));
+        return ApplicationResult.From(appNo, date, results, newE);                                 // BR-AR-38
     }, ct);
 }
 ```
 
-- G/L-гүй мөрийн огноог DB (`gl.fn_ledger_transaction_check` → `fn_assert_posting_date_allowed`) шалгана (ERP01 → `gl.period_closed`).
-- `RunSubledgerOnlyAsync` нь posting-той ижил: Idempotency-Key, `fn_lock_company_posting`, `lock_timeout`, posting log; G/L register үүсгэхгүй (`audit.posting_log` CHECK нь APPLICATION-д register шаардахгүй).
+- G/L-гүй мөрийн огноог апп `AssertPostingDateAsync`-аар, DB (`gl.fn_ledger_transaction_check` → `fn_assert_posting_date_allowed`) давхар шалгана (ERP01 → `gl.period_closed`).
+- `RunSubledgerOnlyAsync` (05 §5.19) нь posting-той ижил: Idempotency-Key, `fn_lock_company_posting`, `lock_timeout`; posting log-ийг engine `APPLICATION` төрлөөр бичнэ (register-гүй, `audit.posting_log` CHECK зөвшөөрнө). Body нь G/L counter нөөцлөвөл engine 500 (BR-PST-71).
+- `ApplyRequest.entries[]`-ийн entry бүр `applyingEntryId`-аас өөр, нэг харилцагчийнх, давхардалгүй байна (`api.request_invalid`); `allocation = MANUAL` бол хүсэлтийн дарааллаар.
 
 #### 5.13.4 Тулгалтын ажлын хуудас (SPA, `party.application_draft`)
 
 1. Хэрэглэгч "Тулгах" (S-PTY-07) нээхэд `applies_to_id = Guid.CreateVersion7()` сесс үүснэ; applying entry-г `is_applying_entry = true` мөрөөр.
-2. Нээлттэй эсрэг тэмдэгтэй entry бүрийг сонгоход мөр INSERT (`amount_to_apply` = үлдэгдэл, `sequence_no` = төлөх огнооны дараалал). UNIQUE зөрчвөл (өөр сессэд байгаа): тэр мөрийн `updated_at < now() − 30 мин` бол устгаад авна, үгүй бол `party.entry_in_other_application_draft` (эзэмшигч хэрэглэгчийн нэртэй).
+2. Нээлттэй эсрэг тэмдэгтэй entry бүрийг сонгоход мөр INSERT (`amount_to_apply` = үлдэгдэл, `sequence_no` = төлөх огнооны дараалал). UNIQUE зөрчвөл (өөр сессэд байгаа): тэр мөрийн `coalesce(updated_at, created_at) < now() − 30 мин` бол устгаад авна, үгүй бол `party.entry_in_other_application_draft` (эзэмшигч хэрэглэгчийн нэртэй).
 3. "Тулгах" → §5.13.3-ыг draft-ын мөрүүдээр (`MANUAL`, `sequence_no`) дуудна; амжилттай бол draft устна.
 4. "Болих" эсвэл сесс дуусах → draft устна. Шөнийн job 24 цагаас хуучин draft-ыг устгана.
 
@@ -1299,33 +1385,42 @@ async Task<UnapplyResult> UnapplyAsync(Guid entryId, UnapplyRequest req, Cancell
     foreach (var no in entries) {                                                    // хатуу LIFO (BR-AR-41)
         await ledger.LockStateAsync(no);
         Guard(await detailedQ.LatestLiveApplicationNoAsync(no) != appNo, "party.unapply_not_latest");
+        // BR-AR-48: Parties нь Sales-ийг мэдэхгүй (§9.1) тул Parties.Contracts-ийн IUnapplyGuard-ийг Sales хэрэгжүүлнэ
+        foreach (var g in unapplyGuards)
+            Guard(await g.BlocksAsync(appNo, entries, ct), "party.unapply_cancellation_not_allowed");
         Guard((await ledger.GetAsync(no)).Reversed, "party.entry_reversed");          // BR-AR-43
     }
-    var date = req.PostingDate ?? calendar.Today;
+    var date = req.PostingDate ?? calendar.Today;                                    // Asia/Ulaanbaatar
     Guard(date < rows.Max(r => r.PostingDate), "party.unapply_date_before_application");   // BR-AR-42
-    var undoNo = await counters.NextAsync("APPLICATION_NO");
-    foreach (var r in rows.OrderBy(x => x.EntryNo)) {                                // BR-AR-44
-        var m = new DetailedRow {
-            EntryNo = counters.Next("DETAILED_CUST_LEDGER_ENTRY"), CustLedgerEntryNo = r.CustLedgerEntryNo,
+    await ctx.AssertPostingDateAsync(date, ct);                                      // gl.period_closed (05 BR-PST-70)
+    // Дугаар: ledger бүрд нэг удаа (05 W4/W9)
+    long undoNo = await ctx.ReserveEntryNumbersAsync("APPLICATION_NO", 1, ct);
+    long det    = await ctx.ReserveEntryNumbersAsync("DETAILED_CUST_LEDGER_ENTRY", rows.Count, ct);
+    var mirrors = rows.OrderBy(x => x.EntryNo).Select(r => new DetailedRow {        // BR-AR-44
+            EntryNo = det++, CustLedgerEntryNo = r.CustLedgerEntryNo,
             EntryType = r.EntryType, PostingDate = date, DocumentType = r.DocumentType, DocumentNo = r.DocumentNo,
             Amount = -r.Amount, AmountLcy = -r.AmountLcy, CustomerId = r.CustomerId, TransactionNo = null,   // BR-AR-45
             ApplicationNo = undoNo, AppliedCustLedgerEntryNo = r.AppliedCustLedgerEntryNo,
-            Unapplied = true, UnappliedByEntryNo = r.EntryNo, SourceCode = "UNAPPSALES" };
-        detailed.Insert(m);
+            CustomerPostingGroupId = r.CustomerPostingGroupId,                       // BR-AR-02 (v_receivables_reconciliation)
+            InitialEntryDueDate = r.InitialEntryDueDate, InitialDocumentType = r.InitialDocumentType,
+            Unapplied = true, UnappliedByEntryNo = r.EntryNo, SourceCode = "UNAPPSALES" }).ToList();
+    await detailed.InsertAsync(mirrors);                                             // trigger → remaining, open
+    foreach (var (r, m) in rows.OrderBy(x => x.EntryNo).Zip(mirrors))
         ledgerUpdate.Exec("party.detailed_cust_ledger_entry", r.EntryNo, new { unapplied = true, unapplied_by_entry_no = m.EntryNo });
-    }
     foreach (var no in entries)                                                      // BR-AR-46
         if ((await ledger.GetAsync(no)).Open)
             ledgerUpdate.Exec("party.cust_ledger_entry", no, new { closed_by_entry_no = (long?)null, closed_at_date = (DateOnly?)null,
                               closed_by_amount = (decimal?)null, closed_by_amount_lcy = (decimal?)null });
-    ctx.AuditPostingLog("UNAPPLICATION", undoNo);
-    ctx.Outbox(Event("event.customer_entries.unapplied", appNo));
+    ctx.SetLogSource(null, undoNo.ToString());                                       // posting_log UNAPPLICATION (engine)
+    ctx.AddOutbox(Event("event.customer_entries.unapplied", appNo, undoNo, entries));
     return new UnapplyResult(appNo, undoNo, date, …);
   }, ct);
 ```
 
 - `LatestLiveApplicationNoAsync(cle)` = `max(application_no)` WHERE `cust_ledger_entry_no = cle AND entry_type = 'APPLICATION' AND NOT unapplied`.
 - Эх мөрийн `unapplied_by_entry_no` FK нь DEFERRABLE (толин тусгал мөр мөн transaction-д үүснэ).
+- Толин тусгал мөр бүр тухайн entry-ийн үлдэгдлийг эх дүн рүү л ойртуулдаг тул мөр тус бүрийн trigger-ийн дараах дундын төлөв CHECK (`abs(remaining) ≤ abs(amount)`, тэмдэг хадгалах)-ийг зөрчихгүй; INSERT-ийн дараалал = `entry_no` өсөхөөр.
+- Цуцлагдсан нэхэмжлэхийн (CM-тай) тулгалтыг unapply хийхийг хориглоно: `sales.cancelled_document`-д бүртгэлтэй хосын application → `party.unapply_cancellation_not_allowed` (409); эс бөгөөс цуцлагдсан нэхэмжлэх дахин нээгдэж "CANCELLED" төлөвтэй зөрчилдөнө (BR-AR-48).
 
 ### 5.15 Урьдчилгаа ба Apply to Oldest
 
@@ -1376,14 +1471,14 @@ WITH d AS (
     FROM party.detailed_cust_ledger_entry d
     JOIN party.cust_ledger_entry e ON e.company_id = d.company_id AND e.entry_no = d.cust_ledger_entry_no
    WHERE d.company_id = platform.current_company_id() AND d.customer_id = :customer_id)
-SELECT 'OPENING' AS kind, :from AS posting_date, NULL AS document_no, sum(amount_lcy) AS amount
-  FROM d WHERE posting_date < :from
+SELECT 'OPENING' AS kind, :from AS posting_date, NULL AS document_no, coalesce(sum(amount_lcy), 0) AS amount, 0 AS entry_no
+  FROM d WHERE posting_date < :from                                       -- мөргүй бол 0 (NULL биш)
 UNION ALL
-SELECT 'MOVE', posting_date, document_no, amount_lcy                     -- INITIAL (R2: FX мөр ч)
+SELECT 'MOVE', posting_date, document_no, amount_lcy, entry_no            -- INITIAL (R2: FX мөр ч)
   FROM d WHERE posting_date BETWEEN :from AND :to AND entry_type <> 'APPLICATION'
 UNION ALL
-SELECT 'CLOSING', :to, NULL, sum(amount_lcy) FROM d WHERE posting_date <= :to
-ORDER BY 1 DESC, 2, 3;                                                    -- апп running balance тооцно
+SELECT 'CLOSING', :to, NULL, coalesce(sum(amount_lcy), 0), 0 FROM d WHERE posting_date <= :to
+ORDER BY CASE kind WHEN 'OPENING' THEN 0 WHEN 'MOVE' THEN 1 ELSE 2 END, posting_date, entry_no;  -- апп running balance тооцно
 ```
 
 - Хэсэг 2: `fn_customer_aging(:to)`-ийн тухайн харилцагчийн мөрүүд (нээлттэй баримт, хоног, бүлэг).
@@ -1396,11 +1491,11 @@ ORDER BY 1 DESC, 2, 3;                                                    -- а�
 
 #### 5.18.3 Борлуулалтын журнал (FR-RPT-007)
 
-Posted нэхэмжлэх (+) ба кредит нот (−) мөр бүрээр: огноо, дугаар, харилцагч, ТТД, `amount`, `vat_amount`, `amount_including_vat`, ДДТД (`ebarimt.ebarimt_document` SUCCESS SAVE). Шалгалт: Σ `amount` (бүхэлчлэлийг хассан) = орлогын дансны тухайн үеийн хөдөлгөөн (кредит − дебит, тухайн баримтуудын); Σ `vat_amount` = `tax.vat_entry` (SALE) Σ `−amount`.
+Posted нэхэмжлэх (+) ба кредит нот (−) мөр бүрээр: огноо, дугаар, харилцагч, ТТД, `amount`, `vat_amount`, `amount_including_vat`, ДДТД (`ebarimt.ebarimt_document` SUCCESS SAVE). Шалгалт: Σ `amount` (бүхэлчлэлийн мөрийг хассан) = тухайн баримтуудын ваучер (V1) дахь `gen_posting_type = 'SALE'` G/L мөрүүдийн Σ `−amount` (орлого, `LINE_DISCOUNTS` үед хөнгөлөлтийн данс, `GL_ACCOUNT` мөрийн данс бүгд); Σ `vat_amount` = `tax.vat_entry` (SALE, тэдгээр `transaction_no`) Σ `−amount`. Цуцлалтын CM журналд кредит нотоор (−) гарна.
 
 ### 5.19 Урьдчилан харах (preview)
 
-`POST /sales-invoices/{id}:preview` (Idempotency-Key-гүй): §5.6-ийн A ба B үе бүрэн (дугаар, ledger writer, eBarimt enqueue, outbox) → `SET CONSTRAINTS ALL IMMEDIATE` → `ROLLBACK`. Хариу: `documentNo = "***"`, харьцангуй entry дугаар, G/L/VAT/авлага/банкны мөр, eBarimt-ийн урьдчилсан дүн ба VAL алдаа, `warnings[]` (`sales.credit_limit_exceeded`, `sales.document_total_zero`, `sales.balancing_payment_nothing_to_pay`). Golden: preview-ийн entry = post-ийн entry (дугаараас бусад) (02 §6.7; R-SALES-DOCUMENTS-42).
+`POST /sales-invoices/{id}:preview` (Idempotency-Key-гүй): §5.6-ийн A ба B үе бүрэн (дугаар, ledger writer, eBarimt enqueue, outbox) → `SET CONSTRAINTS ALL IMMEDIATE` → `ROLLBACK`. Хариу: `documentNo = "***"`, харьцангуй entry дугаар, G/L/VAT/авлага/банкны мөр, eBarimt-ийн урьдчилсан дүн ба VAL алдаа, `warnings[]` (`sales.credit_limit_exceeded`, `sales.balancing_payment_nothing_to_pay`, `sales.immediate_payment_with_credit_terms`; `sales.document_total_zero` нь алдаа, BR-SAL-37). Golden: preview-ийн entry = post-ийн entry (дугаараас бусад) (02 §6.7; R-SALES-DOCUMENTS-42).
 
 ### 5.20 Transaction, түгжээ, idempotency-ийн хураангуй
 
@@ -1582,7 +1677,7 @@ LCY (R1) = дүн;  R2: AppliedLCY = r(a / Old.original_currency_factor), хан
 
 ## 7. Posting-ийн жишээнүүд
 
-Нийтлэг таамаг: компани НӨАТ төлөгч, MNT, `P = 0.01`, `vat_rounding_type = NEAREST`, НӨАТ 10 % (`DOMESTIC × VAT10`, identifier `VAT10`, `sales_vat_account` 2300). Данс нь MN seed-ийнх ([db/seed/README.md](./db/seed/README.md) §3): 1100 Касс (төгрөг), 1110 Харилцах данс, 1200 Дансны авлага, 2300 Борлуулалтын НӨАТ, 5100 Борлуулалтын орлого — бараа, 5110 Ажил, үйлчилгээний орлого, 5190 Борлуулалтын буцаалт, хөнгөлөлт, 8290 Бөөрөнхийлөлтийн зөрүү. General Posting Setup: `DOMESTIC × GOODS` → 5100, `DOMESTIC × SERVICES` → 5110, хөнгөлөлт 5190, кредит нот = борлуулалтын данс. Customer posting group `DOMESTIC` → 1200, бүхэлчлэл 8290. Төлбөрийн хэлбэр `CASH` → касс `CASH01` (1100), `BANK` → `BANK01` (1110). Entry, transaction, application дугаар нь жишээний (тасралтгүй биш). **Жишээ бүр тэнцсэн**: Σ Дт = Σ Кт ваучер бүрд.
+Нийтлэг таамаг: компани НӨАТ төлөгч, MNT, `P = 0.01`, `vat_rounding_type = NEAREST`, НӨАТ 10 % (`DOMESTIC × VAT10`, identifier `VAT10`, `sales_vat_account` 2300). Данс нь MN seed-ийнх ([db/seed/README.md](./db/seed/README.md) §3): 1100 Касс (төгрөг), 1110 Харилцах данс, 1200 Дансны авлага, 2300 Борлуулалтын НӨАТ, 5100 Борлуулалтын орлого — бараа, 5110 Ажил, үйлчилгээний орлого, 5190 Борлуулалтын буцаалт, хөнгөлөлт, 8290 Бөөрөнхийлөлтийн зөрүү. General Posting Setup: `DOMESTIC × GOODS` → 5100, `DOMESTIC × SERVICES` → 5110, хөнгөлөлт 5190, кредит нот = борлуулалтын данс. Customer posting group `DOMESTIC` → 1200, бүхэлчлэл 8290. Мөнгөн данс: `CASH01` (seed, `kind = CASH`, `CASH_MNT` → 1100), `BANK01` (компани бүртгэсэн, `BANK_MNT` → 1110). Төлбөрийн хэлбэр: `CASH` → харьцсан данс `CASH01` (seed); `BANK` нь seed-д **харьцсан дансгүй** тул B2B загварын (`NET30` + `BANK`) нэхэмжлэх зээлийн (шууд төлбөргүй) байна (P1; BR-SAL-50-ийн анхааруулга). Entry, transaction, application дугаар нь жишээний (тасралтгүй биш). **Жишээ бүр тэнцсэн**: Σ Дт = Σ Кт ваучер бүрд.
 
 ### P1. Зээлийн нэхэмжлэх (B2B), үнэ НӨАТ-гүй, мөрийн хөнгөлөлт цэвэр дүнгээр (`NO_DISCOUNTS`)
 
@@ -1596,7 +1691,7 @@ LCY (R1) = дүн;  R2: AppliedLCY = r(a / Old.original_currency_factor), хан
 | 40000 | ITEM GDS-003 | GOODS | 1 × 100.05 | 100.05 | 0 | 100.05 | 10.01 | 110.06 |
 | Σ | | | | | | **1 200.16** | **120.02** = r(120.016) | **1 320.18** |
 
-Нэг бүлэг (VAT10, +): хуваарилалт 90.0039996 → 90.00 (rem +0.0040), 10.0053329 + 0.0040 → 10.01 (rem −0.0007), 10.0053329 − 0.0007 → 10.00 (rem +0.0047), 10.0053329 + 0.0047 → 10.01. Мөр бүрийг тусад нь бөөрөнхийлбэл 120.03 болох байсан.
+Нэг бүлэг (VAT10, +): хувь `120.02 × CLA / 1 200.16`; хуваарилалт 90.0039996 → 90.00 (rem +0.0040), 10.0053335 + 0.0040 → 10.01 (rem −0.0007), 10.0053335 − 0.0007 → 10.00 (rem +0.0047), 10.0053335 + 0.0047 → 10.01 (rem 0). Σ 120.02 ✔. Мөр бүрийг тусад нь бөөрөнхийлбэл 120.03 болох байсан.
 
 **Ваучер T1201** (`INVOICE`, `SALES`):
 
@@ -1650,7 +1745,7 @@ AR G/L (5005) = Σ detailed (T1201) = +1 320.18 ✔. Posted header: `cust_ledger
 | 2300 Борлуулалтын НӨАТ | | 4 272.09 |
 | **Σ** | **46 993.00** | **46 993.00** |
 
-**Ваучер T1211** (`PAYMENT`, `document_no = SI-2027-00050`, BR-SAL-50):
+**Ваучер T1211** (`PAYMENT`, `document_no = SI-2027-00050` (`SameAsVoucher`), `source_code = CASHVOUCHER`, BR-SAL-50, 56):
 
 | Данс | Дт | Кт |
 |---|---:|---:|
@@ -1683,6 +1778,18 @@ AR T1211 = −46 993 − 46 993 + 46 993 = −46 993.00 ✔. Хоёр CLE хаа
 | | **Σ** | **46 993.00** | **46 993.00** |
 
 Posted header: `amount = 42 720.87`, `vat_amount = 4 272.13`, `amount_including_vat = 46 993.00` (= CLE). eBarimt: бүхэлчлэлийн мөр орохгүй — `totalAmount = 46 993.40`, `totalVAT = 4 272.13`, `paidAmount = 46 993.40` (12 MAP-03; кассын 0.40-ийн зөрүү нь D-C2 ⚠).
+
+**P2c — P2b-г цуцлах** (BR-SAL-71, 73, 74): 2027-03-12-нд эхлээд T1213-ын тулгалтыг unapply (G/L-гүй), дараа нь `:cancel` → `SC-2027-00008` (харьцсан дансгүй). CM нь мөр 10000-ийг snapshot хувиар, бүхэлчлэлийн мөрийг (`INVOICE_ROUNDING`, −0.40) системийн мөр хэвээр хуулна; CM нийт = 46 993.00 = нэхэмжлэхийн CLE.
+
+| Ваучер | Данс | Дт | Кт |
+|---|---|---:|---:|
+| T1260 (`CREDIT_MEMO`) | 5100 Борлуулалтын орлого — бараа | 42 721.27 | |
+| | 2300 Борлуулалтын НӨАТ | 4 272.13 | |
+| | 8290 Бөөрөнхийлөлтийн зөрүү (системийн мөр) | | 0.40 |
+| | 1200 Дансны авлага | | 46 993.00 |
+| | **Σ** | **46 993.40** | **46 993.40** |
+
+Нэхэмжлэхийн CLE (+46 993.00) CM-ээр (−46 993.00) бүтэн хаагдана; төлбөрийн CLE (T1213, −46 993.00) нээлттэй кредит болж үлдэнэ — бэлэн мөнгийг буцаахад 09-ийн `REFUND` (МХ-2) баримтыг үүнд тулгана.
 
 ### P3. Хэсэгчилсэн кредит нот, нэхэмжлэхтэй автомат тулгалт (FR-SAL-007 AC1)
 
@@ -1812,7 +1919,7 @@ P2-ийн дараа 2027-03-12-нд Иргэн мөр 20000-ийн 1 ширхэ
 | | 2300 Борлуулалтын НӨАТ | 181.73 | |
 | | 1200 Дансны авлага | | 1 999.00 |
 | | **Σ** | **1 999.00** | **1 999.00** |
-| T1251 (`REFUND`, `document_no = SC-2027-00007`) | 1200 Дансны авлага | 1 999.00 | |
+| T1251 (`REFUND`, `document_no = SC-2027-00007`, `CASHVOUCHER`) | 1200 Дансны авлага | 1 999.00 | |
 | | 1100 Касс (CASH01 −1 999.00; МХ-2 `KZ-2027-00004`) | | 1 999.00 |
 | | **Σ** | **1 999.00** | **1 999.00** |
 
@@ -1928,16 +2035,20 @@ BR-2027-00025-ын 04-10-ны APPLICATION мөрүүд (SI-30 −500, BR-25 +500
 | `sales.posting_group_missing` | 422 | Нэхэмжлэхийн бүлэг ({code}) устсан тул цуцлах боломжгүй. | V3 | BR-SAL-73 |
 | `sales.cancel_amount_mismatch` | 500 | Системийн алдаа: цуцлалтын дүн таарсангүй. Дэмжлэгт {traceId}-г өгнө үү. (P1 alert) | V3–V4 | BR-SAL-74 |
 | `sales.document_no_already_in_ledger` | 409 | {docType} {docNo} дугаар харилцагчийн дэвтэрт аль хэдийн бүртгэлтэй. | V4 | BR-AR-09 |
+| `sales.document_total_zero` | 422 | Баримтын нийт дүн 0 тул батлах боломжгүй. | V2–V3 | BR-SAL-37 |
 | `api.document_released` | 409 | Баримт түгжигдсэн (Released) — эхлээд нээнэ үү. | V1 | BR-SAL-07 |
 | `api.document_already_posted` | 409 | Баримт аль хэдийн батлагдсан. | V3–V4 | BR-SAL-32 |
-| `api.etag_mismatch` | 412 | Өөр хэрэглэгч өөрчилсөн байна. Дахин ачаална уу. | V1, V4 | 02 §8.6 |
+| `api.document_not_posted` | 409 | Баримт батлагдаагүй тул энэ үйлдэл боломжгүй. | V3 | BR-SAL-70 |
+| `api.too_many_lines` | 422 | Нэг баримт 1 000-аас олон мөртэй байж болохгүй. | V0–V1 | BR-SAL-17 |
+| `api.etag_mismatch` | 412 | Өөр хэрэглэгч өөрчилсөн байна. Дахин ачаална уу. | V1, V4 | 02 §8.6 (02 §6.10-д `sales.draft_version_mismatch` гэж нэрлэсэн; 14-ийн нэрийг дагав) |
 
 **Анхааруулга** (`warnings[]`, 200/201 хэвээр):
 
 | Код | Мессеж (mn) | Дүрэм |
 |---|---|---|
 | `sales.credit_limit_exceeded` | Харилцагчийн зээлийн хязгаар {limit} ₮ хэтэрнэ (үлдэгдэл {balance} ₮). | BR-SAL-39 |
-| `sales.document_total_zero` | Баримтын нийт дүн 0 байна. | BR-SAL-37 |
+| `sales.document_total_zero` | Баримтын нийт дүн 0 байна — ийм баримтыг батлах боломжгүй. (V1 ноорог хадгалахад; V2–V3-д алдаа) | BR-SAL-37 |
+| `sales.immediate_payment_with_credit_terms` | Төлбөрийн хэлбэр ({paymentMethod}) батлахад шууд төлбөр бүртгэнэ, гэвч төлөх огноо {dueDate} байна. Зээлийн нэхэмжлэх бол төлбөрийн хэлбэрийг солино уу. | BR-SAL-50 |
 | `sales.balancing_payment_nothing_to_pay` | Тулгалтын дараа төлөх/буцаах дүн үлдээгүй тул төлбөрийн гүйлгээ үүсэхгүй. | BR-SAL-52 |
 | `sales.item_sales_blocked_on_credit_memo` | {itemNo} барааны борлуулалт хаагдсан ч буцаалтад зөвшөөрөв. | BR-SAL-12 |
 | `sales.posting_setup_incomplete` | Тохиргоо дутуу: батлахад алдаа гарна ({detail}). (V1 мөр хадгалахад) | BR-SAL-24, 41 |
@@ -1950,6 +2061,9 @@ BR-2027-00025-ын 04-10-ны APPLICATION мөрүүд (SI-30 −500, BR-25 +500
 | `party.application_sign_mismatch` | 422 | Ижил тэмдэгтэй бичилтүүдийг тулгах боломжгүй (нэхэмжлэхийг төлбөр эсвэл кредит нотоор тулгана). | BR-AR-20 |
 | `party.application_customer_mismatch` | 422 | Өөр харилцагчийн бичилтийг тулгах боломжгүй. | BR-AR-10 |
 | `party.application_currency_mismatch` | 422 | Өөр валютын бичилтүүдийг тулгах боломжгүй. | BR-AR-21 |
+| `party.application_posting_group_mismatch` | 422 | {docNo} өөр авлагын данстай (posting group) тул энэ бичилттэй тулгах боломжгүй. | BR-AR-16 |
+| `party.application_target_changed` | 409 | Тулгах бичилт {docNo}-ийн үлдэгдэл өөрчлөгдсөн байна. Баримтыг дахин нээж батлана уу. | BR-SAL-52 |
+| `party.unapply_cancellation_not_allowed` | 409 | Нэхэмжлэхийн цуцлалтын тулгалтыг буцаах боломжгүй. | BR-AR-48 |
 | `party.application_exceeds_remaining` | 422 | Тулгах дүн бичилтийн үлдэгдлээс ({remaining}) их байна. | BR-AR-06, 35 |
 | `party.application_nothing_to_apply` | 422 | Тулгах дүн алга. | BR-AR-30 |
 | `party.application_target_after_posting_date` | 422 | {docNo} нь энэ баримтын огнооноос хойш бүртгэгдсэн тул тулгах боломжгүй. | BR-AR-26 |
@@ -1968,10 +2082,12 @@ BR-2027-00025-ын 04-10-ны APPLICATION мөрүүд (SI-30 −500, BR-25 +500
 
 | Код | HTTP | Эх (SQLSTATE) | Эзэмшигч |
 |---|---|---|---|
-| `gl.period_closed`, `gl.posting_date_outside_window` | 422 | ERP01 | 05 / 13 §18 |
-| `gl.direct_posting_not_allowed` | 422 | — | 05 |
+| `gl.period_closed`, `gl.period_locked`, `gl.posting_date_outside_window` | 422 | ERP01 | 05 / 13 §18 |
+| `gl.direct_posting_not_allowed`, `gl.account_blocked` | 422 | — | 05 |
 | `gl.account_not_posting` | 422 | ERG01 | 05 |
-| `tax.vat_period_closed` | 422 | ERV01 | 08 |
+| `gl.voucher_empty`, `gl.amount_not_rounded` | 500 (assembler-ийн кодын алдаа; BR-SAL-37 урьдчилж хаана) | — | 05 BR-PST-24, -25 |
+| `tax.vat_period_closed`, `tax.vat_period_missing` | 422 | ERV01 | 08 BR-TAX-40 |
+| `tax.parameter_not_effective`, `tax.parameter_unverified` | 422 | — | 08 BR-TAX-11, -12 |
 | `tax.vat_posting_setup_missing`, `tax.vat_posting_setup_blocked`, `tax.sales_vat_account_missing`, `tax.vat_identifier_rate_conflict` | 422 | — | 08 (`ITaxCalculator`) |
 | `platform.number_series_missing_line`, `platform.number_series_date_order`, `platform.number_series_exhausted` | 422 | ERN01–03 | 13 §18 |
 | `bank.cash_negative_balance` | 422 | ERC01 | Банк/кассын spec |
@@ -2008,7 +2124,7 @@ BR-2027-00025-ын 04-10-ны APPLICATION мөрүүд (SI-30 −500, BR-25 +500
 | `event.sales_invoice.posted` | Нэхэмжлэхийн posting | `{documentId, postedId, documentNo, customerId, postingDate, amountIncludingVat}` | Webhook (R2, `sales_invoice.posted`), мэдэгдэл | `event.*` (10, exponential) |
 | `event.sales_credit_memo.posted` | Кредит нотын posting | `{documentId, postedId, documentNo, correctedInvoiceId?}` | Webhook (R2) | `event.*` |
 | `event.sales_invoice.cancelled` | Цуцлалт | `{invoiceId, creditMemoId}` | Webhook (R2) | `event.*` |
-| `event.sales_invoice.paid` | Тулгалтаар нэхэмжлэхийн CLE `remaining = 0` болсон | `{custLedgerEntryNo, documentNo, closedAt}` | Webhook (R2), мэдэгдэл | `event.*` |
+| `event.sales_invoice.paid` | Тулгалтаар (posting доторх эсвэл `:apply`) нэхэмжлэхийн CLE `remaining = 0` болсон — хос дахь Old ч, New ч байж болно (P7). Цуцлалтаар хаагдсанд **гарахгүй** | `{custLedgerEntryNo, documentNo, closedAt, closedByDocumentType}` | Webhook (R2), мэдэгдэл | `event.*` |
 | `event.customer_entries.applied` | Тулгалт (posting доторх эсвэл `:apply`) | `{applicationNo, entryNos[]}` | Мэдэгдэл, кэш | `event.*` |
 | `event.customer_entries.unapplied` | Unapply | `{applicationNo, unapplyApplicationNo, entryNos[]}` | Мэдэгдэл | `event.*` |
 | `ebarimt.receipt.send` | `IEbarimtReceiptQueue` бичнэ (Sales шууд бичихгүй) | `{ebarimtDocumentId}` | eBarimt dispatcher | `max_attempts = 1` (D-I6) |
@@ -2121,6 +2237,11 @@ BR-2027-00025-ын 04-10-ны APPLICATION мөрүүд (SI-30 −500, BR-25 +500
 - **AT-SAL-28 (BR-SAL-28).** *Өгөгдсөн нь* `vat_registered = false` компани; *Тэгэхэд* бүх мөрийн НӨАТ 0, VAT entry суурьтай / 0 дүнтэй, 2300-д бичилт байхгүй.
 - **AT-SAL-29 (BR-SAL-99).** *Өгөгдсөн нь* B2C бэлэн борлуулалт, `ebarimtPrint=sync`; *Тэгэхэд* хариунд `print.qrData` байна, DB/лог/outbox/idempotency-д `qrData` олдохгүй (скан тест).
 - **AT-SAL-30 (BR-SAL-39).** *Өгөгдсөн нь* зээлийн хязгаар 1 000 000, үлдэгдэл 950 000; *Хэрэв* 100 000-ийн нэхэмжлэх батлавал; *Тэгэхэд* амжилттай, `warnings[] = sales.credit_limit_exceeded`.
+- **AT-SAL-31 (BR-SAL-37).** *Өгөгдсөн нь* 1 мөр 100 % хөнгөлөлттэй (нийт 0) нэхэмжлэх; *Хэрэв* батлавал; *Тэгэхэд* 422 `sales.document_total_zero`, transaction эхлээгүй, хуулийн дугаар зарцуулагдаагүй. *Мөн* `LINE_DISCOUNTS` үед (бохир орлого ≠ 0, хөнгөлөлт ≠ 0, нийт 0) ижил.
+- **AT-SAL-32 (BR-SAL-58, 73, 74).** P2c: бүхэлчлэлтэй бэлэн нэхэмжлэхийг unapply → цуцлахад CM нийт 46 993.00, 8290 Кт 0.40, нэхэмжлэхийн CLE хаагдсан, `sales.cancel_amount_mismatch` гараагүй; CM-ийн бүхэлчлэлийн мөр `system_line_kind = INVOICE_ROUNDING`, VAT entry-гүй.
+- **AT-SAL-33 (BR-SAL-52).** *Өгөгдсөн нь* урьдчилгаа −500 000-д `applies_to`-тэй, `CASH` хэлбэртэй 1 500 000-ийн нэхэмжлэхийн A үе дууссан; *Хэрэв* B үеэс өмнө өөр хэрэглэгч тэр урьдчилгааг `:apply`-аар бусад нэхэмжлэхэд тулгавал; *Тэгэхэд* posting 409 `party.application_target_changed`, ROLLBACK, хуулийн дугаар зарцуулагдаагүй, касс хөдлөөгүй.
+- **AT-SAL-34 (BR-SAL-56, 05 Z-PST-15).** P2: ваучер 2 `document_type = PAYMENT`, `document_no = SI-2027-00050`, `gl_transaction.source_code = CASHVOUCHER`, `gl_register.source_code = SALES`, МХ-1 `KO-…` тусдаа дугаартай.
+- **AT-SAL-35 (BR-SAL-50).** *Өгөгдсөн нь* `BANK` хэлбэрт `BANK01` харьцсан данс тохируулсан, `NET30` харилцагч; *Хэрэв* ноорог хадгалвал; *Тэгэхэд* `warnings[] = sales.immediate_payment_with_credit_terms`; батлахад төлбөрийн ваучер үүснэ (анхааруулга блоклохгүй).
 
 **Авлага**
 
@@ -2144,6 +2265,9 @@ BR-2027-00025-ын 04-10-ны APPLICATION мөрүүд (SI-30 −500, BR-25 +500
 - **AT-AR-18 (BR-AR-08, 69).** Бүх golden сценарийн дараа `v_receivables_reconciliation.difference = 0` ба насжилтын нийт = 1200-ийн G/L үлдэгдэл.
 - **AT-AR-19 (BR-AR-45).** Unapply-ийн дараа ваучер, G/L entry шинээр үүсээгүй (`gl_transaction`-ийн тоо өөрчлөгдөөгүй), `audit.posting_log` `UNAPPLICATION`.
 - **AT-AR-20 (BR-AR-32, §5.20).** *Өгөгдсөн нь* нэг нээлттэй нэхэмжлэх 1 000; *Хэрэв* хоёр хэрэглэгч зэрэг 1 000-ийн хоёр төлбөрийг тэр нэхэмжлэхэд тулгавал; *Тэгэхэд* компанийн түгжээгээр дараалж, эхнийх нь нэхэмжлэхийг хаана; хоёр дахь нь түгжээний дорх шалгалтаар 409 `party.entry_closed` авч батлагдахгүй (хэрэглэгч applies-to-гүйгээр урьдчилгаа болгон батлах боломжтой); хэтрүүлж тулгалт байхгүй.
+- **AT-AR-21 (BR-AR-16).** *Өгөгдсөн нь* C00050-ийн `DOMESTIC` (1200) бүлгээр батлагдсан нээлттэй нэхэмжлэх 1 100, дараа нь харилцагчийн бүлгийг `EMPLOYEE` (1360) болгож `EMPLOYEE` бүлгээр урьдчилгаа −500 бүртгэсэн; *Хэрэв* хоёрыг `:apply` хийвэл; *Тэгэхэд* 422 `party.application_posting_group_mismatch`; `v_receivables_reconciliation.difference = 0` хэвээр (1200 ба 1360 тус бүр). *Мөн* шинэ төлбөрийг `applyTo = [нэхэмжлэх]`-тэй бүртгэвэл төлбөрийн CLE `DOMESTIC` бүлгийг авч 1200-д кредит болно (BR-SAL-43).
+- **AT-AR-22 (BR-AR-48).** P4-ийн дараа нэхэмжлэх ↔ цуцлалтын CM тулгалтыг `:unapply` хийвэл 409 `party.unapply_cancellation_not_allowed`.
+- **AT-AR-23 (§5.8, 05 W9).** Бэлэн борлуулалт (P2) posting-ийн дараа `platform.ledger_counter`-ийн `CUST_LEDGER_ENTRY` +2, `DETAILED_CUST_LEDGER_ENTRY` +4, `APPLICATION_NO` +1; writer тус бүр `ReserveEntryNumbersAsync`-ийг ledger бүрд нэг л удаа дуудсан (spy).
 
 ### 11.2 Golden scenario (хэрэгжүүлэх ID)
 
@@ -2168,6 +2292,8 @@ BR-2027-00025-ын 04-10-ны APPLICATION мөрүүд (SI-30 −500, BR-25 +500
 | GS-AR-005 | Насжилт D = 2027-04-30 | P11 |
 | GS-AR-006 | Дансны хуулга 2027-04 | P12 |
 | GS-AR-007 | Apply to Oldest | AT-AR-13 |
+| GS-SAL-013 | Бүхэлчлэлтэй бэлэн нэхэмжлэхийг unapply + цуцлах (бүхэлчлэлийн мөр хуулагдах) | P2c, AT-SAL-32 |
+| GS-AR-008 | Posting group солигдсон харилцагч: тулгалтын хориг ба INV-11 данс бүрээр | AT-AR-21 |
 
 Golden бүр: `expect` нь G/L, VAT, CLE, detailed (`entry_type`, `application_no`, `transaction_no`), posted баримт, eBarimt (mock), trial balance = 0, `v_cust_ledger_entry_check` хоосон, `v_receivables_reconciliation.difference = 0`, preview = post (дугаараас бусад).
 
@@ -2175,7 +2301,7 @@ Golden бүр: `expect` нь G/L, VAT, CLE, detailed (`entry_type`, `application
 
 1. `quantity = 0` мөр: бүх дүн 0, бүлэгт орохгүй, posting-д алгасна; бүх мөр 0 бол `sales.no_lines`.
 2. 100 % хөнгөлөлттэй мөр: `amount = 0`, НӨАТ 0; `LINE_DISCOUNTS` үед бохир ба хөнгөлөлтийн мөр хоёулаа (цэвэр 0) — тэг G/L мөрийг алгасна (R-ACCOUNT-DETERMINATION-16).
-3. Нийт 0 нэхэмжлэх (BR-SAL-37): CLE 0, `open = false`, 0 дүнтэй авлагын G/L entry, eBarimt баримтгүй.
+3. Нийт 0 нэхэмжлэх (BR-SAL-37): батлахгүй, 422 `sales.document_total_zero` (engine 0 дүнтэй G/L мөр, хоосон ваучер зөвшөөрөхгүй — 05 BR-PST-05, -24).
 4. `P = 1` (бүхэл төгрөг) компани: бүх дүн, НӨАТ бүхэл; eBarimt 2 оронтой `.00`.
 5. `vat_rounding_type = UP/DOWN`: абсолют утгаар; сөрөг бүлэгт тэмдэг хадгалагдана.
 6. Мөрийн дараалал солих (`line_no`): мөрийн НӨАТ-ын хуваарилалт өөрчлөгдөж болно, нийт ижил.
@@ -2188,7 +2314,7 @@ Golden бүр: `expect` нь G/L, VAT, CLE, detailed (`entry_type`, `application
 13. `APPLY_TO_OLDEST` + шууд төлбөртэй нэхэмжлэх: автомат тулгалт хийгдэхгүй (BR-SAL-52).
 14. Кредит нотын нэхэмжлэх хаагдсан (бүрэн төлөгдсөн): тулгалтгүй, кредит нээлттэй (эсвэл буцаан олголт).
 15. Нэг төлбөр 3 нэхэмжлэхийг хаасан, дараа нь нэг нэхэмжлэхэд кредит нот: кредит нот тэр нэхэмжлэхэд тулгагдахгүй (хаагдсан); эхний тулгалтыг буцаах нь 3 нэхэмжлэхийг бүгдийг дахин нээнэ (нэг `application_no`).
-16. Харилцагчийн posting group дараа нь солигдсон: хуучин нэхэмжлэхийн төлбөр хуучин авлагын дансанд (BR-SAL-43, BR-AR-02).
+16. Харилцагчийн posting group дараа нь солигдсон: хуучин нэхэмжлэхийн төлбөр хуучин авлагын дансанд (BR-SAL-43, BR-AR-02); өөр авлагын данстай entry хооронд тулгалт хориотой (BR-AR-16, AT-AR-21); `APPLY_TO_OLDEST` ижил дансны entry-г л сонгоно.
 17. Тулгалтын огноо D-ээс хойш, баримтууд D-ээс өмнө: насжилтад хоёулаа нээлттэй (R-SUBLEDGERS-APPLICATION pitfall).
 18. Зэрэг хоёр `:apply` нэг entry-д → компанийн түгжээгээр дараалал; хоёр дахь нь шинэ үлдэгдлээр.
 19. Unapply огноо хаалттай сард → `gl.period_closed`; нээлттэй сарын огноогоор зөвшөөрнө.
@@ -2217,8 +2343,10 @@ Golden бүр: `expect` нь G/L, VAT, CLE, detailed (`entry_type`, `application
 | SCR-SAL-05 | `party.detailed_cust_ledger_entry.initial_entry_due_date` (ба vendor): COMMENT-д "insert үеийн snapshot; due date-ийн логик `cust_ledger_entry.due_date`-ийг уншина" гэж тодруулах, эсвэл BC шиг (EDIT:41-45) due date засахад шинэчлэгдэх зам (`ledger_guard.mutable_columns`) нэмэх | BC нь due date засахад detailed мөрийг шинэчилдэг (R-SUBLEDGERS-APPLICATION-09); одоо хуучирсан утга үлдэж, ирээдүйн тайлан буруу багана уншиж болзошгүй (BR-AR-15) | Бага |
 | SCR-SAL-06 | `sales.sales_invoice_header`, `sales.sales_cr_memo_header`: `bal_account_type platform.account_type`, `bal_account_id uuid`, `payment_transaction_no bigint` (→ `gl.gl_transaction`, DEFERRABLE) | Бэлэн борлуулалтын хоёр дахь ваучер ба МХ-1/МХ-2-ийг posted баримтаас шууд олох, дахин хэвлэх (одоо CLE `document_no`-оор дамжиж гаргана) | Бага |
 | SCR-SAL-07 | `integration.job_definition` seed: `party.application_draft.cleanup` (өдөр бүр, 24 цагаас хуучин draft устгах) | BR-AR-36; хаягдсан draft entry-г түгжиж үлдэхээс сэргийлнэ | Бага |
+| SCR-SAL-08 | `party.cust_ledger_entry`: `CREATE UNIQUE INDEX ux_cust_ledger_entry__doc_no ON party.cust_ledger_entry (company_id, document_type, document_no) WHERE document_type IN ('INVOICE','CREDIT_MEMO')` | BR-AR-09 / R-SALES-DOCUMENTS-38 (MUST) одоо зөвхөн апп-ын шалгалт (advisory lock-ийн дор); эхний үлдэгдлийн импорт ба ирээдүйн бусад writer-ээс давхардлыг DB түвшинд барина (vendor талд `ux_vendor_ledger_entry__vendor_doc_no` бий). Бэлэн борлуулалтын `PAYMENT`/`REFUND` CLE нь баримтын дугаартай ижил боловч төрөл өөр тул зөрчихгүй | Дунд (R1) |
+| SCR-SAL-09 | `party.application_draft.updated_at`: `DEFAULT now()` (эсвэл `NOT NULL DEFAULT now()`) | BR-AR-36-ийн 30 минутын чөлөөлөлт `updated_at`-ыг уншдаг; одоо INSERT-д NULL тул апп `coalesce(updated_at, created_at)` ашиглаж байна | Бага |
 
-Мөн энэ модуль [12-ebarimt-integration.md](./12-ebarimt-integration.md) §26-ийн **SCR-02** (`applies_to_invoice_line_no` — буцаалтын мөрийг нэхэмжлэхийн мөртэй яг тулгах; BR-SAL-67, 73-т цуцлалт/буцаалтын ноорог үүнийг бөглөнө), **SCR-09** (`system_line_kind` — бүхэлчлэлийн мөрийг тэмдэглэх; BR-SAL-58) ба **SCR-15** (`sales_header.ebarimt_pos_id`)-д тулгуурлана; тэдгээрийг энд давхардуулаагүй.
+Мөн энэ модуль [12-ebarimt-integration.md](./12-ebarimt-integration.md) §26-ийн **SCR-02** (`applies_to_invoice_line_no` — буцаалтын мөрийг нэхэмжлэхийн мөртэй яг тулгах; BR-SAL-67, 73-т цуцлалт/буцаалтын ноорог үүнийг бөглөнө), **SCR-09** (`system_line_kind` — бүхэлчлэлийн мөрийг тэмдэглэх; BR-SAL-58, 73, 79; **FR-SAL-013-ийн урьдчилсан нөхцөл**, §3.4) ба **SCR-15** (`sales_header.ebarimt_pos_id`)-д тулгуурлана; тэдгээрийг энд давхардуулаагүй.
 
 ---
 
@@ -2237,6 +2365,7 @@ Golden бүр: `expect` нь G/L, VAT, CLE, detailed (`entry_type`, `application
 | OQ-SAL-07 | Оролцогч entry-ийн хамгийн хожуу огноо хаалттай сард байхад тулгалтыг хожуу (нээлттэй) огноогоор хийхийг зөвшөөрөх үү? FR-PTY-013 "= хамгийн хожуу огноо" гэсэн; BC зөвшөөрдөг. 14-ийн `ApplyRequest`-д `postingDate` талбар нэмэх шаардлагатай. | Зөвшөөрнө (BR-AR-27) | D-D3 ⚠; FR-PTY-013 | PO, нягтлан зөвлөх |
 | OQ-SAL-08 | Цуцлалтын кредит нот анхдагчаар өнөөдрийн огноотой: өмнөх сарын B2C баримтын `DELETE` ба өмнөх сарын B2B-ийн `reportMonth` (1–7-нд) цонх хаагдсан үед нягтлан бодох бүртгэл (кредит нот) ба eBarimt-ийн засварыг хэрхэн уялдуулах? | 12 §12.6-ын шийдвэрийн хүснэгт; цонх хаагдсан бол override эрхтэйгээр eBarimt-гүй | D-F6; D-J4; 12 OQ-06, OQ-22 | ITC, татварын зөвлөх |
 | OQ-SAL-09 | Кредит нот ба цуцлалт эсрэг тэмдгээр, эсрэг баганад (сторногүй) бичигдэх нь аудит ба ТМ маягтад хүлээн зөвшөөрөгдөх үү? | Тийм (BR-SAL-60) | D-C3 ⚠ (Аудитор) | Аудитор |
+| OQ-SAL-10 | Нийт дүн 0 нэхэмжлэх (үнэгүй дээж, 100 % хөнгөлөлт) батлах шаардлага бий юу? Engine 0 дүнтэй G/L мөр зөвшөөрдөггүй (05 BR-PST-05), eBarimt 0 дүнтэй баримт авахгүй. | Батлахгүй (BR-SAL-37); үнэгүй өгсөн барааг R2-ийн бараа модульд зарлагын баримтаар | D-A4; FR-SAL-005 | PO, нягтлан зөвлөх |
 
 ---
 
@@ -2247,7 +2376,7 @@ Golden бүр: `expect` нь G/L, VAT, CLE, detailed (`entry_type`, `application
 | # | Баримт | Зөрүү | Санал |
 |---|---|---|---|
 | 1 | 02-architecture §4.2.7, §4.2.11, §4.6 | `parties.*`, `detailed_cust_ledg_entry`, `cust_open_item`, `posted_sales_invoice` | Schema-ийн нэр (D-K1) |
-| 2 | 02-architecture §6.2 | `PostingDocument` нэг толгойтой; бэлэн борлуулалт 2 ваучертай (03 §7) | `PostingBatch(Vouchers[])` ба `RunSubledgerOnlyAsync` (G/L-гүй тулгалт) — `05-gl-posting.md` эцэслэнэ |
+| 2 | 02-architecture §6.2 | `PostingDocument` нэг толгойтой; бэлэн борлуулалт 2 ваучертай (03 §7) | **Шийдэгдсэн:** [05-posting-engine.md](./05-posting-engine.md) §5.1 `PostingDocument.Vouchers[]` (Z-PST-10), `SameAsVoucher` (Z-PST-15), `RunSubledgerOnlyAsync` (§5.19). 02 §6.2-ыг 05-д тааруулах |
 | 3 | 02-architecture §4.6, §6.8 | Улаан сторно (`is_correction`) | D-C3: сторногүй; кредит нот ба буцаалт эсрэг баганад |
 | 4 | 02-architecture §9.1 | `event.SalesInvoicePosted` нь `integration.outbox.topic` CHECK (жижиг үсэг)-д таарахгүй | `event.sales_invoice.posted` г.м. (§9.2) |
 | 5 | 00-overview (баримтын жагсаалт), 14-api §9.5 | `06-account-determination`, `09-parties-ar-ap`, `10-sales` | Энэ баримт (06) борлуулалт ба авлагыг нэгтгэсэн; 14 §9.5-ын "эзэмшигч 09/10" → 06 |
@@ -2259,3 +2388,47 @@ Golden бүр: `expect` нь G/L, VAT, CLE, detailed (`entry_type`, `application
 | 11 | 03-domain-model §5 INV-11 | `sales.v_receivables_reconciliation` | `party.v_receivables_reconciliation` |
 | 12 | db/tests/smoke.sql | Нэхэмжлэхийн `closed_by_amount = −1100` | BR-AR-31: хаагдсан entry-ийн APPLICATION мөрийн эсрэг тэмдэг (+1 100); мэдээллийн талбар, fixture-ийг шинэчлэх |
 | 13 | 03-domain-model §5 INV-02 | `cust_ledger_entry.open`-ийг `mutable_columns` гэж жишээлсэн | `open` нь `trigger_columns` (910); апп бичихгүй (BR-AR-04) |
+| 14 | 05-posting-engine E-E | `detailed_cust_ledger_entry` 65 (CLE 28-ийн APPLICATION мөр) `applied_cust_ledger_entry_no = 28` | Z-02: хосын **нөгөө** entry = 27 (энэ баримтын P2 9013) |
+| 15 | 02-architecture §6.10 | 412 `sales.draft_version_mismatch` | 14 ба энэ баримт `api.etag_mismatch`; нэгийг сонгох (14-ийнхийг санал болгоно) |
+| 16 | 05-posting-engine §5.8 (writer-ийн хүснэгт) | `CustomerLedgerWriter` нь "`applies_to_*`-оор тулгалт" гэсэн | Тулгалтын заавар нь `CustomerLedgerLine.Apply` (`ApplyInstruction`); ledger-ийн `applies_to_*` баганыг R1 бичихгүй (BR-AR-12) |
+
+---
+
+## Хяналтын тэмдэглэл (Review log)
+
+**2026-10-08 — adversarial review (нягтлан бодох зөв байдал, schema/DECISIONS нийцэл, хэрэгжүүлэх боломж, судалгааны MUST дүрэм).**
+
+Шалгасан зүйл: §7-ийн бүх тоон жишээг дахин тооцсон (P1–P12, P1a, P2b; ваучер бүр Σ Дт = Σ Кт, НӨАТ 10 %, running remainder, detailed-ийн тэмдэг ба үлдэгдэл, насжилтын хоног ба бүлэг, хуулгын эхний/эцсийн үлдэгдэл) — бүгд тэнцсэн; §6-ийн жишээ 6-A..6-D зөв. Хүснэгт/баганын нэрийг `db/schema/*.sql`-тэй (070, 060, 040, 020, 090, 110, 120, 140, 910, 920) ба seed-тэй (`mn_10_coa`, `mn_30_posting`, `mn_40_setup`, `mn_20_tax`, `mn_50_reports`) тулгасан; FR ID бүр 01-д байгааг, алдааны кодыг 02/05/08/14-тэй тулгасан.
+
+| # | Олдсон асуудал | Засвар | Хэсэг |
+|---|---|---|---|
+| 1 | **Олон posting group-ийн тулгалт INV-11-ийг эвдэнэ:** detailed мөр өөрийн CLE-ийн бүлгээр (`v_receivables_reconciliation`) тайлагддаг ч ваучерт ганц авлагын G/L мөр; өөр бүлгийн entry-д тулгавал данс бүрээр зөрнө, G/L-гүй `:apply` бүр засах боломжгүй | BR-AR-16 (ижил `receivables_account_id` шаардана, `party.application_posting_group_mismatch`), BR-SAL-43 (төлбөр target-ийн бүлгийг авна), `Oldest` шүүлтүүр, ApplyPair guard, AT-AR-21, GS-AR-008 | §2.3, §4.5, §4.11, §5.8, §5.13 |
+| 2 | **Бүхэлчлэлийн мөр давхар бичигдэнэ:** `CashRounding` мөрийг `h.Lines`-д нэмсний дараа buffer loop түүнийг ердийн `GL_ACCOUNT` мөр болгон (НӨАТ-ын setup-тэй) дахин боловсруулж, `rnd`-ээр ч нэмж байсан | `system_line_kind` (12 SCR-09)-ээр buffer, Recalculate, eBarimt-ээс хасав; SCR-09-ийг FR-SAL-013-ийн урьдчилсан нөхцөл болгов | §3.4, BR-SAL-58, §5.4, §5.7, §5.10 |
+| 3 | **Бүхэлчлэлтэй нэхэмжлэхийг цуцлах боломжгүй байсан:** CM мөрийг 1:1 хуулахад бүхэлчлэлийн мөр НӨАТ-ын тооцоонд орж, 8290 нь `direct_posting = false` тул BR-SAL-11-д унах, BR-SAL-74 зөрөх | Бүхэлчлэлийн мөрийг системийн мөр хэвээр хуулна, нийлбэрт нэмнэ; `:copy`/засварын ноорогт хуулахгүй; P2c жишээ, AT-SAL-32, GS-SAL-013 | BR-SAL-73, 78, 79, §5.4, §5.10, §7 P2c |
+| 4 | **0 дүнтэй нэхэмжлэх engine-тэй зөрчилдөнө:** BR-SAL-37 "0 дүнтэй авлагын G/L entry" гэсэн ч 05 BR-PST-05/24/25/41 нь 0 дүнтэй G/L мөр, хоосон ваучер, G/L мөргүй subledger мөрийг хориглодог | 0 нийттэй баримтыг 422 `sales.document_total_zero`-оор татгалзана; VAT entry-г суурь/НӨАТ хоёулаа 0 бол үүсгэхгүй; OQ-SAL-10 | BR-SAL-37, §5.6, §5.7, §8, §11.3 |
+| 5 | **Entry дугаарлалт 05-ийн writer-ийн гэрээг зөрчсөн:** `counters.NextAsync` мөр бүрд дуудагдаж байсан; 05 W4/W9 нь ledger бүрд run-д нэг удаа блокоор нөөцлөхийг шаарддаг | Writer-ийг "төлөвлөх → нөөцлөх → бичих" болгож дахин бичсэн; ApplyPair цэвэр функц (sink); `:apply`/unapply мөн ижил; AT-AR-23 | §5.8, §5.13.1–5.13.3, §5.14 |
+| 6 | **Бэлэн борлуулалтын төлбөрийн ваучерын source code буруу** (`SALES`); 05 Z-PST-15 нь `CASHVOUCHER`/`PAYMENTREG`, дугаар `SameAsVoucher` | BR-SAL-50, 56, §3.8, §3.10, §5.9, P2/P9, AT-SAL-34 | §4.6, §5.9, §7 |
+| 7 | **`PostingBatch` гэрээ хуучирсан:** 05 нь `PostingDocument { Run, Vouchers[], PostedDocument, Outbox, Warnings }`-ийг тогтоосон; `05-gl-posting.md` гэх файл байхгүй | Pseudo-code, тэмдэглэл, холбоосыг 05-posting-engine.md-д тааруулав; `ctx.AuditPostingLog/Outbox` → `SetLogSource/AddOutbox`, `AssertPostingDateAsync` | §1.2, §5.6, §5.12.1, §5.13.3, §5.14, Хавсралт А |
+| 8 | **Кредит нотын cap race:** `ToDocument(cap: invoiceRemaining)` A үеийн утгыг ашигладаг тул зэрэг төлбөр тулгагдвал `party.application_exceeds_remaining` гарна | Cap-гүй, түгжээний дорх үлдэгдлээр `min` | BR-SAL-63, §5.11, §5.13.2 |
+| 9 | **Бэлэн төлбөрийн дүн A үед тогтдог ч target-ийн үлдэгдэл B үед өөрчлөгдөж болно** (applies-to + харьцсан данс): кассын дүн буруу, CLE хаагдахгүй | `ExpectedRemaining` + 409 `party.application_target_changed`; AT-SAL-33 | BR-SAL-52, §5.8, §5.9 |
+| 10 | **seed-тэй зөрүү:** §7 "`BANK` → `BANK01`" гэсэн ч seed-д зөвхөн `CASH` харьцсан данстай; хэрэв `BANK`-д данс тохируулбал B2B (`NET30`+`BANK`) нэхэмжлэх бүр шууд төлбөртэй болно | Таамгийг засав; `sales.immediate_payment_with_credit_terms` анхааруулга, AT-SAL-35 | §7, BR-SAL-50, §8 |
+| 11 | `event.sales_invoice.paid` зөвхөн Old талын нэхэмжлэхэд, `:apply`-д огт гардаггүй; цуцлалтад "paid" гарах эрсдэлтэй | New талын (P7) ба `:apply`-ийн хаалтад гаргана, цуцлалтад гаргахгүй; payload-д `closedByDocumentType` | §5.13.2, §5.13.3, §9.2 |
+| 12 | Цуцлалтын тулгалтыг unapply хийвэл цуцлагдсан нэхэмжлэх дахин нээгдэнэ | BR-AR-48 `party.unapply_cancellation_not_allowed` (Parties.Contracts-ийн `IUnapplyGuard`-ийг Sales хэрэгжүүлнэ — модулийн хил хадгалагдана); AT-AR-22 | §4.13, §5.14 |
+| 13 | Цуцлалтын CM Snapshot горимд `vat_identifier`/`vat_calculation_type`-ийг одоогийн setup-аас уншдаг байсан (setup өөрчлөгдвөл BR-SAL-74 500) | Snapshot горимд posted мөрийн утгыг хадгална | BR-SAL-73, §5.4 |
+| 14 | Цуцлалтад харилцагчийн `blocked = ALL` шалгалт алга (R-SALES-DOCUMENTS-43, BR-SAL-03) | BR-SAL-70, §5.12.1 | §4.8 |
+| 15 | BR-SAL-11 гурван нөхцөлд нэг код; 05-д `gl.account_not_posting`, `gl.account_blocked` бий; бүхэлчлэлийн мөрийн `LineOrigin` тодорхойгүй | Код салгав; `LineOrigin` дүрэм (UserEntered/SystemDerived) | BR-SAL-11, §5.2, §5.7 |
+| 16 | Unapply-ийн толин тусгал мөрөнд `customer_posting_group_id` бөглөөгүй (reconciliation view үүгээр JOIN хийдэг) | Хуулдаг болгов; INITIAL мөрийн талбаруудыг тодорхой бичив | §5.8, §5.14 |
+| 17 | Хуулгын SQL: мөргүй үед `sum` NULL; `ORDER BY 1 DESC` нь үсгийн дарааллаас хамаарсан хэврэг | `coalesce`, тодорхой `CASE` эрэмбэ + `entry_no` | §5.18.1 |
+| 18 | `application_draft.updated_at` INSERT-д NULL тул 30 минутын дүрэм ажиллахгүй | `coalesce(updated_at, created_at)`; SCR-SAL-09 | BR-AR-36, §5.13.4 |
+| 19 | `CM+1M` томьёоны BC-ийн хавчилтын эффект (02-10 → 03-28) тайлбаргүй | Анхааруулга, `1M+CM` жишээ | §5.3 |
+| 20 | BR-SAL-25: параметр олдохгүй/баталгаажаагүй үеийн код алга; BR-SAL-28 `posting_date`-аар (хувь `vat_date`-аар) — зөрүү | 08 BR-TAX-11/12-ийн код; `vat_date` | BR-SAL-25, 28, §8.4 |
+| 21 | BR-SAL-39 зээлийн хязгаарыг бэлэн борлуулалтад ч шалгадаг байсан | Зөвхөн шууд төлбөргүй нэхэмжлэхэд | BR-SAL-39 |
+| 22 | BR-AR-09 шалгалт ValidateLocked (дугаар олгохоос өмнө) үед `DocumentNo` мэдэгдээгүй | Дугаар олгогдсоны дараа `WriteAsync`-д; DB түвшний UNIQUE-г SCR-SAL-08 болгон хүсэв | §5.8, §12 |
+| 23 | §8-д `api.document_not_posted`, `api.too_many_lines`, `gl.period_locked`, `tax.parameter_*`, `tax.vat_period_missing` дутуу | Нэмэв | §8 |
+| 24 | P1-ийн хуваарилалтын завсрын утга `10.0053329` (зөв нь `10.0053335`); эцсийн дүн зөв байсан | Засав | §7 P1 |
+| 25 | Борлуулалтын журналын шалгалт "орлогын данс" гэж — `LINE_DISCOUNTS`, `GL_ACCOUNT` мөрт буруу | `gen_posting_type = 'SALE'` мөрүүдээр | §5.18.3 |
+| 26 | Холбоос: `11-purchases`, `05-gl-posting`, "банк/кассын spec", "Reporting" — файл нэр буруу/тодорхойгүй | 07/05/09/10 руу холбоос | толгой, §1.2 |
+
+**Schema change requests (энэ review-ээс):** SCR-SAL-08 (CLE баримтын дугаарын UNIQUE index), SCR-SAL-09 (`application_draft.updated_at` DEFAULT). 12 SCR-09 (`system_line_kind`)-ийг FR-SAL-013-ийн урьдчилсан нөхцөл болгосон.
+
+**Бусад баримтад дамжуулах (энэ баримт засаагүй):** Хавсралт А №14–16 (05 E-E-ийн `applied_cust_ledger_entry_no`, 02 §6.10-ийн 412 кодын нэр, 05 §5.8-ийн "applies_to_*" тайлбар).

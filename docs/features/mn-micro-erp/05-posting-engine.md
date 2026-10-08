@@ -1,6 +1,6 @@
 # 05. Posting engine — Ерөнхий дэвтрийн бичилтийн хөдөлгүүр (хөгжүүлэлтэд бэлэн тодорхойлолт)
 
-> **Төлөв:** Хөгжүүлэлтэд бэлэн, v1.0. **Огноо:** 2026-10-07.
+> **Төлөв:** Хөгжүүлэлтэд бэлэн, v1.1 (adversarial review, 2026-10-08 — төгсгөлийн "Хяналтын тэмдэглэл"). **Огноо:** 2026-10-07.
 > **Нэг эх сурвалж:** [DECISIONS.md](./DECISIONS.md). Хүснэгт, багана, функцийн нэрийн эх сурвалж нь [db/schema/*.sql](./db/schema/) (D-K1). Бусад баримт эдгээртэй зөрвөл DECISIONS ба схем давамгайлна (§0.3).
 > **Холбоос:** [02-architecture.md](./02-architecture.md) §4.5, §6, §8; [03-domain-model.md](./03-domain-model.md) §5, §7; [13-security-audit-tenancy.md](./13-security-audit-tenancy.md) §8, §18; [14-api.md](./14-api.md) §7–§9, §15.2; [15-ui-ux.md](./15-ui-ux.md) §5.5, §16.5; [db/README.md](./db/README.md); [db/seed/README.md](./db/seed/README.md).
 > **Уншигч:** backend хөгжүүлэгч (GeneralLedger, Tax, Parties, CashBank, Sales, Purchases модуль), QA, нягтлан зөвлөх.
@@ -24,6 +24,7 @@
 11. [Тест сценари](#11-тест-сценари)
 12. [Schema change requests](#12-schema-change-requests)
 13. [Нээлттэй асуулт](#13-нээлттэй-асуулт)
+14. [Хяналтын тэмдэглэл (Review log)](#хяналтын-тэмдэглэл-review-log)
 
 ---
 
@@ -82,6 +83,11 @@ Posting engine нь бичилтийг **хэрхэн** бичихийг тог�
 | Z-PST-11 | 02 §8.3-д ханш нь "1 нэгж валютад ногдох MNT" | Схемийн `currency_factor` = 1 LCY-д ногдох FCY (BC Currency Factor). Engine R1-д валютгүй; R2-ийн томьёо §6.10 | D-K1 |
 | Z-PST-12 | FR-PLT-008 AC3: "2028 оны мөр автоматаар үүснэ"; схем: `reset_yearly` цувралд мөр байхгүй бол `ERN01` | Шинэ жилийн мөрийг жилийн хаалтын job (`platform.fn_mn_ensure_number_series(year)`) урьдчилж үүсгэнэ. Posting дотор мөр байхгүй бол `platform.number_series_missing_line`. Автоматаар үүсгэх нь Platform-ийн `INumberAllocator`-ийн хариуцлага (CR-PST-04) | D-C7 |
 | Z-PST-13 | 15 §5.9-д залруулах журналын мөрийг клиент угсарна | Сервер санал болгосон мөрийг буцаана (`GET …/correction-proposal`, §5.11); клиент `POST /journals/{id}/lines`-аар нэмнэ | Дүрмийг нэг газарт |
+| Z-PST-14 | 14 API-IDEM-03, -07, -12 (Idempotency-ийн эзэмшигч): Шат 0 (A үеэс өмнөх replay хайлт), `request_hash`-ийн томьёо, idempotency мөрийн `lock_timeout` → `409 api.idempotency_in_progress` | 14-ийг дагана (§5.14, §5.15, BR-PST-62, -63). Өмнөх хувилбарын `method + routeTemplate + companyId + body + ifMatch` томьёо ба 503 хүчингүй | 14 эзэмшинэ (14 §22 N1, R7) |
+| Z-PST-15 | Бэлэн борлуулалтын 2 дахь (төлбөрийн) ваучерын `document_no`: өмнөх хувилбарын E-E ба 07 BR-PUR-72 нь кассын цуврал (`KO-…`); 06 BR-SAL-50, 09 BR-BNK-21/AT-BNK-10 ба BC (R-SALES-DOCUMENTS-37) нь posted баримтын дугаар (`SI-…`) | BC/06/09-ийг дагана: ваучер 2 = `document_type = 'PAYMENT'` (кредит нотод `REFUND`), `document_no` = posted баримтын дугаар (`VoucherNumbering.SameAsVoucher`, §5.1), source `CASHVOUCHER`/`PAYMENTREG`; МХ-1/МХ-2-ийн дугаарыг (`posted_cash_voucher.no`) CashBank writer кассын цувралаас **тусдаа** олгоно (09 BR-BNK-21). 07 BR-PUR-72-ыг тааруулах | BC; 06/09 |
+| Z-PST-16 | Өмнөх §6.6: НӨАТ-ын хуваарилалт хуримтлагдсан дүнгийн бөөрөнхийлөлтөөр (`C_k = R(T·Σa/W)`); D-E3 ба 08 BR-TAX-20 (Z-TAX-09): running remainder | D-E3-ийг дагана (§6.6 засварласан). E-D-ийн үр дүн өөрчлөгдөхгүй | D-E3; 08 Z-TAX-09 |
+| Z-PST-17 | Өмнөх §6.10: `amount_lcy = Round(amount / currency_factor)`, LCY үлдэгдэл "дараагийн тэг биш мөрт"; 09 BR-FX-21, BR-FX-26 | 09-ийг дагана: `ToLcy = r(fcy × RateOf(f))`, үлдэгдэл хамгийн их \|LCY\|-тай мөрт (§6.10) | 09 эзэмшинэ |
+| Z-PST-18 | 08 Z-TAX-15: `PostingBufferKey`-д хасагдахгүй НӨАТ-ын шалтгаан ба НХАТ-ын код алга; 11 X-04/X-05: `FA_DEPRECIATION_RUN` counter, `ItemApplicationEntry` тогтмол, `PHYSINVJNL` source code | Нэмсэн (§5.7.1, §3.3, §5.1, §3.7) | 08, 11 |
 
 ---
 
@@ -314,8 +320,11 @@ Engine-ийн баталгаа:
 | `FA_LEDGER_ENTRY` | `fa.fa_ledger_entry.entry_no` | FixedAssets writer | R2 |
 | `ITEM_LEDGER_ENTRY`, `VALUE_ENTRY`, `ITEM_APPLICATION_ENTRY` | `inv.*.entry_no` | Inventory writer | R2 |
 | `EXCH_RATE_ADJMT_REGISTER`, `EXCH_RATE_ADJMT_LEDGER_ENTRY` | `fx.*` | Currency (R2) | R2 |
+| `FA_DEPRECIATION_RUN` | `fa.depreciation_run.run_no` (ledger биш, техникийн дугаар; [11](./11-fixed-assets-inventory.md) X-04) | FixedAssets | R2 |
 
 Кодыг C#-д `LedgerCodes` тогтмолоор (`Erp.GeneralLedger.Contracts.Posting`) тодорхойлно. Шинэ ledger нэмэхэд энэ хүснэгт ба тогтмолыг шинэчилнэ.
+
+`fn_next_entry_no(ledger, count)` нь `count < 1` үед `22023` алдаа өгнө. Тиймээс engine ба writer **0 мөртэй ledger-т дугаар нөөцлөхгүй** (жишээ нь НӨАТ-гүй run-д `VAT_ENTRY`-г дуудахгүй, `from/to_vat_entry_no = NULL`).
 
 **Хуулийн баримтын дугаар.** `platform.number_series` (`code`, `gapless`, `reset_yearly`, `date_order`, `manual_nos`), `platform.number_series_line` (`starting_date`, `prefix`, `width`, `starting_no`, `ending_no`), `platform.number_series_counter` (gapless цувралын `last_no_used`, `last_date_used`). Дугаарыг зөвхөн `platform.fn_next_document_no(series_code, posting_date)` олгоно (SECURITY DEFINER; алдаа `ERN01` мөр алга, `ERN02` огнооны дараалал, `ERN03` дууссан). Seed-ийн хуулийн цуврал ([db/seed/README.md](./db/seed/README.md) §7): `SI`, `SC`, `PI`, `PC`, `KO`, `KZ`, `BR`, `BP`, `GJ`, `OB`, `CL` — бүгд `gapless`, `reset_yearly`, `PREFIX-YYYY-#####`.
 
@@ -379,7 +388,7 @@ Engine-ийн тулгуурладаг DB guard ([910_ledger_guards.sql](./db/sc
 | — | `STDJNL` | Стандарт журналаас шууд батлах (R1-д ашиглахгүй: хуулсан мөр GENJNL-ээр батлагдана) | ✔ |
 | CASH_RECEIPT | `CASHRECJNL` | Мөнгөн орлогын журнал | ✔ |
 | PAYMENT | `PAYMENTJNL` | Төлбөрийн журнал | ✔ |
-| CASH_RECEIPT / PAYMENT | `CASHVOUCHER`, `PAYMENTREG` | `POST /payments`-ийн МХ-1/МХ-2, банкны төлбөр | ✔ (тулгагдаагүй үед) |
+| CASH_RECEIPT / PAYMENT | `CASHVOUCHER`, `PAYMENTREG` | `POST /payments`-ийн МХ-1/МХ-2, банкны төлбөр; бэлэн борлуулалт/худалдан авалтын 2 дахь ваучер | ✔ (тулгагдаагүй үед). `POST /payments` нь BC-ийн Cash Receipt/Payment Journal-ийн API хэлбэр тул D-D5-ийн "журналаас үүссэн" гэдэгт багтана. Бэлэн борлуулалтын ваучер нь заавал тулгагдсан тул бодитоор `gl.reversal_entries_applied` өгнө (кредит нотоор засна) |
 | OPENING | `OPENING` | Эхний үлдэгдэл (D-D7) | ✔ |
 | — | `PAYROLLJNL`, `CASHCOUNT` (seed) | Цалингийн журнал импорт, кассын тооллого | ✔ |
 | SALES | `SALES` | Борлуулалтын нэхэмжлэх, кредит нот | ✕ → кредит нот (`gl.reversal_use_credit_memo`) |
@@ -391,7 +400,7 @@ Engine-ийн тулгуурладаг DB guard ([910_ledger_guards.sql](./db/sc
 | — | `SALESAPPL`, `PURCHAPPL`, `UNAPPSALES`, `UNAPPPURCH` | Тулгалт, unapply (G/L-гүй run, §5.19) | ✕; unapply ([06](./06-sales-receivables.md) §5.14) |
 | FX_REVAL | `EXCHRATADJ` | Ханшийн тэгшитгэл (R2) | ✕ нийтийн; Currency модуль (R2) |
 | — | `FAGLJNL`, `DEPRECIATION` | ҮХ (R2) | ✕ нийтийн; FA модуль (R2) |
-| INVENTORY | `INVTADJMT`, `ITEMJNL` | Бараа (R2) | ✕ нийтийн |
+| INVENTORY | `INVTADJMT`, `ITEMJNL`; `PHYSINVJNL` (схемд алга — [11](./11-fixed-assets-inventory.md) SCR-INV-01, X-05) | Бараа (R2) | ✕ нийтийн; Inventory модуль |
 
 ---
 
@@ -419,7 +428,7 @@ Engine-ийн тулгуурладаг DB guard ([910_ledger_guards.sql](./db/sc
 
 | ID | Дүрэм | Эх | Шалгах |
 |---|---|---|---|
-| BR-PST-10 | Хоосон мөр (`account_id IS NULL AND bal_account_id IS NULL AND amount = 0`) алдаагүй алгасагдана. | R-GL-POSTING-13 | AT-PST-010 |
+| BR-PST-10 | Хоосон мөр алдаагүй алгасагдана: `account_id IS NULL AND amount = 0 AND (bal_account_id IS NULL OR system_created = false)` (BC `EmptyLine`). Батлагдсан журналын batch-аас хоосон мөр ч мөн устна (BC: batch бүхэлдээ цэвэрлэгдэнэ). | R-GL-POSTING-13, R-GL-POSTING-27 | AT-PST-010 |
 | BR-PST-11 | `posting_date` ба `document_no` (ноорог дугаар) заавал. | R-GL-POSTING-17 | AT-PST-011 |
 | BR-PST-12 | `account_id` эсвэл `bal_account_id`-ийн дор хаяж нэг заавал. Хоёр тал хоёулаа partner (`CUSTOMER`, `VENDOR`, `FIXED_ASSET`) байж болохгүй: дор хаяж нэг тал нь `GL_ACCOUNT` эсвэл `BANK_ACCOUNT`. | R-GL-POSTING-09; FR-GL-006 AC2 | AT-PST-012 |
 | BR-PST-13 | `amount ≠ 0` (`Origin = UserEntered` мөрөнд). `amount` ба `amount_lcy` ижил тэмдэгтэй. Дүн нь валютын, `amount_lcy` нь LCY-ийн нарийвчлалаар бөөрөнхийлөгдсөн. | R-GL-POSTING-13, R-GL-POSTING-17, R-GL-POSTING-34; FR-GL-006 AC3 | AT-PST-013 |
@@ -439,17 +448,17 @@ Engine-ийн тулгуурладаг DB guard ([910_ledger_guards.sql](./db/sc
 | BR-PST-22 | Ваучер бүрд: (а) мөрийн түвшинд Σ `Balance (LCY)` = 0 (данс ба харьцсан данстай мөр 0, зөвхөн дансны мөр `+amount_lcy`, зөвхөн харьцсан дансны мөр `−amount_lcy`); (б) задарсан G/L мөрийн Σ `Amount` = 0. Хүлцэл (tolerance) байхгүй, автомат "round-off" мөр үүсгэхгүй. | D-C5; R-GL-POSTING-11, R-GL-POSTING-21, R-GL-POSTING-22, R-GL-POSTING-35; 02 §8.4 | AT-PST-022 |
 | BR-PST-23 | НӨАТ-тай мөртэй ваучерт харилцагч/нийлүүлэгч нэгээс олон байхгүй. | R-GL-POSTING-24; 02 §6.2 #5 | AT-PST-023 |
 | BR-PST-24 | Ваучер ≥ 2 тэг биш G/L мөртэй. Дүн ба НӨАТ нь 0 болсон buffer мөр G/L entry үүсгэхгүй. НӨАТ = 0 мөр VAT G/L entry үүсгэхгүй, харин суурь ≠ 0 бол VAT entry үүснэ (ТТ-03а-ийн 0 %, чөлөөлөгдөх, хамрах хүрээнээс гадуурх мөрт). | R-ACCOUNT-DETERMINATION-08; bc-account-determination.md §8 #11 | AT-PST-024 |
-| BR-PST-25 | Insert хийхээс өмнө engine санах ойд ваучер бүрийн Σ = 0 ба бөөрөнхийлөлтийг дахин шалгана (self-check). Зөрвөл энэ нь assembler-ийн кодын алдаа: `500 api.internal_error`, P1 alert. DB-ийн deferred trigger нь хоёр дахь хамгаалалт. | ADR-0009 #8; NFR-001 | AT-PST-025 |
+| BR-PST-25 | Insert хийхээс өмнө engine санах ойд дахин шалгана (self-check): ваучер бүрийн Σ = 0, мөр бүр бөөрөнхий, **мөр бүр `Amount ≠ 0`** (0 дүнтэй `GlPostingLine`-ийг assembler шүүх ёстой; BR-PST-24), `GlPostingLine.Key` ба `PostingVoucher.Key` run дотор давтагдахгүй, `ISubledgerLine.GlLineKeys` бүгд олдоно. Зөрвөл энэ нь assembler-ийн кодын алдаа: `500 api.internal_error`, P1 alert. DB-ийн deferred trigger нь хоёр дахь хамгаалалт. | ADR-0009 #8; NFR-001 | AT-PST-025 |
 
 ### 4.4 Дугаарлалт
 
 | ID | Дүрэм | Эх | Шалгах |
 |---|---|---|---|
-| BR-PST-26 | Ваучерын хуулийн дугаарыг B үед, бүх шалгалтын дараа, insert-ээс өмнө `platform.fn_next_document_no(series, posting_date)`-ээр олгоно. Gapless цувралд гараар дугаар оруулахгүй. Rollback бол дугаар буцна (завсаргүй). | D-C7; ADR-0008; R-DIMENSIONS-NOSERIES-AUDIT-29, R-DIMENSIONS-NOSERIES-AUDIT-34; FR-PLT-008 AC1, AC2 | AT-PST-026, GS-GL-015 |
+| BR-PST-26 | Ваучерын хуулийн дугаарыг B үед, бүх шалгалтын дараа, insert-ээс өмнө `platform.fn_next_document_no(series, posting_date)`-ээр олгоно. Gapless цувралд гараар дугаар оруулахгүй. Rollback бол дугаар буцна (завсаргүй). BR-PST-04-ийн дагуу `CheckLockedAsync` нь цувралын мөр (ERN01), огнооны дараалал (ERN02), дуусалт (ERN03)-ыг дугаар олгохоос **өмнө** уншиж бусад алдаатай хамт буцаана (§5.3 query 5); бүх олголт компанийн advisory lock-ийн дор явдаг тул уншсан төлөв олголт хүртэл өөрчлөгдөхгүй. | D-C7; ADR-0008; R-DIMENSIONS-NOSERIES-AUDIT-29, R-DIMENSIONS-NOSERIES-AUDIT-34; FR-PLT-008 AC1, AC2 | AT-PST-026, GS-GL-015 |
 | BR-PST-27 | Олон ваучертай run-д дугаарыг (`posting_date` ASC, ноорог `document_no` ASC, эхний `line_no` ASC) дарааллаар олгоно (`date_order`-д нийцэх). Ижил ноорог дугаартай ваучерын бүх мөр нэг хуулийн дугаар авна. Хариунд ноорог ↔ хуулийн дугаарын харгалзаа (`vouchers[]`). | R-GL-POSTING-25; 14 API-ACT-07; 15 UX-JNL-08 | AT-PST-027 |
 | BR-PST-28 | `gl_register.no`, `transaction_no`, `entry_no`-г `platform.fn_next_entry_no(ledger, n)`-ээр **блокоор**, тогтмол дарааллаар олгоно: `GL_REGISTER` → `GL_TRANSACTION` → `GL_ENTRY` → writer-ийн ledger (§4.7-ийн дараалал). Компани дотор завсаргүй, дараалсан. IDENTITY эсвэл sequence ашиглахгүй. | D-C6, D-C8, D-K3; R-GL-POSTING-28 | AT-PST-028 |
 | BR-PST-29 | Run-ий `transaction_no`-г `Vouchers`-ийн дарааллаар (BR-PST-27), `entry_no`-г ваучер дотор `GlLines`-ийн дарааллаар ононо. Entry-ийн дараалал нягтлан бодох утгагүй; тест нь entry-г олонлогоор харьцуулна (`entry_no`-ийн тасралтгүй байдлаас бусад). | R-ACCOUNT-DETERMINATION-33; R-GL-POSTING-32 (SKIP) | GS-GL-003 |
-| BR-PST-30 | Буцаалтын ваучер шинэ хуулийн дугаар авахгүй: эх ваучерын `document_type`, `document_no`-г хадгална (BC). Ялгах түлхүүр нь `transaction_no`, `source_code = 'REVERSAL'`, `reverses_transaction_no`. ⚠ OQ-PST-02 | R-GL-POSTING-40 | AT-PST-047 |
+| BR-PST-30 | Буцаалтын ваучер шинэ хуулийн дугаар авахгүй: эх ваучерын `document_type`, `document_no`-г хадгална (BC, `VoucherNumbering.Existing`). Ялгах түлхүүр нь `transaction_no`, `source_code = 'REVERSAL'`, `reverses_transaction_no`. ⚠ OQ-PST-02. Нэг run-ий дараагийн ваучер өмнөх ваучерын олгосон дугаарыг авах бол (бэлэн борлуулалтын төлбөрийн ваучер, BC R-SALES-DOCUMENTS-37) `VoucherNumbering.SameAsVoucher(key)` ашиглана; заасан ваучер `Vouchers`-т өмнө нь байх ёстой (эс бөгөөс кодын алдаа 500). | R-GL-POSTING-40; R-SALES-DOCUMENTS-37 | AT-PST-047, AT-PST-076 |
 
 ### 4.5 Dimension
 
@@ -457,7 +466,7 @@ Engine-ийн тулгуурладаг DB guard ([910_ledger_guards.sql](./db/sc
 |---|---|---|---|
 | BR-PST-31 | Мөр бүр `dimension_set_id`-тэй (0 = хоосон). Set-ийг `gl.fn_get_dimension_set_id(value_ids[])`-ээр олно/үүсгэнэ: ижил хослол → ижил id, дараалал хамаарахгүй. Ноорогт хадгалагдсан set (`journal_line.dimension_set_id`, `sales_line.dimension_set_id` г.м.)-ийг шууд ашиглана. | D-D2; R-DIMENSIONS-NOSERIES-AUDIT-07, R-DIMENSIONS-NOSERIES-AUDIT-08, R-DIMENSIONS-NOSERIES-AUDIT-10; INV-10; FR-GL-018 AC2 | AT-PST-031 |
 | BR-PST-32 | Баримтад: авлага/өглөгийн мөр **header**-ийн set, орлого/зардал/НӨАТ-ын мөр **мөрийн** set. Журналд: дансны тал, харьцсан дансны тал ба гарал үүслийн данс (НӨАТ, хяналтын данс) бүгд журналын мөрийн set. | R-DIMENSIONS-NOSERIES-AUDIT-25; FR-GL-018 AC1 | GS-GL-014 |
-| BR-PST-33 | Posting-ийн үед set-ийн утга бүр: dimension блоклогдоогүй, утга блоклогдоогүй, `value_type = 'STANDARD'`. | R-DIMENSIONS-NOSERIES-AUDIT-05, R-DIMENSIONS-NOSERIES-AUDIT-18 | AT-PST-033 |
+| BR-PST-33 | Posting-ийн үед set-ийн утга бүр: dimension блоклогдоогүй, утга блоклогдоогүй, `value_type = 'STANDARD'` (ноорогт хадгалсан set ч дахин шалгагдана). Үл хамаарах: `SystemGenerated` мөр (буцаалт нь эх entry-ийн түүхэн set-ийг давтана; хаалтын мөр set 0) — эс бөгөөс дараа нь блоклосон утгатай гүйлгээг буцаах боломжгүй болно. | R-DIMENSIONS-NOSERIES-AUDIT-05, R-DIMENSIONS-NOSERIES-AUDIT-18 | AT-PST-033 |
 | BR-PST-34 | `gl.default_dimension`-ийн `value_posting` (`CODE_MANDATORY`, `SAME_CODE`, `NO_CODE`) дүрэм хуримтлагдана: тухайн мөрийн (`entity_id`) ба хүснэгтийн түвшний (`entity_id IS NULL`) дүрэм хоёулаа хэрэгжинэ. Шалгах эх сурвалж: G/L мөрийн данс (`GL_ACCOUNT`, гарал үүслийн данс орно), мөрийн харилцагч/нийлүүлэгч/мөнгөний данс (`CUSTOMER`, `VENDOR`, `BANK_ACCOUNT`). `Amount = 0` мөрийг алгасна. `SystemGenerated` мөр (хаалт, буцаалт) алгасна. UI нь R2, engine R1-д мөрдөнө. | R-DIMENSIONS-NOSERIES-AUDIT-12, R-DIMENSIONS-NOSERIES-AUDIT-13, R-DIMENSIONS-NOSERIES-AUDIT-19, R-DIMENSIONS-NOSERIES-AUDIT-20; R-PERIODS-REPORTING-20; FR-GL-019 AC1 | AT-PST-034 |
 | BR-PST-35 | Posting transaction дотор шинээр үүссэн set-ийн id-г зөвхөн COMMIT-ийн дараа кэшлэнэ. Preview эсвэл rollback-ийн set кэшид орохгүй. | ADR-0010 #2 | AT-PST-035 |
 
@@ -465,7 +474,7 @@ Engine-ийн тулгуурладаг DB guard ([910_ledger_guards.sql](./db/sc
 
 | ID | Дүрэм | Эх | Шалгах |
 |---|---|---|---|
-| BR-PST-36 | НӨАТ-тай buffer/журналын мөр бүр: (1) суурь G/L мөр (`VatAmount` = НӨАТ), (2) НӨАТ ≠ 0 бол VAT G/L мөр (`vat_posting_setup`-ийн борлуулалт/худалдан авалтын данс; урвуу тооцоонд 2 мөр), (3) нэг `VatLedgerLine` (суурь G/L мөрийн key-тэй). Tax writer `tax.vat_entry` (`gl_entry_no` = суурь entry) ба `tax.gl_entry_vat_entry_link` (суурь entry ↔ VAT entry)-ийг бичнэ. | R-GL-POSTING-33; R-VAT-18, R-VAT-20, R-VAT-21; R-ACCOUNT-DETERMINATION-08, R-ACCOUNT-DETERMINATION-22; FR-TAX-007 | GS-GL-003 |
+| BR-PST-36 | НӨАТ-тай buffer/журналын мөр бүр: (1) суурь G/L мөр (`Amount` = цэвэр + хасагдахгүй НӨАТ, `VatAmount` = бүтэн НӨАТ), (2) хасагдах НӨАТ `D ≠ 0` бол VAT G/L мөр (`vat_posting_setup`-ийн борлуулалт/худалдан авалтын данс; худалдан авалтын урвуу тооцоонд 1300 `+D` ба 2305 `−VAT`; борлуулалтын урвуу тооцоо ба `FULL_VAT`-д тусдаа мөргүй — §5.7.2), (3) нэг `VatLedgerLine` (суурь G/L мөрийн key-тэй). Tax writer `tax.vat_entry` (`gl_entry_no` = суурь entry) ба `tax.gl_entry_vat_entry_link` (суурь entry ↔ VAT entry)-ийг бичнэ. | R-GL-POSTING-33; R-VAT-18, R-VAT-20, R-VAT-21; R-ACCOUNT-DETERMINATION-08, R-ACCOUNT-DETERMINATION-22; FR-TAX-007 | GS-GL-003 |
 | BR-PST-37 | `gl_register.from_vat_entry_no/to_vat_entry_no` = энэ run-д Tax writer-ийн нөөцөлсөн `VAT_ENTRY` муж; НӨАТ байхгүй бол NULL. | R-GL-POSTING-28, R-GL-POSTING-31 | AT-PST-037 |
 | BR-PST-38 | Журналын НӨАТ зөвхөн мөрөнд `gen_posting_type ∈ {SALE, PURCHASE}` ба хоёр VAT бүлэг тодорхой заагдсан үед (seed-ийн данснууд `NONE`). Тооцоо нь gross арга (§6.4). `vat_difference ≠ 0` бол `journal_template.allow_vat_difference = true` ба `abs(vat_difference) ≤ general_ledger_setup.max_vat_difference_allowed`. Хасагдах эсэхийг (D-E4) Tax шийднэ. ⚠ OQ-PST-05 | R-VAT-16, R-VAT-17; D-E3, D-E4 | GS-GL-002 |
 
@@ -495,7 +504,7 @@ Engine-ийн тулгуурладаг DB guard ([910_ledger_guards.sql](./db/sc
 | BR-PST-48 | Register-ийн буцаалт: эх register-ийн бүх гүйлгээ BR-PST-45, -46-г хангана. Эх гүйлгээ бүрд (`transaction_no` буурах дарааллаар) тусдаа шинэ гүйлгээ үүснэ (BC нэг гүйлгээ үүсгэдэг; бидэнд огноо тус бүрийн тэнцэл ба нэг `posting_date` шаардлагатай). Эх register-ийн `reversed = true` нь түүний бүх гүйлгээ буцаагдсан үед (register эсвэл гүйлгээ тус бүрээр). BC-ийн "`To Entry No.` таарвал register-ийг тэмдэглэх" heuristic-ийг хуулахгүй. | R-GL-POSTING-38, R-GL-POSTING-40; FR-GL-015 AC1 | GS-GL-007 |
 | BR-PST-49 | Дэд дэвтэр ба НӨАТ-ыг writer-ийн `ReverseAsync` толин тусгалаар бичнэ. VAT entry нь эх суурь entry-ийн холбоосоор олдож, шинэ VAT entry нь шинэ (толин тусгал) суурь entry-тэй холбогдоно. Буцаалтын дараа эх ба толин тусгал дэд дэвтрийн entry хоёулаа хаагдсан (`remaining = 0`, `open = false`). | R-GL-POSTING-40; R-VAT-20; R-BANK-CASH-39 | GS-GL-006 |
 | BR-PST-50 | Буцаалтыг дахин буцаахгүй; нэг гүйлгээг нэг л удаа буцаана (`ux_gl_transaction__reverses`). Зэрэг хоёр хүсэлтийн хоёр дахь нь `409 gl.transaction_already_reversed`. | INV-22; R-GL-POSTING-39 | AT-PST-050 |
-| BR-PST-51 | Эх үе `CLOSED`/`LOCKED` бол буцаалтын оронд **залруулах журналын ноорог** (санал): одоогийн нээлттэй огноо, эсрэг тэмдэгтэй мөр, шалтгаан заавал. Автоматаар батлахгүй. Эх үе `OPEN` бол санал өгөхгүй (`gl.correction_use_reversal`). | D-D5; FR-GL-014 AC1; 13 SEC-POST-09 | GS-GL-012 |
+| BR-PST-51 | Эх огноонд posting хийх боломжгүй бол (үе эсвэл жил `OPEN` биш, эсвэл огноо компанийн `allow_posting_from/to`-оос гадуур — `CheckPostingDateAsync(t.PostingDate, false)` алдаа өгөх) буцаалтын оронд **залруулах журналын ноорог** (санал): одоогийн нээлттэй огноо, эсрэг тэмдэгтэй мөр, шалтгаан заавал. Автоматаар батлахгүй. Эх огноонд posting боломжтой бол санал өгөхгүй (`gl.correction_use_reversal`). | D-D5; FR-GL-014 AC1; 13 SEC-POST-09 | GS-GL-012, AT-PST-075 |
 
 ### 4.10 Preview
 
@@ -508,11 +517,11 @@ Engine-ийн тулгуурладаг DB guard ([910_ledger_guards.sql](./db/sc
 
 | ID | Дүрэм | Эх | Шалгах |
 |---|---|---|---|
-| BR-PST-54 | Нөхцөл: санхүүгийн жил `LOCKED` биш; 12 сар бүгд `CLOSED`; `current_year_result_account_id` (3500) тохируулсан, `POSTING`, `BALANCE_SHEET`, `EQUITY` ангилалтай, блоклогдоогүй; Y-12-31 компанийн цонх дотор; орлогын тайлангийн бичилттэй данс бүр блоклогдоогүй. | D-D4; R-PERIODS-REPORTING-13, R-PERIODS-REPORTING-16, R-PERIODS-REPORTING-19; FR-GL-026 | AT-PST-054 |
+| BR-PST-54 | Нөхцөл: санхүүгийн жил `LOCKED` биш; жилийн аль ч сар `OPEN` биш (`CLOSED` эсвэл `LOCKED`), 12-р сар `LOCKED` биш (хаалтын ваучер 12-31-нд бичигдэнэ); өмнөх санхүүгийн жил (Y−1) бичилттэй бол `CLOSED` эсвэл `LOCKED` (жилийг дарааллаар хаана, R-PERIODS-REPORTING-05; `gl.year_close_previous_year_open`); `current_year_result_account_id` (3500) тохируулсан, `POSTING`, `BALANCE_SHEET`, `EQUITY` (эсвэл хоосон) ангилалтай, блоклогдоогүй; Y-12-31 компанийн цонх дотор; орлогын тайлангийн бичилттэй данс бүр блоклогдоогүй. | D-D4; R-PERIODS-REPORTING-05, R-PERIODS-REPORTING-13, R-PERIODS-REPORTING-16, R-PERIODS-REPORTING-19; FR-GL-026 | AT-PST-054, AT-PST-078 |
 | BR-PST-55 | Дүн: `income_balance = 'INCOME_STATEMENT'` данс бүрийн `net = Σ amount` (Y-01-01..Y-12-31, **хаалтын бичилт орно**). Мөр = `−net` (0 бол алгасна). 3500-ийн мөр = `Σ net`. Dimension-гүй (set 0), данс бүрд нэг мөр. Тооцоог advisory lock-ийн дор хийнэ. | R-GL-POSTING-05; R-PERIODS-REPORTING-17, R-PERIODS-REPORTING-18; bc-periods-reporting.md §5.6 | GS-GL-008 |
-| BR-PST-56 | Ваучер: `CL` цуврал (template CLOSING / batch YEAR_END), огноо Y-12-31, `is_closing = true`, source `CLSINCOME`, `document_type = 'NONE'`, `SystemGenerated` мөр. Дахин ажиллуулахад зөвхөн зөрүү бичигдэнэ; зөрүү 0 бол ваучер, дугаар үүсэхгүй (идемпотент). | FR-GL-026 AC1, AC2; R-PERIODS-REPORTING-17 | GS-GL-009 |
-| BR-PST-57 | Амжилттай бол `fiscal_year.status = 'CLOSED'`, `closing_transaction_no` = сүүлийн хаалтын гүйлгээ, `closed_at`, `closed_by`. Бүх хаалтын гүйлгээг `gl_transaction.is_closing AND posting_date = Y-12-31`-ээр олно. | D-D4; 07 | AT-PST-057 |
-| BR-PST-58 | Сонголтоор (анхдагч асаалттай) (Y+1)-01-01-ний огноотой 3500 → 3400 шилжүүлгийн **журналын ноорог** (GENERAL/DEFAULT) үүсгэнэ. Дүн = 3500-ийн (Y+1)-01-01 хүртэлх (тэр өдөр орно) үлдэгдэл: Y-ийн хаалтын бичилт ба аль хэдийн батлагдсан 01-01-ний шилжүүлэг орно, тиймээс дахин ажиллуулахад зөвхөн зөрүү санал болгоно. Өмнөх батлагдаагүй саналын мөрийг (`comment` = `{"kind":"RE_TRANSFER","year":Y}`) устгаад шинээр үүсгэнэ. Дүн 0 бол ноорог үүсэхгүй. Хэрэглэгч засах, устгах, батлах эрхтэй. Санхүүгийн жил Y+1 байхгүй бол ноорог үүсэхгүй, анхааруулга `W-04`. | D-D4; FR-GL-026 AC3 | GS-GL-010 |
+| BR-PST-56 | Ваучер: `CL` цуврал (template CLOSING / batch YEAR_END), огноо Y-12-31, `is_closing = true`, source `CLSINCOME`, `document_type = 'NONE'`, `SystemGenerated` мөр. Дахин ажиллуулахад зөвхөн зөрүү бичигдэнэ; зөрүү 0 бол ваучер, дугаар, `gl_register`, `posting_log` үүсэхгүй (идемпотент), **гэхдээ** BR-PST-57-ийн жилийн төлөв ба BR-PST-58-ийн шилжүүлгийн санал мөн адил шинэчлэгдэнэ (§5.13 "No-op хаалт"). | FR-GL-026 AC1, AC2; R-PERIODS-REPORTING-17 | GS-GL-009, AT-PST-073 |
+| BR-PST-57 | Амжилттай бол (ваучер бичигдсэн эсэхээс үл хамааран) `fiscal_year.status = 'CLOSED'`, `closed_at`, `closed_by`; ваучер бичигдсэн бол `closing_transaction_no` = энэ хаалтын гүйлгээ (no-op үед хуучин утга хэвээр, бичилтгүй жилд NULL). Бүх хаалтын гүйлгээг `gl_transaction.is_closing AND posting_date = Y-12-31`-ээр олно. Жил `CLOSED` боловч сар нь дахин нээгдсэн бол (13 SEC-POST-04 жилийг `OPEN` болгоно) хаалтыг дахин ажиллуулна. | D-D4; 13 SEC-POST-04, SEC-POST-11 | AT-PST-057, AT-PST-073 |
+| BR-PST-58 | Сонголтоор (анхдагч асаалттай) (Y+1)-01-01-ний огноотой 3500 → 3400 шилжүүлгийн **журналын ноорог** (GENERAL/DEFAULT) үүсгэнэ. Дүн = 3500-ийн (Y+1)-01-01 хүртэлх (тэр өдөр орно) үлдэгдэл: Y-ийн хаалтын бичилт ба аль хэдийн батлагдсан 01-01-ний шилжүүлэг орно, тиймээс дахин ажиллуулахад зөвхөн зөрүү санал болгоно. Өмнөх батлагдаагүй саналын мөрийг (`comment` нь яг `{"kind":"RE_TRANSFER","year":Y}` тэмдэгт мөр — engine ингэж каноник хэлбэрээр бичиж, тэнцүүгээр хайна; JSON parse хийхгүй) устгаад шинээр үүсгэнэ. Дүн 0 бол ноорог үүсэхгүй. Хэрэглэгч засах, устгах, батлах эрхтэй. Санхүүгийн жил Y+1 байхгүй бол ноорог үүсэхгүй, анхааруулга `W-04`; GENERAL/DEFAULT batch байхгүй бол `W-06`. Batch-ийг `LockSourceAsync`-д (дугаар олгохоос өмнө) `FOR UPDATE` түгжиж, `row_version`-ийг нэмнэ (нээлттэй журналын ETag хүчингүй болно). `GJ` цуврал `date_order = true` (seed) үед Y+1-д 01-01-ээс хойш огноотой `GJ` ваучер аль хэдийн батлагдсан бол энэ ноорогийг батлахад `ERN02` гарна — CR-PST-03 / ⚠ OQ-PST-03 шийдэгдэх хүртэл хэрэглэгч ноорогийн огноог өөрчлөхгүйгээр батлах боломжгүй тул шилжүүлгийг Y+1-ийн анхны `GJ` ваучерын өмнө хийхийг UI зөвлөнө. | D-D4; FR-GL-026 AC3 | GS-GL-010 |
 | BR-PST-59 | Хаалтын мөр `SystemGenerated`: `direct_posting` ба dimension value posting-ийн шалгалтгүй. | R-GL-POSTING-07; R-PERIODS-REPORTING-20 | GS-GL-008 |
 
 ### 4.12 Зэрэг ажиллагаа ба idempotency
@@ -520,9 +529,9 @@ Engine-ийн тулгуурладаг DB guard ([910_ledger_guards.sql](./db/sc
 | ID | Дүрэм | Эх | Шалгах |
 |---|---|---|---|
 | BR-PST-60 | B үеийн эхэнд `platform.fn_lock_company_posting(tenant, company)`. Posting, буцаалт, жилийн хаалт, үеийн төлөвийн өөрчлөлт, НӨАТ-ын хаалт, R2-т элэгдэл, ханшийн тэгшитгэл, өртгийн дахин тооцоо бүгд энэ түгжээг авна. `lock_timeout = 5s`, `statement_timeout = 30s` (жилийн хаалт ба эхний үлдэгдлийн импортод 120s). | D-C6; ADR-0009 #2, #3, #5; 13 SEC-POST-10 | AT-PST-060 |
-| BR-PST-61 | Түгжээ авах дараалал (deadlock 0): idempotency мөр → advisory lock → эх ноорог `FOR UPDATE` → дугаарын цуврал (`number_series_line`, `number_series_counter`) → `ledger_counter` (BR-PST-28-ийн дараалал) → ledger мөрийн `fn_ledger_update`. | NFR-016; 02 §13 | AT-PST-061 |
-| BR-PST-62 | Post команд `Idempotency-Key`-тэй. Түлхүүрийн мөр бизнесийн бичилттэй нэг transaction-д. Ижил түлхүүр ба hash → хадгалсан хариу (`Idempotent-Replayed: true`). Өөр hash → `422 api.idempotency_key_reused`. Бизнесийн алдаа → rollback, түлхүүр хадгалагдахгүй. Байгалийн idempotency: ноорог устсан → `409 api.document_already_posted`; журнал хоосон → `422 gl.journal_empty`; буцаагдсан → `409 gl.transaction_already_reversed`; хаалтын зөрүү 0 → no-op. | D-I1; 02 §8.5; 14 API-IDEM-01..11; NFR-004; TA-09 | AT-PST-062 |
-| BR-PST-63 | `lock_timeout` → `503 api.lock_timeout` + `Retry-After: 2` (клиент ижил түлхүүрээр давтана). `40001`/`40P01` → сервер нэг удаа автоматаар давтана. Commit-ийн үеэр холболт тасарвал клиент ижил түлхүүрээр давтана. | 02 §6.10; 14 §9.6 | AT-PST-063 |
+| BR-PST-61 | Түгжээ авах дараалал (deadlock 0): idempotency мөр → advisory lock → эх ноорог `FOR UPDATE` (журналын batch, жилийн хаалтын `fiscal_year` ба шилжүүлгийн batch) → дугаарын цуврал (`number_series_line`, `number_series_counter`) → `ledger_counter` (BR-PST-28-ийн дараалал) → ledger мөрийн `fn_ledger_update`. Дугаарын цуврал ба counter нь компанийн хүрээнийх бөгөөд тэдгээрийг зөвхөн тухайн компанийн advisory lock-ийн дор түгжинэ; тиймээс writer өөрийн баримтын дугаарыг (МХ-1/МХ-2, 09 BR-BNK-21) `WriteAsync` дотор олгож болно. Advisory lock-гүйгээр ноорог засварлах үйлдэл (журналын мөр нэмэх) `journal_batch FOR UPDATE` → `JNL_DRAFT` дарааллыг баримтална. | NFR-016; 02 §13 | AT-PST-061 |
+| BR-PST-62 | Post команд `Idempotency-Key`-тэй. **Шат 0** (14 API-IDEM-12): A үеэс өмнө түгжээгүй уншиж `COMPLETED` мөр олдвол hash ижил → хадгалсан хариу (`Idempotent-Replayed: true`), өөр → `422 api.idempotency_key_reused`; handler ажиллахгүй. Түлхүүрийн мөр бизнесийн бичилттэй нэг transaction-д (`INSERT … ON CONFLICT`). Бизнесийн алдаа → rollback, түлхүүр хадгалагдахгүй. `request_hash` = 14 API-IDEM-03. Байгалийн idempotency: ноорог устсан → `409 api.document_already_posted`; журнал хоосон → `422 gl.journal_empty`; буцаагдсан → `409 gl.transaction_already_reversed`; хаалтын зөрүү 0 → no-op (жилийн төлөвийг л шинэчилнэ, BR-PST-56). | D-I1; 02 §8.5; 14 API-IDEM-01..12; NFR-004; TA-09 | AT-PST-062, AT-PST-074 |
+| BR-PST-63 | Advisory lock-ийн `lock_timeout` → `503 api.lock_timeout` + `Retry-After: 2` (клиент ижил түлхүүрээр давтана). Idempotency мөрийн unique индекс дээрх хүлээлтийн `lock_timeout` → `409 api.idempotency_in_progress` + `Retry-After: 1` (14 API-IDEM-07). `40001`/`40P01` → сервер нэг удаа автоматаар давтана. Commit-ийн үеэр холболт тасарвал клиент ижил түлхүүрээр давтана. | 02 §6.10; 14 §9.6, API-ACT-05, API-IDEM-07 | AT-PST-063 |
 
 ### 4.13 Гүйцэтгэл ба хязгаар
 
@@ -536,7 +545,7 @@ Engine-ийн тулгуурладаг DB guard ([910_ledger_guards.sql](./db/sc
 
 | ID | Дүрэм | Эх | Шалгах |
 |---|---|---|---|
-| BR-PST-67 | Амжилттай Post бүр `audit.posting_log` (`status = 'SUCCEEDED'`, `transaction_no` = эхний, `gl_register_no`, `document_no` = эхний ваучерынх)-ийг ижил transaction-д бичнэ. Бүтэлгүй Post бүр `FAILED` мөрийг **тусдаа** transaction-д (`error_code`, PII-гүй `error_message`). Preview бичигдэхгүй. | 13 §9.5, AT-SEC-053; 140 `audit.posting_log` | AT-PST-067 |
+| BR-PST-67 | Амжилттай Post бүр `audit.posting_log` (`status = 'SUCCEEDED'`, `transaction_no` = эхний, `gl_register_no`, `document_no` = эхний ваучерынх)-ийг ижил transaction-д бичнэ. Бүтэлгүй Post бүр `FAILED` мөрийг **тусдаа** transaction-д (`error_code`, PII-гүй `error_message`): handler эхэлсний дараах (A үе, B үе, COMMIT-ийн deferred алдаа орно) 409/412/422/500/503 бүр; 400/401/403/404 (handler-ээс өмнө), Шат 0-ийн replay, preview, no-op (зөрүү 0 хаалт) бичигдэхгүй. | 13 §9.5, AT-SEC-053; 140 `audit.posting_log` | AT-PST-067 |
 | BR-PST-68 | Outbox: `PostingDocument.Outbox` ба GL event (§9.1) нэг transaction-д. Handler бүртгэгдээгүй topic-ийг бичихгүй. `qrData`/`lottery` агуулахгүй (CHECK). | ADR-0012; D-J3 | AT-PST-068 |
 
 ### 4.15 G/L-гүй дэд дэвтрийн run (тулгалт, unapply)
@@ -575,7 +584,9 @@ public static class LedgerCodes   // platform.ledger_counter.ledger (§3.3)
         CustLedgerEntry = "CUST_LEDGER_ENTRY", DetailedCustLedgerEntry = "DETAILED_CUST_LEDGER_ENTRY",
         VendorLedgerEntry = "VENDOR_LEDGER_ENTRY", DetailedVendorLedgerEntry = "DETAILED_VENDOR_LEDGER_ENTRY",
         ApplicationNo = "APPLICATION_NO", BankLedgerEntry = "BANK_LEDGER_ENTRY",
-        FaLedgerEntry = "FA_LEDGER_ENTRY", ItemLedgerEntry = "ITEM_LEDGER_ENTRY", ValueEntry = "VALUE_ENTRY";
+        FaLedgerEntry = "FA_LEDGER_ENTRY", ItemLedgerEntry = "ITEM_LEDGER_ENTRY", ValueEntry = "VALUE_ENTRY",
+        ItemApplicationEntry = "ITEM_APPLICATION_ENTRY", FaDepreciationRun = "FA_DEPRECIATION_RUN",   // R2 (11 X-04)
+        ExchRateAdjmtRegister = "EXCH_RATE_ADJMT_REGISTER", ExchRateAdjmtLedgerEntry = "EXCH_RATE_ADJMT_LEDGER_ENTRY"; // R2
 }
 
 // ---------- Оролт ----------
@@ -599,6 +610,7 @@ public abstract record VoucherNumbering
 {
     public sealed record FromSeries(string SeriesCode) : VoucherNumbering; // fn_next_document_no (gapless)
     public sealed record Existing(string DocumentNo) : VoucherNumbering;   // зөвхөн ReversalService (BR-PST-30)
+    public sealed record SameAsVoucher(string VoucherKey) : VoucherNumbering; // өмнөх ваучерын олгосон дугаар (бэлэн борлуулалтын төлбөр, Z-PST-15)
 }
 
 public sealed record PostingVoucher
@@ -621,7 +633,7 @@ public sealed record PostingVoucher
 
 public sealed record GlPostingLine
 {
-    public required string Key { get; init; }                // run дотор давтагдахгүй: "V1/L10000/BASE", "V1/L10000/VAT", "V1/PARTY"
+    public required string Key { get; init; }                // run дотор давтагдахгүй: журнал "V1/L10000/A/BASE", "V1/L10000/B/CTRL" (§5.4.2); баримт "V1/R1/BASE", "V1/PARTY"
     public required Guid GlAccountId { get; init; }
     public required decimal Amount { get; init; }            // LCY, тэмдэгтэй, бөөрөнхийлсөн, ≠ 0 (BR-PST-05)
     public decimal VatAmount { get; init; }                  // gl_entry.vat_amount (суурь мөрөнд)
@@ -632,7 +644,7 @@ public sealed record GlPostingLine
     public DateOnly? VatDate { get; init; }
     public DateOnly? DocumentDate { get; init; }             // null = ваучерынх
     public string? DocumentType { get; init; }               // null = ваучерынх
-    public string? Description { get; init; }                // ≤ 100; null = ваучерынх
+    public string? Description { get; init; }                // ≤ 100; null = ваучерынх (100 тэмдэгтээр таслана: gl_entry.description CHECK)
     public string? ExternalDocumentNo { get; init; }
     public AccountRef? BalAccount { get; init; }             // (GL_ACCOUNT | BANK_ACCOUNT …, id)
     public SourceParty? Source { get; init; }                // (CUSTOMER | VENDOR | BANK_ACCOUNT | FIXED_ASSET, id, no)
@@ -699,6 +711,14 @@ sequenceDiagram
 
     U->>API: POST …:post (Idempotency-Key, If-Match) эсвэл …:preview
     API->>API: AuthZ (ACTION …post), schema validation (400)
+    opt Post горим — Шат 0 (14 API-IDEM-12)
+        API->>DB: SELECT idempotency_key (түгжээгүй, transaction-гүй)
+        alt COMPLETED, hash ижил
+            API-->>U: хадгалсан хариу (Idempotent-Replayed: true), handler ажиллахгүй
+        else COMPLETED, hash өөр
+            API-->>U: 422 api.idempotency_key_reused
+        end
+    end
     API->>ASM: Handle(command)
     Note over ASM,DB: A үе — transaction-гүй, түгжээгүй
     ASM->>DB: ноорог, мастер, тохиргоо унших
@@ -710,8 +730,8 @@ sequenceDiagram
     Note over API,DB: B үе — нэг DB transaction
     API->>DB: BEGIN; fn_set_context; SET LOCAL lock_timeout, statement_timeout
     opt Post горим
-        API->>DB: INSERT idempotency_key … ON CONFLICT DO NOTHING
-        alt ижил түлхүүр COMPLETED
+        API->>DB: INSERT idempotency_key … ON CONFLICT DO NOTHING (зэрэг хүсэлт энд хүлээнэ; 5 s → 409 api.idempotency_in_progress)
+        alt ижил түлхүүр энэ хооронд COMPLETED болсон
             API-->>U: хадгалсан хариу (Idempotent-Replayed), ROLLBACK
         end
     end
@@ -748,14 +768,18 @@ sequenceDiagram
 public async Task<PostingResult> PostAsync(IPostingDocumentSource source, PostingMode mode, CancellationToken ct)
 {
     var s = _session;                                  // ITransactionalSession — pipeline нээсэн
-    s.EnsureOpenWithoutWrites();                       // нэг session-д нэг run (BR-PST-02)
+    s.EnsureNoPostingRunYet();                         // нэг transaction-д нэг run (BR-PST-02); өмнө нь зөвхөн idempotency мөр бичигдсэн байж болно
     var startedAt = _clock.GetUtcNow();
 
     await s.ExecAsync(Sql.LockCompanyPosting, new { s.TenantId, s.CompanyId }, ct);        // BR-PST-60; 55P03 → 503
     var ctx = new PostingContext(s, mode, await _settings.LoadAsync(s, ct));             // LCY, нарийвчлал, цонх
 
     var doc = await source.BuildAsync(ctx, ct);                                          // баримт: A үеийн бэлэн doc
-    if (doc is null) return PostingResult.NothingToPost(mode);                           // жилийн хаалтын зөрүү 0 г.м.
+    if (doc is null)                                                                     // жилийн хаалтын зөрүү 0 г.м.
+    {
+        if (mode == PostingMode.Preview) s.MarkRollbackOnly();                           // source-ийн хийсэн төлөвийн өөрчлөлтийг ч буцаана
+        return PostingResult.NothingToPost(mode, ctx.Warnings, ctx.Effects);             // posted = false; posting_log бичихгүй
+    }
 
     var errors = new PostingErrorList();
     errors.AddRange(_rules.CheckDocument(doc, ctx.Settings));                            // §5.3, санах ойд
@@ -764,7 +788,7 @@ public async Task<PostingResult> PostAsync(IPostingDocumentSource source, Postin
     foreach (var g in _writers.Group(doc)) errors.AddRange(await g.Writer.ValidateLockedAsync(ctx, g.Lines, ct));
     if (errors.Any) throw new PostingValidationException(errors);                         // pipeline → ROLLBACK, 422/409
 
-    SelfCheck(doc, ctx.Settings);                                  // BR-PST-25: Σ = 0, бөөрөнхий; эс бөгөөс InternalPostingException (500, P1)
+    SelfCheck(doc, ctx.Settings);                                  // BR-PST-25: Σ = 0, бөөрөнхий, Amount ≠ 0, key давтагдахгүй, GlLineKeys олдоно; эс бөгөөс InternalPostingException (500, P1)
 
     await _numbers.AllocateAsync(ctx, doc, ct);                    // §5.5: хуулийн дугаар, register, transaction, entry
     await _glWriter.InsertTransactionsAndEntriesAsync(ctx, doc, ct);   // §5.16
@@ -872,7 +896,18 @@ SELECT id, no, account_type, blocked, direct_posting, normal_side FROM gl.gl_acc
 -- (3) Ашигласан dimension set-ийн утга (§5.6) ба default_dimension дүрэм
 -- (4) Ашигласан шалтгааны код
 SELECT id, blocked FROM platform.reason_code WHERE company_id = @c AND id = ANY(@reasonIds);
+-- (5) FromSeries ваучерын цуврал бүр × огноо: fn_next_document_no-той ижил мөр сонголт (BR-PST-26)
+SELECT q.series_code, q.posting_date, s.reset_yearly, s.date_order, l.starting_date, l.ending_no, l.starting_no,
+       l.increment_by, coalesce(c.last_no_used, l.last_no_used) AS last_no_used, coalesce(c.last_date_used, l.last_date_used) AS last_date_used
+  FROM unnest(@seriesCodes::text[], @seriesDates::date[]) AS q(series_code, posting_date)
+  LEFT JOIN platform.number_series s ON s.company_id = @c AND s.code = q.series_code
+  LEFT JOIN LATERAL (SELECT * FROM platform.number_series_line x
+                      WHERE x.company_id = @c AND x.number_series_id = s.id AND x.starting_date <= q.posting_date AND x.open
+                      ORDER BY x.starting_date DESC LIMIT 1) l ON true
+  LEFT JOIN platform.number_series_counter c ON c.company_id = @c AND c.number_series_line_id = l.id AND s.gapless;
 ```
+
+Цувралын урьдчилсан шалгалт (санах ойд, ваучерыг BR-PST-27-ийн дарааллаар гүйлгэж, нэг цувралаас хэд хэдэн дугаар авахыг тооцно): мөр алга эсвэл `reset_yearly` ба мөрийн жил ≠ огнооны жил → `platform.number_series_missing_line`; `date_order` ба огноо < (`last_date_used` эсвэл энэ run-ий өмнөх ваучерын огноо) → `platform.number_series_date_order`; `ending_no` хэтрэх → `platform.number_series_exhausted`. Энэ нь ERN01..03-ийг бусад алдаатай хамт нэг хариунд гаргах зорилготой; `fn_next_document_no` нь эцсийн хамгаалалт хэвээр.
 
 | Нөхцөл | Код |
 |---|---|
@@ -900,29 +935,32 @@ public async Task<PostingResult> Handle(PostJournal cmd, PostingMode mode, Cance
     var batch = await _repo.LoadBatchAsync(cmd.JournalBatchId, ct);                 // 404
     var t = batch.Template;
     if (t.SourceCode == "CLSINCOME") throw Problem("gl.closing_template_manual_line");
-    var lines = (await _repo.LoadLinesAsync(batch.Id, ct)).Where(l => !l.IsEmpty).OrderBy(l => l.LineNo).ToList();
+    var allLines = await _repo.LoadLinesAsync(batch.Id, ct);                          // хоосон мөр орно (устгахад, BR-PST-10)
+    var lines = allLines.Where(l => !l.IsEmpty).OrderBy(l => l.LineNo).ToList();      // IsEmpty: BR-PST-10-ийн томьёо
     if (lines.Count == 0) throw Problem("gl.journal_empty");                         // BR-PST-62
-    if (cmd.ExpectedLineCount is int n && n != lines.Count) throw Problem("gl.journal_changed"); // 409
+    if (cmd.ExpectedLineCount is int n && n != lines.Count) throw Problem("gl.journal_changed"); // 409; хоосон биш мөрийн тоо
 
-    var errors = lines.SelectMany(l => _rules.CheckJournalLine(l, t, _settings));   // §5.3
-    var series = batch.PostingNoSeriesCode ?? t.PostingNoSeriesCode;                  // §3.3
+    var errors = lines.SelectMany(l => _rules.CheckJournalLine(l, t, _settings)).ToList();   // §5.3
+    var series = batch.PostingNoSeriesCode ?? t.PostingNoSeriesCode;                  // §3.3; хоёулаа NULL бол gl.journal_series_missing
+    if (series is null) errors.Add(Err("gl.journal_series_missing", null, new { template = t.Code, batch = batch.Code }));
 
-    // Ваучер = (document_no, posting_date) — BR-PST-21
-    var groups = lines.GroupBy(l => (l.DocumentNo, l.PostingDate))
+    // Ваучер = (document_no, posting_date) — BR-PST-21. Огноо эсвэл дугааргүй мөр (BR-PST-11 алдаатай) ваучерт орохгүй.
+    var groups = lines.Where(l => l.PostingDate is not null && !string.IsNullOrWhiteSpace(l.DocumentNo))
+                      .GroupBy(l => (l.DocumentNo, l.PostingDate))
                       .OrderBy(g => g.Key.PostingDate).ThenBy(g => g.Key.DocumentNo, StringComparer.Ordinal)
                       .ThenBy(g => g.Min(l => l.LineNo));                              // BR-PST-27
     var vouchers = new List<PostingVoucher>(); int i = 0;
     foreach (var g in groups)
     {
         var key = $"V{++i}";
-        errors = errors.Concat(CheckLineBalance(g));                                  // BR-PST-22(а): Σ Balance(LCY)
+        errors.AddRange(CheckLineBalance(g));                                         // BR-PST-22(а): Σ Balance(LCY)
         var partner = SinglePartnerOrNull(g);                                         // BR-PST-23-д
         var gl = new List<GlPostingLine>(); var sub = new List<ISubledgerLine>();
         foreach (var l in g)
             foreach (var side in Sides(l))                                            // дансны тал (+), харьцсан дансны тал (−)
             {
                 var exp = await ExpandSideAsync(key, l, side, partner, t, ct);         // §5.4.2
-                gl.AddRange(exp.GlLines); sub.AddRange(exp.SubledgerLines); errors = errors.Concat(exp.Errors);
+                gl.AddRange(exp.GlLines); sub.AddRange(exp.SubledgerLines); errors.AddRange(exp.Errors);
             }
         vouchers.Add(new PostingVoucher {
             Key = key, Numbering = new VoucherNumbering.FromSeries(series),
@@ -937,9 +975,9 @@ public async Task<PostingResult> Handle(PostJournal cmd, PostingMode mode, Cance
         Run = new(t.SourceCode, t.TemplateType == "OPENING" ? "OPENING_BALANCE" : "GENERAL_JOURNAL",
                   new SourceRef("gl.journal_batch", batch.Id, batch.Code), t.Code, batch.Code),
         Vouchers = vouchers,
-        PostedDocument = new JournalBatchWriter(batch.Id, cmd.IfMatch, lines.Select(l => l.Id).ToArray()),
+        PostedDocument = new JournalBatchWriter(batch.Id, cmd.IfMatch, allLines.Select(l => l.Id).ToArray()), // хоосон мөр орно
         Warnings = NormalSideWarnings(vouchers) };
-    errors = errors.Concat(await _posting.ValidateAsync(doc, ct));
+    errors.AddRange(await _posting.ValidateAsync(doc, ct));
     if (errors.Any()) throw new PostingValidationException(errors);                   // 422, бүгдийг
 
     // ---- B үе ----
@@ -949,7 +987,9 @@ public async Task<PostingResult> Handle(PostJournal cmd, PostingMode mode, Cance
 
 `JournalBatchWriter` (GL-ийн дотоод `IPostedDocumentWriter`):
 - `LockSourceAsync`: `SELECT row_version FROM gl.journal_batch WHERE company_id = @c AND id = @id FOR UPDATE`; `row_version ≠ If-Match` → `412 api.etag_mismatch`. Мөрийн id-ийн олонлог ба тоо A үеийнхтэй ижил эсэхийг шалгана (`SELECT id FROM gl.journal_line WHERE journal_batch_id = @id FOR UPDATE`) → зөрвөл `409 gl.journal_changed`.
-- `WriteAsync`: `DELETE FROM gl.journal_line WHERE company_id = @c AND journal_batch_id = @id AND id = ANY(@postedIds)`; `UPDATE gl.journal_batch SET row_version = row_version + 1 …` (trigger). Batch өөрөө үлдэнэ (R-GL-POSTING-27).
+- `WriteAsync`: `DELETE FROM gl.journal_line WHERE company_id = @c AND journal_batch_id = @id AND id = ANY(@lineIds)` (`@lineIds` = A үед уншсан **бүх** мөр, хоосон мөр орно, BR-PST-10); `UPDATE gl.journal_batch SET row_version = row_version + 1 …` (trigger). Batch өөрөө үлдэнэ (R-GL-POSTING-27).
+- Batch/template-ийн `bal_account_*` нь мөр **үүсгэх** үед UI/API-аар мөрт хуулагдах анхдагч утга (R-GL-POSTING-12); engine батлах үед хоосон `bal_account_id`-г batch-аас бөглөхгүй.
+- Batch ба template хоёулаа `posting_no_series_id`-гүй бол `422 gl.journal_series_missing` (seed-д үргэлж бий; гараар үүсгэсэн template-д).
 
 #### 5.4.2 Мөрийн талыг G/L мөр болгох (`ExpandSideAsync`)
 
@@ -980,7 +1020,7 @@ public interface IJournalVatHandler                // GL.Contracts; Tax хэрэ
 
 Талын дүрэм:
 - Дансны тал `+amount_lcy`, харьцсан дансны тал `−amount_lcy`. Харьцсан талын бүлэг нь `bal_gen_posting_type`, `bal_vat_bus_posting_group_id`, `bal_vat_prod_posting_group_id`.
-- Хоёр талтай мөрийн G/L мөр бүр `BalAccount` = нөгөө тал. `Source` = мөрийн partner тал (байвал), эс бөгөөс NULL.
+- Хоёр талтай мөрийн G/L мөр бүр `BalAccount` = нөгөө тал. `Source` = мөрийн `CUSTOMER`/`VENDOR`/`BANK_ACCOUNT`/`FIXED_ASSET` тал (байвал; BC `GenJnlLine` Source Type), эс бөгөөс `source_type = 'NONE'` (NOT NULL багана). Жишээ: E-A-ийн 7210 мөр ч `source = BANK_ACCOUNT BANK01`.
 - G/L мөрийн key: `{voucherKey}/L{line_no}/{A|B}/{BASE|VAT|VAT2|CTRL}`.
 - Дансны тал ба харьцсан тал ижил G/L данс бол анхааруулга `W-02` (нийлбэр 0, утгагүй мөр); батлахыг зогсоохгүй.
 
@@ -993,7 +1033,8 @@ public interface IJournalVatHandler                // GL.Contracts; Tax хэрэ
 - Template OPENING / batch DEFAULT, source `OPENING`, цуврал `OB`, `posting_type = 'OPENING_BALANCE'`.
 - Харилцагч/нийлүүлэгчийн мөр бүр нэг нээлттэй баримт: `document_type = 'INVOICE'` (эсвэл `CREDIT_MEMO`, `PAYMENT`), `external_document_no` = анхны баримтын дугаар, `document_date`, `due_date` = анхны төлөх огноо. Дэд дэвтрийн entry-ийн `document_no` = ваучерын дугаар (`OB-…`), анхны дугаар `external_document_no`-д.
 - Мөнгөний дансны мөр (касс) нь МХ-1 шаардахгүй (CashBank writer `OPENING` source-ийг чөлөөлнө).
-- Хяналтын данс (1200, 2100, 1100–1121, 1300, 2300) руу шууд G/L мөр оруулахгүй (BR-PST-15): харилцагч, нийлүүлэгч, мөнгөний дансны мөрөөр.
+- Хяналтын данс (1200, 1201, 1360, 2100, 2101, 2210, 2365, 1100–1121) руу шууд G/L мөр оруулахгүй (BR-PST-15): харилцагч (`EMPLOYEE` бүлэг → 1360), нийлүүлэгч (`EMPLOYEE` → 2210, `CUSTOMS` → 2365), мөнгөний дансны мөрөөр.
+- Дэд дэвтэргүй хяналтын данс (1300, 2300, 2305, 2320, 8290)-ын эхний үлдэгдлийг тэдгээрт оруулахгүй: НӨАТ/НХАТ-ын цэвэр үлдэгдлийг тооцооны данс **2310** / **2325** (хяналтын биш)-д оруулна (seed README §3: 1300/2300 нь нээлттэй VAT entry-ийн нийлбэртэй тэнцэх ёстой, BR-TAX-82; нээлттэй VAT entry-гүй үлдэгдэл түүнийг зөрчинө). 8290 нь орлогын тайлангийн данс: 01-01-нд эхлэхэд үлдэгдэлгүй; жилийн дундуур эхлэх бол YTD дүнг `direct_posting = true` бусад орлого/зардлын дансанд оруулна.
 - Excel импорт (FR-GL-021) нь журналын мөр үүсгэнэ; 20 000 мөрөөс их бол хэд хэдэн run-д хуваана: ваучер бүр өөрөө тэнцсэн байх ёстой (жишээ нь хэсэг бүрийг `2690` түр дансаар тэнцүүлж, сүүлийн хэсэгт хаана). `statement_timeout = 120s`.
 
 #### 5.4.5 Мөнгөн орлого/зарлагын журнал (CASH_RECEIPT, PAYMENT)
@@ -1031,14 +1072,18 @@ async Task AllocateAsync(PostingContext ctx, PostingDocument doc, CancellationTo
     foreach (var v in doc.Vouchers)                 // BR-PST-29
     {
         ctx.SetVoucher(v.Key, transactionNo: tx++, documentNo: v.Numbering switch {
-            VoucherNumbering.FromSeries => r.NextDocumentNo(), VoucherNumbering.Existing x => x.DocumentNo });
+            VoucherNumbering.FromSeries => r.NextDocumentNo(),
+            VoucherNumbering.Existing x => x.DocumentNo,
+            VoucherNumbering.SameAsVoucher s => ctx.Voucher(s.VoucherKey).DocumentNo,   // өмнө нь олгогдсон байх ёстой (BR-PST-30)
+            _ => throw new InternalPostingException("unknown numbering") });
         foreach (var l in v.GlLines) ctx.SetGlEntry(l.Key, entryNo: e++);
     }
     ctx.RecordRange(LedgerCodes.GlEntry, r.FirstEntryNo, e - 1);
 }
 ```
 
-- Writer бүр өөрийн ledger-ийн дугаарыг **нэг удаа, блокоор** `ctx.ReserveEntryNumbersAsync(ledger, count)`-ээр (`fn_next_entry_no`) нөөцөлнө; контекст мужийг бүртгэнэ (VAT_ENTRY-ийн муж register-т очно, BR-PST-37).
+- Writer бүр өөрийн ledger-ийн дугаарыг **нэг удаа, блокоор** `ctx.ReserveEntryNumbersAsync(ledger, count)`-ээр (`fn_next_entry_no`) нөөцөлнө; контекст мужийг бүртгэнэ (VAT_ENTRY-ийн муж register-т очно, BR-PST-37). `count = 0` бол дуудахгүй (§3.3); контекст нэг ledger-ийг run-д хоёр дахь удаа нөөцлөх оролдлогыг `InternalPostingException`-ээр зогсооно (муж тасралтгүй байх баталгаа).
+- `SameAsVoucher` ваучер хуулийн цувралаас дугаар авахгүй (counter өөрчлөгдөхгүй); ижил `document_no`-той хоёр `gl_transaction` (INVOICE + PAYMENT) нь BC-тэй ижил (`ix_gl_transaction__document` unique биш).
 - `ERN01`-ийн шалтгаан: `reset_yearly` цувралд тухайн жилийн мөр алга эсвэл огнооны мөр алга. Мессеж: "{series} цувралд {year} оны мөр алга. Тохиргоо › Дугаарын цуврал-д шинэ жилийн мөр нэмнэ үү" (CR-PST-04-ийн дараа автоматаар үүснэ, Z-PST-12).
 - `ERN02` (огнооны дараалал): `date_order = true` цувралд энэ огноо `last_date_used`-аас өмнө. ⚠ OQ-PST-03.
 - Preview нь ижил функцийг дуудаж counter-ыг түгжинэ, ROLLBACK-аар буцна (завсар үүсэхгүй; ADR-0008 "Preview нь тоолуурыг түгжинэ").
@@ -1066,7 +1111,7 @@ public async ValueTask<long> GetOrCreateAsync(IReadOnlyCollection<Guid> valueIds
 ```csharp
 IEnumerable<PostingError> CheckDimensions(GlPostingLine l, DimensionSnapshot ds)
 {
-    if (l.Amount == 0 || l.Origin == LineOrigin.SystemGenerated) yield break;
+    if (l.Amount == 0 || l.Origin == LineOrigin.SystemGenerated) yield break;          // BR-PST-33, -34 (SystemGenerated бүрэн чөлөөлөгдөнө)
     var set = ds.SetEntries(l.DimensionSetId);                                       // dimension_id → value_id
     foreach (var (dimId, valId) in set)
     {
@@ -1085,9 +1130,10 @@ IEnumerable<PostingError> CheckDimensions(GlPostingLine l, DimensionSnapshot ds)
         {
             case "CODE_MANDATORY" when actual == default:
                 yield return Err("gl.dimension_value_required", l, new { account = l.AccountNo, dimension = rule.DimensionCode }); break;
-            case "SAME_CODE" when actual != rule.DimensionValueId:   // хоосон default = "байх ёсгүй" (R-DIMENSIONS-NOSERIES-AUDIT-13)
+            case "SAME_CODE" when actual != rule.DimensionValueId:   // схемийн CHECK: SAME_CODE ⇒ dimension_value_id NOT NULL.
+                // BC-ийн "SAME_CODE + хоосон утга = байх ёсгүй" (R-DIMENSIONS-NOSERIES-AUDIT-13)-ийг манайд NO_CODE илэрхийлнэ.
                 yield return Err("gl.dimension_value_must_match", l, new { account = l.AccountNo, dimension = rule.DimensionCode,
-                                                                           expected = rule.DimensionValueCode ?? "(хоосон)" }); break;
+                                                                           expected = rule.DimensionValueCode }); break;
             case "NO_CODE" when actual != default:
                 yield return Err("gl.dimension_value_not_allowed", l, new { account = l.AccountNo, dimension = rule.DimensionCode }); break;
         }
@@ -1117,6 +1163,8 @@ public sealed record PostingBufferKey(
     Guid? VatBusPostingGroupId, Guid? VatProdPostingGroupId,
     string? VatIdentifier, string VatCalculationType,   // VAT % нь түлхүүрт орохгүй: бүлгээс гарна (R-ACCOUNT-DETERMINATION-17)
     long DimensionSetId,
+    string? NonDeductibleReason,          // хасагдахгүй НӨАТ-ын шалтгаан (08 BR-TAX-25, Z-TAX-15): өөр шалтгаантай мөр нэгтгэгдэхгүй
+    Guid? CityTaxCodeId,                  // R2 НХАТ (08 BR-TAX-94, Z-TAX-15); R1-д үргэлж null
     int? SeparateLineNo);                 // мөр бүрийн тайлбар эсвэл ҮХ-ийн мөр → нэгтгэхгүй (R-ACCOUNT-DETERMINATION-19)
 
 public sealed class PostingBufferRow
@@ -1148,7 +1196,9 @@ public sealed class PostingBuffer
 }
 ```
 
-Тэмдгийн дүрэм (R-ACCOUNT-DETERMINATION-11): борлуулалтын нэхэмжлэх ба худалдан авалтын кредит нотын дүнг буферт оруулахаас өмнө сөрөг болгоно (орлого Кт, зардлын буцаалт Кт); борлуулалтын кредит нот ба худалдан авалтын нэхэмжлэх эерэг. Харилцагч/нийлүүлэгчийн мөр = −Σ(буферийн мөр + НӨАТ).
+Тэмдгийн дүрэм (R-ACCOUNT-DETERMINATION-11): борлуулалтын нэхэмжлэх ба худалдан авалтын кредит нотын дүнг буферт оруулахаас өмнө сөрөг болгоно (орлого Кт, зардлын буцаалт Кт); борлуулалтын кредит нот ба худалдан авалтын нэхэмжлэх эерэг. Харилцагч/нийлүүлэгчийн мөр = −Σ(буферийн мөрийн `Amount` + `VatAmount`), энд buffer-ийн `Amount` = цэвэр дүн (хасагдахгүй НӨАТ ороогүй), `VatAmount` = бүтэн НӨАТ (хасагдахгүй хэсэг орно); урвуу тооцооны (REVERSE_CHARGE) мөрийн НӨАТ нийлүүлэгчид төлөгдөхгүй тул тэр мөрөнд `−Σ Amount` л орно. Хасагдахгүй хэсгийг суурь G/L мөр рүү шилжүүлэх нь §5.7.2.
+
+**Тэмдэг түлхүүрт орохгүй** (BC Invoice Posting Buffer, R-ACCOUNT-DETERMINATION-17): ижил түлхүүртэй эерэг ба сөрөг мөр (жишээ нь нэхэмжлэх доторх хасах мөр) нэг buffer мөрөнд **цэвэрлэгдэнэ** (нэг G/L мөр, нэг VAT entry). НӨАТ-ын бүлгийг тэмдгээр салгах (R-VAT-13, 08 BR-TAX-18) нь buffer-ээс **өмнө** Tax-ийн хуваарилалтад хамаарна; мөр бүрийн хуваарилсан НӨАТ buffer-т нийлбэрлэгдэнэ. Цэвэрлэгдээд `Amount = 0`, `VatAmount = 0`, `VatBase = 0` болсон мөр хасагдана (16 Q10-ийн хариу).
 
 #### 5.7.2 Buffer-ийн мөрийг G/L ба НӨАТ болгох
 
@@ -1161,15 +1211,21 @@ public interface IVatPostingComposer
     VatComposition Compose(PostingBufferRow row, string baseLineKey, VatPartyContext party, DateOnly vatDate);
 }
 public sealed record VatComposition(
-    GlPostingLine BaseLine,                     // Amount = row.Amount (+ хасагдахгүй НӨАТ), VatAmount = row.VatAmount, Groups snapshot
-    IReadOnlyList<GlPostingLine> VatGlLines,    // 0: VatAmount = 0 эсвэл FULL_VAT (суурь нь VAT данс); 1: NORMAL; 2: REVERSE_CHARGE (1300 Дт, 2305 Кт)
+    GlPostingLine BaseLine,                     // Amount = row.Amount + ND (FULL_VAT: row.VatAmount), VatAmount = row.VatAmount, Groups snapshot
+    IReadOnlyList<GlPostingLine> VatGlLines,    // 0: НӨАТ = 0, FULL_VAT, борлуулалтын RC; 1: NORMAL (±(VAT − ND)); 1–2: худалдан авалтын RC (1300 +(VAT − ND), 2305 −VAT)
     VatLedgerLine VatLine);                     // ISubledgerLine, Ledger = "VAT_ENTRY", GlLineKeys = [baseLineKey]
 ```
 
 Дүрэм (BR-PST-36):
-1. **Суурь мөр:** `Amount` = буферийн цэвэр дүн (хасагдахгүй НӨАТ байвал түүнийг нэмнэ — D-E5, 08), `VatAmount` = НӨАТ, `GenPostingType` = SALE/PURCHASE, `Groups` = 4 бүлгийн код, `Origin` = буферийн `SystemCreated` ? `SystemDerived` : `UserEntered`.
-2. **VAT G/L мөр** (`SystemDerived`): `NORMAL` — НӨАТ ≠ 0 бол нэг мөр: борлуулалтад `sales_vat_account_id` (2300), худалдан авалтад `purchase_vat_account_id` (1300). `FULL_VAT` — тусдаа мөргүй, суурь мөр өөрөө `purchase_vat_account_id` дээр (§6.4). `REVERSE_CHARGE` (худалдан авалт) — хоёр мөр: `purchase_vat_account_id` Дт, `reverse_chrg_vat_account_id` (2305) Кт; G/L-д цэвэр 0 (R-ACCOUNT-DETERMINATION-08). НӨАТ = 0 бол мөр үүсэхгүй.
-3. **VAT entry** (Tax writer): `entry_type` = SALE/PURCHASE; `base`, `amount` нь буферийн тэмдэгтэй (борлуулалт сөрөг, худалдан авалт эерэг — R-VAT-26); `vat_percent`, `vat_identifier`, `vat_category`, `vat_calculation_type`, `ebarimt_tax_type` нь `vat_posting_setup`-ийн snapshot; `bill_to_pay_to_*`, `party_tin`, `country_code` нь харилцагч/нийлүүлэгчийнх; `supplier_ebarimt_id`, `deductible_confirmed` (D-E4) Tax-ийн дүрмээр; `vat_date` = мөрийн `vat_date ?? posting_date` (D-E9); `gl_entry_no` = суурь entry; `tax.gl_entry_vat_entry_link` (суурь entry, VAT entry).
+1. **Суурь мөр:** `Amount` = буферийн цэвэр дүн + `NonDeductibleVatAmount` (хасагдахгүй НӨАТ өртөгт шингэнэ — D-E5, 08 BR-TAX-25), `VatAmount` = бүтэн НӨАТ (`gl_entry.vat_amount`, мэдээллийн), `GenPostingType` = SALE/PURCHASE, `Groups` = 4 бүлгийн код, `Origin` = буферийн `SystemCreated` ? `SystemDerived` : `UserEntered`.
+2. **VAT G/L мөр** (`SystemDerived`). `D = VatAmount − NonDeductibleVatAmount` (= VAT entry-ийн `amount`, хасагдах хэсэг):
+   - `NORMAL` — `D ≠ 0` бол нэг мөр `±D`: борлуулалтад `sales_vat_account_id` (2300), худалдан авалтад `purchase_vat_account_id` (1300).
+   - `FULL_VAT` — тусдаа мөргүй; 1-р дүрмийн оронд суурь мөр нь `purchase_vat_account_id` (1300) дээр `Amount = row.VatAmount` (buffer-ийн `row.Amount = 0`, 08 BR-TAX-24), `VatAmount = row.VatAmount`, `SystemDerived` (§6.4; хасагдахгүй хэсэг хориотой).
+   - `REVERSE_CHARGE` худалдан авалт — `D ≠ 0` бол `purchase_vat_account_id` (1300) `+D`; `VatAmount ≠ 0` бол `reverse_chrg_vat_account_id` (2305) `−VatAmount`. Шалгалт: суурь (`net + ND`) + `D` − `VatAmount` = `net` = нийлүүлэгчийн мөр (R-ACCOUNT-DETERMINATION-08; 08 BR-TAX-82: 2305 = −Σ(amount + non_deductible_amount)).
+   - `REVERSE_CHARGE` борлуулалт — VAT G/L мөргүй (R-ACCOUNT-DETERMINATION-08), зөвхөн VAT entry.
+   - НӨАТ = 0 бол VAT G/L мөр үүсэхгүй (VAT entry үүснэ, BR-PST-24).
+   - Мөр бүрийн тэнцэл: `BaseLine.Amount + Σ VatGlLines.Amount = row.Amount + row.VatAmount` (NORMAL), `= row.Amount` (REVERSE_CHARGE), `= row.VatAmount` (FULL_VAT). Composer үүнийг assert хийнэ.
+3. **VAT entry** (Tax writer): `entry_type` = SALE/PURCHASE; `base`, `amount` нь буферийн тэмдэгтэй (борлуулалт сөрөг, худалдан авалт эерэг — R-VAT-18, 040_tax.sql COMMENT; `amount` = хасагдах хэсэг, `non_deductible_amount` = хасагдахгүй хэсэг, 08); `vat_percent`, `vat_identifier`, `vat_category`, `vat_calculation_type`, `ebarimt_tax_type` нь `vat_posting_setup`-ийн snapshot; `bill_to_pay_to_*`, `party_tin`, `country_code` нь харилцагч/нийлүүлэгчийнх; `supplier_ebarimt_id`, `deductible_confirmed` (D-E4) Tax-ийн дүрмээр; `vat_date` = мөрийн `vat_date ?? posting_date` (D-E9); `gl_entry_no` = суурь entry; `tax.gl_entry_vat_entry_link` (суурь entry, VAT entry).
 4. VAT entry-ийн бүлэг: **buffer-ийн мөр бүрд нэг** (R-VAT-20). Ижил VAT identifier-тэй ч өөр данс/dimension-тэй мөр тусдаа VAT entry.
 
 #### 5.7.3 Tax writer-ийн engine-д өгөх баталгаа
@@ -1242,6 +1298,7 @@ public interface IPostingReadContext { ITransactionalSession Session { get; } Co
 | W6 | `WriteAsync` дотор гадаад IO, commit, savepoint-гүй | BR-PST-03 |
 | W7 | Preview-д ч ижил код (контекстын `Mode`-оор салаалахгүй) | BR-PST-52 |
 | W8 | Хариуны мөр (`AddResultRows`) нь PII-гүй, `qrData`/`lottery`-гүй | D-J3 |
+| W9 | `count = 0` бол `ReserveEntryNumbersAsync` дуудахгүй; нэг ledger-ийг run-д нэг л удаа нөөцлөнө (2 дахь дуудлага → `InternalPostingException`) | `fn_next_entry_no` `22023`; register-ийн муж тасралтгүй |
 
 **Гол writer-ууд (R1):**
 
@@ -1250,7 +1307,7 @@ public interface IPostingReadContext { ITransactionalSession Session { get; } Co
 | `VatEntryWriter` (Tax) | `VAT_ENTRY` | `tax.vat_entry`, `tax.gl_entry_vat_entry_link` | §5.7.3 |
 | `CustomerLedgerWriter` (Parties) | `CUST_LEDGER_ENTRY` | `party.cust_ledger_entry`, `party.detailed_cust_ledger_entry` | `INITIAL` detailed мөр (дүн 0 ч гэсэн, R-SUBLEDGERS-APPLICATION-03), `applies_to_*`-оор тулгалт ([06](./06-sales-receivables.md) §5.13) |
 | `VendorLedgerWriter` (Parties) | `VENDOR_LEDGER_ENTRY` | `party.vendor_ledger_entry`, `party.detailed_vendor_ledger_entry` | Нийлүүлэгчийн нэхэмжлэхийн дугаар давхардахгүй (`ux_vendor_ledger_entry__vendor_doc_no`) |
-| `BankLedgerWriter` (CashBank) | `BANK_LEDGER_ENTRY` | `bank.bank_ledger_entry`, `bank.posted_cash_voucher` | Касс сөрөг болохгүй (урьдчилж шалгана; DB `ERC01`), МХ-1/МХ-2 |
+| `BankLedgerWriter` (CashBank) | `BANK_LEDGER_ENTRY` | `bank.bank_ledger_entry`, `bank.posted_cash_voucher` | Касс сөрөг болохгүй (урьдчилж шалгана; DB `ERC01`), МХ-1/МХ-2: ваучерын `document_no` кассын цувралаас бол тэр дугаар, эс бөгөөс (бэлэн борлуулалт `SI-…`) кассын цувралаас тусдаа завсаргүй дугаар (09 BR-BNK-20, -21) |
 
 ### 5.9 Register ба hash hook
 
@@ -1369,6 +1426,8 @@ SELECT platform.fn_ledger_update('gl.gl_register', @origRegisterNo, '{"reversed"
 
 `ReversalPlan` (`IReversibleLedger.ReverseAsync`-д): `{ origTxNo → newTxNo, origGlEntryNo → newGlEntryNo, newRegisterNo }`.
 
+**`ReversalMarker`-ийн боловсруулалт.** `ReversalMarker : ISubledgerLine` нь `Ledger = "REVERSAL"` (writer-ийн бүртгэлд **ороогүй** тусгай код), `GlLineKeys` = тухайн ваучерын бүх G/L мөрийн key. Engine `Group(doc)`-д энэ кодыг writer хайхгүй (BR-PST-41-ийн үл хамаарах); `ValidateLockedAsync`-ийн оронд `ValidateReversalAsync` аль хэдийн `BuildAsync`-д түгжээний дор дуудагдсан. `WriteAsync` алхамд engine бүх `IReversibleLedger`-ийг `Order` дарааллаар (10 VAT → 20 харилцагч → 30 нийлүүлэгч → 40 банк …) `ReverseAsync(ctx, plan)`-ээр **нэг удаа** (run-ий бүх ваучерыг агуулсан нэг plan-аар) дуудна; тухайн гүйлгээнд мөргүй ledger юу ч бичихгүй (W9). Бусад `ISubledgerLine` ба `ReversalMarker`-ийг нэг ваучерт холихгүй.
+
 | Writer | `ValidateReversalAsync` | `ReverseAsync` |
 |---|---|---|
 | Tax | VAT entry `closed = true` → `gl.reversal_vat_settled`; `vat_date`-ийн НӨАТ-ын үе `OPEN` биш → `tax.vat_period_closed` | Шинэ `vat_entry`: `base`, `amount`, `non_deductible_*`, `vat_difference` эсрэг тэмдэгтэй, ижил `vat_date`, `reversed = true`, `reversed_entry_no`, `gl_entry_no` = шинэ суурь entry (эх link → plan); эх: `fn_ledger_update` `reversed`, `reversed_by_entry_no`; шинэ link (R-VAT-20) |
@@ -1386,20 +1445,29 @@ public async Task<CorrectionProposal> ProposeCorrection(long transactionNo, Date
     if (t.SourceCode is "SALES" or "PURCHASES") throw Problem("gl.reversal_use_credit_memo");
     if (!PublicReversalPolicy.Allows(t.SourceCode) || t.ReversesTransactionNo is not null) throw Problem("gl.reversal_not_reversible");
     if (t.ReversedByTransactionNo is not null) throw Problem("gl.transaction_already_reversed");
-    if (await _guards.PeriodStatusAsync(t.PostingDate) == "OPEN") throw Problem("gl.correction_use_reversal");   // BR-PST-51
-    var errs = await _guards.CheckPostingDateAsync(_ctx, correctionDate, isClosing: false, ct);                  // шинэ огноо OPEN
+    var origDateErrs = await _guards.CheckPostingDateAsync(_ctx, t.PostingDate, isClosing: false, ct);
+    if (!origDateErrs.Any) throw Problem("gl.correction_use_reversal");                                         // BR-PST-51: эх огноонд буцаах боломжтой
+    var errs = await _guards.CheckPostingDateAsync(_ctx, correctionDate, isClosing: false, ct);                  // шинэ огноо OPEN, цонх дотор
     if (errs.Any) throw new PostingValidationException(errs);
 
     var lines = new List<CorrectionLine>();
-    // (1) Дэд дэвтрийн мөр → харилцагч/нийлүүлэгч/мөнгөний дансны мөр (хяналтын G/L entry-г орлоно)
+    // (1) Дэд дэвтрийн мөр → харилцагч/нийлүүлэгч/мөнгөний дансны мөр (хяналтын G/L entry-г орлоно).
+    //     Tax-ийн DescribeForCorrectionAsync хоосон буцаана: НӨАТ (2)-ын бүлгээр дахин тооцогдоно.
     foreach (var rl in _reversibleLedgers) lines.AddRange(await rl.DescribeForCorrectionAsync(_ctx, transactionNo, ct));
-    // (2) Хэрэглэгчийн G/L мөр (system_created = false): НӨАТ-тай бол gross дүнгээр, бүлгийн кодоор (дахин тооцогдоно)
-    foreach (var e in t.Entries.Where(e => !e.SystemCreated))
-        lines.Add(new CorrectionLine("GL_ACCOUNT", e.GlAccountId, Amount: -(e.Amount + e.VatAmount),
+    // (2) "Суурь" мөр = хэрэглэгчийн G/L entry (system_created = false) ∪ VAT entry-тэй холбоотой суурь entry
+    //     (tax.gl_entry_vat_entry_link; FULL_VAT-ын 1300 мөр SystemDerived боловч энд орно). Дүн нь журналын gross дүн:
+    //     NORMAL: −(amount + v.amount)  (ND нь amount-д шингэсэн, v.amount = хасагдах хэсэг)
+    //     REVERSE_CHARGE: −(amount − v.non_deductible_amount)  (журналын дүн цэвэр, R-VAT-16);  FULL_VAT, НӨАТ-гүй: −amount
+    foreach (var e in t.Entries.Where(e => !e.SystemCreated || e.VatEntry is not null))
+        lines.Add(new CorrectionLine("GL_ACCOUNT", e.GlAccountId,
+            Amount: -(e.VatEntry switch {
+                { VatCalculationType: "NORMAL" } v         => e.Amount + v.Amount,
+                { VatCalculationType: "REVERSE_CHARGE" } v => e.Amount - v.NonDeductibleAmount,
+                _                                          => e.Amount }),
             GenPostingType: e.GenPostingType, Groups: await ResolveGroupIdsAsync(e.Groups, ct),   // байхгүй бол gl.correction_group_missing
             DimensionSetId: e.DimensionSetId, Description: Trunc($"Залруулга: {t.DocumentNo}", 100)));
-    // (3) VAT G/L, хяналтын дансны system_created entry-г алгасна (1, 2-оор дахин үүснэ)
-    Debug.Assert(lines.Sum(l => l.Amount) == 0);
+    // (3) VAT G/L мөр (1300/2300/2305) ба хяналтын дансны entry-г алгасна (1, 2-оор дахин үүснэ)
+    Debug.Assert(lines.Sum(l => l.Amount) == 0);                    // Σ эх entry = 0 тул саналын Σ = 0
     return new CorrectionProposal(correctionDate, reasonCodeId, OriginalTransactionNo: transactionNo, OriginalDocumentNo: t.DocumentNo, lines);
 }
 ```
@@ -1428,8 +1496,12 @@ sealed class YearEndCloseSource(Guid fiscalYearId, bool createReTransferDraft) :
         var y = fy.Year; var start = new DateOnly(y, 1, 1); var end = new DateOnly(y, 12, 31);
         var errors = new PostingErrorList();
         if (fy.Status == "LOCKED") errors.Add("gl.fiscal_year_locked");
-        var open = await Q.PeriodsNotClosed(ctx, fy.Id, ct);                                // status <> 'CLOSED'
+        var open = await Q.OpenPeriods(ctx, fy.Id, ct);                                     // status = 'OPEN' (CLOSED ба LOCKED сар хаагдсанд тооцогдоно)
         if (open.Count > 0) errors.Add("gl.year_close_periods_open", new { year = y, periods = open.Select(p => p.Name) });
+        // 12-р сар LOCKED бол хаалтын ваучер бичигдэхгүй → engine-ийн CheckLockedAsync gl.period_locked өгнө (BR-PST-54)
+        var prev = await Q.FiscalYearByYear(ctx, y - 1, ct);                                 // R-PERIODS-REPORTING-05: дарааллаар
+        if (prev is { Status: "OPEN" } && await Q.HasEntriesAsync(ctx, prev.StartingDate, prev.EndingDate, ct))
+            errors.Add("gl.year_close_previous_year_open", new { year = y, previousYear = y - 1 });
         var setup = await Q.GlSetup(ctx, ct);
         var result = setup.CurrentYearResultAccount;                                        // 3500
         if (result is null) errors.Add("gl.year_close_result_account_missing");
@@ -1451,7 +1523,13 @@ sealed class YearEndCloseSource(Guid fiscalYearId, bool createReTransferDraft) :
             """, new { c = ctx.Session.CompanyId, start, end }, ct);
         var blocked = rows.Where(r => r.Blocked).Select(r => r.No).ToList();
         if (blocked.Count > 0) throw new PostingValidationException("gl.account_blocked", new { accounts = blocked });   // BR-PST-54
-        if (rows.Count == 0) return null;                                                   // зөрүү 0 → no-op (BR-PST-56)
+        if (rows.Count == 0)                                                                // зөрүү 0 → G/L no-op (BR-PST-56)
+        {
+            // Ваучергүй ч жилийн төлөв ба шилжүүлгийн санал шинэчлэгдэнэ (BR-PST-56, -57): ижил transaction, түгжээний дор.
+            // Preview горимд ч ажиллаж (ROLLBACK болно) хариунд effects-ийг харуулна.
+            await new FiscalYearCloseWriter(fy.Id, createReTransferDraft).ApplyWithoutVoucherAsync(ctx, ct);
+            return null;                                                                    // PostingResult.Posted = false
+        }
 
         var lines = rows.Select(r => new GlPostingLine {
             Key = $"C/{r.No}", GlAccountId = r.AccountId, Amount = -r.Net,                 // BR-PST-55
@@ -1469,32 +1547,45 @@ sealed class YearEndCloseSource(Guid fiscalYearId, bool createReTransferDraft) :
 }
 ```
 
-`FiscalYearCloseWriter.WriteAsync` (ижил transaction, Post ба Preview хоёуланд):
-1. `UPDATE gl.fiscal_year SET status = 'CLOSED', closing_transaction_no = @tx, closed_at = now(), closed_by = @user WHERE id = @fy` (BR-PST-57; төлөвийн дүрэм 07-д).
-2. `createReTransferDraft` ба санхүүгийн жил Y+1 байгаа бол: өмнөх батлагдаагүй саналын мөрийг (`comment` = `{"kind":"RE_TRANSFER","year":Y}`) устгана; `B = Σ amount (3500, posting_date ≤ (Y+1)-01-01)` (энэ transaction-ий хаалтын бичилт ба аль хэдийн батлагдсан шилжүүлэг орно). `B ≠ 0` бол GENERAL/DEFAULT batch-д хоёр мөр: `3500: amount = −B`, `3400 (retained_earnings_account_id): amount = +B`, `posting_date = (Y+1)-01-01`, `document_no` = `JNL_DRAFT`-ийн дараагийн, тайлбар "{Y} оны ашгийг хуримтлагдсан ашигт шилжүүлэх", `comment` = маркер (BR-PST-58). Y+1 байхгүй бол анхааруулга `W-04`.
-3. Хариунд `closingVoucher`, `retainedEarningsDraft` (journalId, мөр) гарна.
+`FiscalYearCloseWriter` (ижил transaction, Post ба Preview хоёуланд):
+- `LockSourceAsync` (дугаар олгохоос өмнө, BR-PST-61): `fiscal_year` аль хэдийн `FOR UPDATE`; `createReTransferDraft` бол GENERAL/DEFAULT `journal_batch`-ийг `FOR UPDATE` (байхгүй бол анхааруулга `W-06`, ноорог алгасна).
+- `WriteAsync` (ваучертай) ба `ApplyWithoutVoucherAsync` (зөрүү 0) хоёулаа:
+1. `UPDATE gl.fiscal_year SET status = 'CLOSED', closing_transaction_no = coalesce(@tx, closing_transaction_no), closed_at = now(), closed_by = @user WHERE company_id = @c AND id = @fy` (`@tx` = энэ run-ий хаалтын гүйлгээ, no-op үед NULL; BR-PST-57). `LOCKED` жилд DB `ERP02` → `gl.fiscal_year_locked` (урьдчилж шалгасан тул ховор).
+2. `createReTransferDraft` ба санхүүгийн жил Y+1 байгаа бол: өмнөх батлагдаагүй саналын мөрийг (`comment = '{"kind":"RE_TRANSFER","year":Y}'`, тэмдэгт мөрийн тэнцүү) устгана; `B = Σ amount (3500, posting_date ≤ (Y+1)-01-01)` (энэ transaction-ий хаалтын бичилт ба аль хэдийн батлагдсан шилжүүлэг орно). `B ≠ 0` бол GENERAL/DEFAULT batch-д хоёр мөр (`account_type = GL_ACCOUNT`, `gen_posting_type = NONE`, `dimension_set_id = 0`, `system_created = false`): `3500: amount = amount_lcy = −B`, `3400 (retained_earnings_account_id): amount = amount_lcy = +B`, `posting_date = (Y+1)-01-01`, `document_no` = `JNL_DRAFT`-ийн дараагийн (хоёр мөр ижил дугаар → нэг ваучер), `line_no` = batch-ийн сүүлийн + 10000, +20000, тайлбар "{Y} оны ашгийг хуримтлагдсан ашигт шилжүүлэх", `comment` = маркер; batch-ийн `row_version + 1` (BR-PST-58). Y+1 байхгүй бол анхааруулга `W-04`; `retained_earnings_account_id` NULL бол `W-06`-тай адил ноорог алгасна (`gl.year_close_result_account_missing`-ийн мессежтэй анхааруулга).
+3. Хариунд `closingVoucher` (no-op үед null), `fiscalYearStatus`, `retainedEarningsDraft` (journalId, мөр эсвэл null), `warnings[]` гарна. Outbox `gl.fiscal_year.closed` (§9.1) хоёр тохиолдолд.
 
-**Rerun-ийн жишээ** (FR-GL-026 AC2): 12-р сарыг дахин нээж (Owner, 13 §8.4) нэмэлт зардал бичээд, сарыг дахин хаагаад `:close`-ийг дуудна → зөвхөн зөрүүгийн ваучер `CL-YYYY-00002` (E-I). Хаалтын шалгах хуудас (үе ба хаалтын spec) нь "Хаалт хийгдсэний дараа өөрчлөгдсөн жил" анхааруулгыг харуулна.
+**Rerun-ийн жишээ** (FR-GL-026 AC2): 12-р сарыг дахин нээхэд (Owner, 13 §8.4) жил ч `OPEN` болно (13 SEC-POST-04); нэмэлт зардал бичээд, сарыг дахин хаагаад `:close`-ийг дуудна → зөвхөн зөрүүгийн ваучер `CL-YYYY-00002` (E-I), жил дахин `CLOSED`. Хэрэв нээлтийн хооронд зөвхөн балансын данс хөдөлсөн бол (зөрүү 0) ваучер үүсэхгүй ч жил `CLOSED` болно (no-op хаалт). Хаалтын шалгах хуудас (үе ба хаалтын spec) нь "Хаалт хийгдсэний дараа өөрчлөгдсөн жил" анхааруулгыг харуулна (13 SEC-POST-11).
+
+**No-op хаалт ба engine.** `BuildAsync` `null` буцаавал engine `PostingResult.NothingToPost` (`posted = false`) өгнө: `gl_register`, `posting_log`, дугаар үүсэхгүй. Advisory lock ба `fiscal_year FOR UPDATE` commit хүртэл барина. Idempotency мөр нь 200 хариутайгаар хадгалагдана (давталт replay).
 
 ### 5.14 Idempotency
 
-Pipeline-ийн `IdempotencyFilter` (14 §7, 02 §8.5) B үеийн transaction дотор engine-ээс өмнө ажиллана:
+Pipeline-ийн `IdempotencyFilter`-ийг **14 §7 эзэмшинэ** (API-IDEM-01..12); доорх нь engine-тэй холбогдох хэсгийн хураангуй (Z-PST-14). Шат 0 нь A үеэс өмнө, `INSERT` нь B үеийн transaction дотор engine-ээс өмнө ажиллана:
 
 ```csharp
 // Post горим (preview-д алгасна, API-IDEM-11)
-var hash = Sha256($"{method}\n{routeTemplate}\n{companyId}\n{CanonicalJson(body)}\n{ifMatch}");
+// API-IDEM-03: METHOD \n path(+эрэмбэлсэн query, companyId-г агуулна) \n principalId \n JCS(body) (RFC 8785)
+var hash = Sha256($"{method}\n{pathAndSortedQuery}\n{principalId}\n{Jcs(body)}");
+
+// ---- Шат 0 (API-IDEM-12): A үеэс өмнө, transaction-гүй, түгжээгүй ----
+var pre = await db.QuerySingleOrDefaultAsync("SELECT request_hash, status, response_code, response_body FROM integration.idempotency_key WHERE tenant_id = @t AND key = @key");
+if (pre is { Status: "COMPLETED" })
+    return pre.RequestHash == hash ? Replay(pre) : Problem(422, "api.idempotency_key_reused");   // handler ажиллахгүй
+// ... A үе (handler: угсралт, ValidateAsync) ...
+
+// ---- B үе: BEGIN; fn_set_context; SET LOCAL lock_timeout = '5s' ----
 var inserted = await s.ExecAsync("""
     INSERT INTO integration.idempotency_key (id, tenant_id, key, user_id, http_method, request_path, request_hash, status)
     VALUES (@id, @t, @key, @user, @method, @path, @hash, 'IN_PROGRESS')
     ON CONFLICT (tenant_id, key) DO NOTHING
-    """, ...);                                   // зэрэг ирсэн ижил түлхүүр энд хүлээнэ (unique index), нөгөө нь дуусахад үргэлжилнэ
+    """, ...);                                   // зэрэг ирсэн ижил түлхүүр энд хүлээнэ (unique index); 55P03 → 409 api.idempotency_in_progress + Retry-After: 1
 if (inserted == 0)
 {
     var k = await s.QuerySingleAsync("SELECT request_hash, status, response_code, response_body, resource_id FROM integration.idempotency_key WHERE tenant_id = @t AND key = @key");
     s.MarkRollbackOnly();
     if (k.RequestHash != hash) return Problem(422, "api.idempotency_key_reused");
     if (k.Status == "COMPLETED") return Replay(k.ResponseCode, k.ResponseBody);          // Idempotent-Replayed: true
-    return Problem(409, "api.idempotency_in_progress");                                  // (зөвхөн хуучин session үлдсэн тохиолдолд)
+    return Problem(409, "api.idempotency_in_progress");                                  // Retry-After: 1 (зөвхөн хуучин session үлдсэн тохиолдолд)
 }
 var result = await next();                                                                // handler → engine
 await s.ExecAsync("UPDATE integration.idempotency_key SET status = 'COMPLETED', response_code = @code, response_body = @body, resource_id = @rid WHERE tenant_id = @t AND key = @key", ...);
@@ -1508,7 +1599,7 @@ await s.ExecAsync("UPDATE integration.idempotency_key SET status = 'COMPLETED', 
 
 | Алхам | Түгжээ | Хугацаа | Алдаа |
 |---|---|---|---|
-| Idempotency мөр | `integration.idempotency_key` UNIQUE (tenant, key) | `lock_timeout` 5 s | `55P03` → 503 |
+| Idempotency мөр | `integration.idempotency_key` UNIQUE (tenant, key) | `lock_timeout` 5 s | `55P03` → `409 api.idempotency_in_progress`, `Retry-After: 1` (14 API-IDEM-07) |
 | Компанийн posting | `pg_advisory_xact_lock(hashtextextended('post:'‖tenant‖':'‖company, 0))` | 5 s | `55P03` → `503 api.lock_timeout`, `Retry-After: 2` |
 | Эх ноорог | `FOR UPDATE` (эх модуль) | 5 s | 412 / 409 |
 | Хуулийн дугаар | `number_series_line` ба `number_series_counter` `FOR UPDATE` (`fn_next_document_no`) | 5 s | `ERN0x` → 422 |
@@ -1548,8 +1639,10 @@ SELECT * FROM unnest(@id::uuid[], @tenant::uuid[], @company::uuid[], @entry_no::
 
 ### 5.17 Алдааны лог
 
+Pipeline-ийн `PostingLogFilter` нь posting командыг (`:post`, `:reverse`, `:close`, `:apply`, `:unapply`, `POST /payments` г.м.) **A үе, B үе ба COMMIT-ийг бүхэлд нь** ороосон `try/catch`-тэй (A үеийн 422 ба COMMIT-ийн deferred `ERB01`/`ERC01` ч лог болно; BR-PST-67-ийн хүрээ):
+
 ```csharp
-catch (Exception ex) when (mode == PostingMode.Post)
+catch (Exception ex) when (mode == PostingMode.Post && !IsReplay && ex.MapsToStatus() is 409 or 412 or 422 or 500 or 503)
 {
     // pipeline ROLLBACK хийсний ДАРАА, шинэ богино transaction-д (контекстыг дахин тохируулна)
     await using var s2 = await _sessions.BeginAsync(tenant, company, user, requestId, ct);
@@ -1701,13 +1794,16 @@ Row(K).SystemCreated = ∧ SystemCreated_i            (R-ACCOUNT-DETERMINATION-1
 
 ### 6.6 НӨАТ-ын үлдэгдлийн хуваарилалт (баримтын түвшин, D-E3)
 
-НӨАТ-ыг баримтын түвшинд VAT identifier бүрээр (мөн тэмдгээр, R-VAT-13) нэг удаа бөөрөнхийлж, мөрүүдэд **хуримтлагдсан дүнгийн** аргаар хуваарилна (BC `DivideAmount`, R-VAT-08). Тооцоог Tax (08) хийнэ; функц нь `MoneyMath.Allocate`-д нэг л газар байна:
+НӨАТ-ыг баримтын түвшинд VAT identifier бүрээр (мөн тэмдгээр, R-VAT-13) нэг удаа бөөрөнхийлж, мөрүүдэд **running remainder** (үлдэгдэл дамжуулах) аргаар хуваарилна (D-E3, BC `DivideAmount`, R-VAT-08). Тооцоог Tax (08 §6.2, BR-TAX-20 — канон) хийнэ; функц нь `MoneyMath.Allocate`-д нэг л газар байна (Z-PST-16):
 
 ```
 Бүлэг G-ийн мөр i = 1..n (line_no ASC), цэвэр дүн a_i, W = Σ a_i:
-  T = RoundVat(W × r / 100, p, type)                          -- бүлгийн НӨАТ
-  C_k = Round(T × (Σ_{j≤k} a_j) / W, p)     (k = 0..n, C_0 = 0, C_n = T)
-  VAT_i = C_i − C_{i−1}
+  T     = RoundVat(W × r / 100, p, type)                -- бүлгийн НӨАТ (чиглэлтэй бөөрөнхийлөлт зөвхөн энд)
+  rem_0 = 0
+  rem_i' = rem_{i−1} + T × a_i / W                       -- decimal (28 орон), бөөрөнхийлөхгүй
+  VAT_i = Round(rem_i', p)  (Nearest, AwayFromZero)      -- i < n
+  rem_i = rem_i' − VAT_i
+  VAT_n = T − Σ_{i<n} VAT_i                              -- сүүлийн мөр (decimal хуваалтын 10⁻²⁸ алдааг шингээнэ)
 Баталгаа: Σ VAT_i = T;  |VAT_i − T × a_i / W| < p;  W = 0 бол бүх VAT_i = 0.
 ```
 
@@ -1715,19 +1811,29 @@ Row(K).SystemCreated = ∧ SystemCreated_i            (R-ACCOUNT-DETERMINATION-1
 public static decimal[] Allocate(decimal total, IReadOnlyList<decimal> weights, decimal p)
 {
     var w = weights.Sum(); var r = new decimal[weights.Count];
-    if (w == 0) return r;
-    decimal cum = 0, prev = 0;
+    if (w == 0 || weights.Count == 0) return r;
+    decimal rem = 0, allocated = 0;
     for (var i = 0; i < weights.Count; i++)
     {
-        cum += weights[i];
-        var c = i == weights.Count - 1 ? total : Round(total * cum / w, p);
-        r[i] = c - prev; prev = c;
+        if (i == weights.Count - 1) { r[i] = total - allocated; break; }
+        var exact = rem + total * weights[i] / w;
+        r[i] = Round(exact, p);                     // MidpointRounding.AwayFromZero
+        rem = exact - r[i]; allocated += r[i];
     }
     return r;
 }
 ```
 
-Жишээ (E-D): 3 мөр × 3,333.33, `T = Round(9,999.99 × 0.10) = Round(999.999) = 1,000.00` → `C = [333.33, 666.67, 1,000.00]` → VAT = 333.33, 333.34, 333.33 (Σ = 1,000.00). Мөр бүрийг тусад нь бөөрөнхийлбөл 999.99 болж 0.01-ээр дутна.
+Жишээ (E-D): 3 мөр × 3,333.33, `W = 9,999.99`, `T = Round(999.999) = 1,000.00`, хувь хэмжээ `T × a_i / W = 333.3333…`:
+
+| Мөр | rem өмнө | rem' | VAT_i | rem дараа |
+|---|---:|---:|---:|---:|
+| 1 | 0 | 333.333333 | 333.33 | +0.003333 |
+| 2 | +0.003333 | 333.336667 | 333.34 | −0.003333 |
+| 3 (сүүлийн) | | | 1,000.00 − 666.67 = 333.33 | |
+| Σ | | | **1,000.00** | |
+
+Мөр бүрийг тусад нь бөөрөнхийлбөл 3 × 333.33 = 999.99 болж 0.01-ээр дутна.
 
 ### 6.7 Жилийн хаалтын дүн (BR-PST-55)
 
@@ -1764,7 +1870,7 @@ Register: from_entry_no = F (GL_ENTRY-ийн нөөцийн эхний дуга�
 
 ### 6.10 Валют (R2)
 
-Схемийн ханш нь `currency_factor` = 1 LCY-д ногдох FCY (Z-PST-11). Журналын мөр: `amount_lcy = Round(amount / currency_factor, p_LCY)`. Баримтын олон мөрт хуримтлагдсан арга (R-ACCOUNT-DETERMINATION-20): `LCY_i = Round(cumFCY_i / f, p) − Round(cumFCY_{i−1} / f, p)`. R2-т ваучерыг FCY-ээр ч тэнцүүлнэ (R-GL-POSTING-22, SHOULD); LCY-ийн бөөрөнхийлөлтийн үлдэгдэл зөвхөн LCY-д үлдвэл дараагийн тэг биш мөрт нэмнэ (R-ACCOUNT-DETERMINATION-20). R1-д валютын мөр `gl.currency_not_enabled`.
+Валютын тооцооны эзэмшигч нь [09-bank-cash-fx.md](./09-bank-cash-fx.md) (Z-PST-17). Схемийн ханш нь `currency_factor` = 1 LCY-д ногдох FCY (Z-PST-11). Каноник хөрвүүлэлт (09 BR-FX-21): `amount_lcy = ToLcy(amount, rate) = Round(amount × rate, p_LCY)`, `rate = RateOf(currency_factor) = Round(1 / currency_factor, 6)` (SCR-FX-01 хэрэгжтэл); `amount / currency_factor` томьёог **хэрэглэхгүй**. R2-т бүх мөр нэг валюттай ваучерыг FCY-ээр ч тэнцүүлнэ (R-GL-POSTING-22, SHOULD); FCY тэнцсэн ч LCY-д бөөрөнхийлөлтийн зөрүү (≤ 0.01 × мөрийн тоо) гарвал **хамгийн их |LCY|-тай мөрт** залруулна (09 BR-FX-26); автомат "round-off" данс үүсгэхгүй. Buffer-ийн LCY-only үлдэгдэл (R-ACCOUNT-DETERMINATION-20) 09-ийн дүрмээр. R1-д валютын мөр `gl.currency_not_enabled`.
 
 ---
 
@@ -1777,7 +1883,7 @@ Register: from_entry_no = F (GL_ENTRY-ийн нөөцийн эхний дуга�
 | Мөнгөний данс | `CASH01` Үндсэн касс (`kind = CASH`, бүлэг `CASH_MNT` → 1100); `BANK01` Хаан банк (`kind = BANK`, бүлэг `BANK_MNT` → 1110) |
 | Харилцагч | `C0001` Тэмүүлэн ХХК (Gen./VAT bus `DOMESTIC`, бүлэг `DOMESTIC` → 1200, NET30); `C0002` Иргэн (B2C, бэлэн, `DOMESTIC` → 1200) |
 | Нийлүүлэгч | `V0001` Оффис Плюс ХХК (`DOMESTIC` → 2100) |
-| Dimension set | 0 = хоосон; 5 = {САЛБАР = ТӨВ}; 7 = {САЛБАР = ТӨВ}; 9 = {САЛБАР = ТӨВ, ТӨСӨЛ = П1}; 11, 12, 13 = {САЛБАР = Салбар-1/2/3} (5 ба 7 нь өөр компанийн жишээнээс биш — 7 нь header, 5 нь журнал; утгын id ижил бол set ч ижил байх ёстой тул бодит DB-д нэг id болно, энд уншихад хялбар болгож салгав) |
+| Dimension set | 0 = хоосон; 7 = {САЛБАР = ТӨВ}; 9 = {САЛБАР = ТӨВ, ТӨСӨЛ = П1}; 11, 12, 13 = {САЛБАР = Салбар-1/2/3}. Ижил хослол = ижил id (`UNIQUE (company_id, key_hash)`), тиймээс журнал (E-A) ба нэхэмжлэхийн header (E-C) хоёулаа {ТӨВ} = 7 (16 GS-GL-014-тэй нийцнэ) |
 
 **E-A … E-G-ийн эхлэх төлөв** (2026 оны 3-р сар, бүх үе `OPEN`):
 
@@ -1791,19 +1897,19 @@ Register: from_entry_no = F (GL_ENTRY-ийн нөөцийн эхний дуга�
 
 ### E-A. Ерөнхий журнал: түрээс банкаар (GS-GL-001)
 
-Журнал GENERAL/DEFAULT, мөр 10000: `posting_date = 2026-03-10`, `document_no = J-000123`, `GL_ACCOUNT 7210`, Дт 1,500,000.00 (`amount = +1,500,000.00`), харьцсан `BANK_ACCOUNT BANK01`, set 5, "3-р сарын оффисын түрээс".
+Журнал GENERAL/DEFAULT, мөр 10000: `posting_date = 2026-03-10`, `document_no = J-000123`, `GL_ACCOUNT 7210`, Дт 1,500,000.00 (`amount = +1,500,000.00`), харьцсан `BANK_ACCOUNT BANK01`, set 7, "3-р сарын оффисын түрээс".
 
 `gl_transaction` 119: `GJ-2026-00042`, 2026-03-10, `NONE`, source `GENJNL`, register 41.
 
 | entry_no | Данс | Дт | Кт | amount | system_created | source | bal_account | set |
 |---|---|---:|---:|---:|---|---|---|---|
-| 531 | 7210 | 1,500,000.00 | | +1,500,000.00 | false | BANK_ACCOUNT BANK01 | BANK_ACCOUNT BANK01 | 5 |
-| 532 | 1110 | | 1,500,000.00 | −1,500,000.00 | true | BANK_ACCOUNT BANK01 | GL_ACCOUNT 7210 | 5 |
+| 531 | 7210 | 1,500,000.00 | | +1,500,000.00 | false | BANK_ACCOUNT BANK01 | BANK_ACCOUNT BANK01 | 7 |
+| 532 | 1110 | | 1,500,000.00 | −1,500,000.00 | true | BANK_ACCOUNT BANK01 | GL_ACCOUNT 7210 | 7 |
 | **Σ** | | **1,500,000.00** | **1,500,000.00** | **0.00** | | | | |
 
 | Дэд дэвтэр | Мөр |
 |---|---|
-| `bank.bank_ledger_entry` 15 | BANK01, `amount = −1,500,000.00`, `amount_lcy = −1,500,000.00`, `positive = false`, `remaining_amount = −1,500,000.00`, `open = true`, `statement_status = OPEN`, transaction 119, register 41, set 5 |
+| `bank.bank_ledger_entry` 15 | BANK01, `amount = −1,500,000.00`, `amount_lcy = −1,500,000.00`, `positive = false`, `remaining_amount = −1,500,000.00`, `open = true`, `statement_status = OPEN`, transaction 119, register 41, set 7 |
 | `gl.gl_register` 41 | `from_entry_no = 531`, `to_entry_no = 532`, VAT NULL, `GENJNL`, GENERAL / DEFAULT |
 | `audit.posting_log` | `GENERAL_JOURNAL`, `SUCCEEDED`, transaction 119, register 41, `GJ-2026-00042` |
 
@@ -1882,15 +1988,15 @@ Dimension-ээр харвал (R-DIMENSIONS-NOSERIES-AUDIT-25): ТӨСӨЛ = П1
 
 ### E-E. Бэлэн борлуулалт: нэг register, хоёр гүйлгээ, тулгалт (GS-GL-005)
 
-`C0002`, 2026-03-15, үйлчилгээ 100,000.00 + НӨАТ 10,000.00, төлбөрийн хэлбэр `CASH` → `CASH01` (D-F5). Ваучер V1 = нэхэмжлэх (`SI`), V2 = төлбөр (`KO`, source `CASHVOUCHER`).
+`C0002`, 2026-03-15, үйлчилгээ 100,000.00 + НӨАТ 10,000.00, төлбөрийн хэлбэр `CASH` → `CASH01` (D-F5). Ваучер V1 = нэхэмжлэх (`SI`, `FromSeries`), V2 = төлбөр (`document_type = PAYMENT`, `document_no` = V1-ийн дугаар — `SameAsVoucher("V1")`, source `CASHVOUCHER`; R-SALES-DOCUMENTS-37, 06 BR-SAL-50). МХ-1-ийн дугаар `KO`-оос тусдаа (09 BR-BNK-21).
 
 | entry_no | transaction | Баримт | Данс | Дт | Кт | amount |
 |---|---|---|---|---:|---:|---:|
 | 541 | 122 | SI-2026-00043 (`INVOICE`) | 5110 | | 100,000.00 | −100,000.00 |
 | 542 | 122 | SI-2026-00043 | 2300 | | 10,000.00 | −10,000.00 |
 | 543 | 122 | SI-2026-00043 | 1200 | 110,000.00 | | +110,000.00 |
-| 544 | 123 | KO-2026-00031 (`PAYMENT`) | 1100 | 110,000.00 | | +110,000.00 |
-| 545 | 123 | KO-2026-00031 | 1200 | | 110,000.00 | −110,000.00 |
+| 544 | 123 | SI-2026-00043 (`PAYMENT`) | 1100 | 110,000.00 | | +110,000.00 |
+| 545 | 123 | SI-2026-00043 (`PAYMENT`) | 1200 | | 110,000.00 | −110,000.00 |
 | **Σ T122** | | | | **110,000.00** | **110,000.00** | **0.00** |
 | **Σ T123** | | | | **110,000.00** | **110,000.00** | **0.00** |
 
@@ -1898,13 +2004,13 @@ Dimension-ээр харвал (R-DIMENSIONS-NOSERIES-AUDIT-25): ТӨСӨЛ = П1
 |---|---|
 | `tax.vat_entry` 76 | `SALE`, `base = −100,000.00`, `amount = −10,000.00`, `gl_entry_no = 541`, transaction 122 |
 | `party.cust_ledger_entry` 27 | `INVOICE`, SI-2026-00043, `+110,000.00`, transaction 122 |
-| `party.cust_ledger_entry` 28 | `PAYMENT`, KO-2026-00031, `−110,000.00`, transaction 123 |
+| `party.cust_ledger_entry` 28 | `PAYMENT`, SI-2026-00043, `−110,000.00`, transaction 123 |
 | `party.detailed_cust_ledger_entry` 62 | `INITIAL`, CLE 27, `+110,000.00`, transaction 122 |
 | `party.detailed_cust_ledger_entry` 63 | `INITIAL`, CLE 28, `−110,000.00`, transaction 123 |
 | `party.detailed_cust_ledger_entry` 64 | `APPLICATION`, CLE 27, `−110,000.00`, transaction 123, `application_no = 10`, `applied_cust_ledger_entry_no = 28` |
 | `party.detailed_cust_ledger_entry` 65 | `APPLICATION`, CLE 28, `+110,000.00`, transaction 123, `application_no = 10`, `applied_cust_ledger_entry_no = 28` |
 | Үр дүн (trigger) | CLE 27: `remaining = 0`, `open = false`, `closed_by_entry_no = 28` (`fn_ledger_update`); CLE 28: `remaining = 0`, `open = false` |
-| `bank.bank_ledger_entry` 17 | CASH01, `+110,000.00`, transaction 123; `bank.posted_cash_voucher` `RECEIPT` KO-2026-00031 |
+| `bank.bank_ledger_entry` 17 | CASH01, `PAYMENT`, `document_no = SI-2026-00043`, `+110,000.00`, transaction 123; `bank.posted_cash_voucher` `RECEIPT`, `no = KO-2026-00031` (CashBank writer `fn_next_document_no('KO', 2026-03-15)`, `KO` counter 00030 → 00031), `bank_ledger_entry_no = 17` |
 | `gl.gl_register` 44 | 541–545, VAT 76–76, `SALES` |
 
 1200-ийн хөдөлгөөн: Дт 110,000.00, Кт 110,000.00, үлдэгдэл 0 = харилцагчийн detailed entry-ийн нийлбэр 0 (BR-PST-42).
@@ -1933,7 +2039,7 @@ Dimension-ээр харвал (R-DIMENSIONS-NOSERIES-AUDIT-25): ТӨСӨЛ = П1
 
 ### E-G. Register буцаах: огноо өөр 2 ваучер (GS-GL-007)
 
-Нэг журналын run (register 46, `GENJNL`): `GJ-2026-00043` (2026-03-11): 8300 Дт 5,000.00 / 1110 Кт 5,000.00 (BLE 19); `GJ-2026-00044` (2026-03-12): 2650 Дт 200,000.00 / 1110 Кт 200,000.00 (BLE 20).
+Нэг журналын run (register 46, `GENJNL`): `GJ-2026-00043` (2026-03-11): `GL_ACCOUNT 8300` Дт 5,000.00 / `BANK_ACCOUNT BANK01` (G/L 1110) Кт 5,000.00 (BLE 19); `GJ-2026-00044` (2026-03-12): `GL_ACCOUNT 2650` Дт 200,000.00 / `BANK_ACCOUNT BANK01` (G/L 1110) Кт 200,000.00 (BLE 20). 1110 нь хяналтын данс тул шууд `GL_ACCOUNT 1110` гэж оруулбал `gl.direct_posting_not_allowed`.
 
 | entry_no | transaction | Огноо | Данс | Дт | Кт |
 |---|---|---|---|---:|---:|
@@ -1990,7 +2096,7 @@ BLE 21 (`+200,000.00`, rev 20), BLE 22 (`+5,000.00`, rev 19). Register 47: 552�
 
 ### E-I. Жилийн хаалтыг дахин ажиллуулах: зөрүү (GS-GL-009)
 
-E-H-ийн дараа, шилжүүлгийн ноорог батлагдаагүй байхад: Owner 2026-12-ийг дахин нээж (шалтгаантай, 13 §8.4) `GJ-2026-00310` (2026-12-20): 7210 Дт 100,000.00 / 1110 Кт 100,000.00 батлаад, 12-р сарыг дахин хаана. `:close` дахин:
+E-H-ийн дараа, шилжүүлгийн ноорог батлагдаагүй байхад: Owner 2026-12-ийг дахин нээж (шалтгаантай, 13 §8.4) `GJ-2026-00310` (2026-12-20): `GL_ACCOUNT 7210` Дт 100,000.00 / `BANK_ACCOUNT BANK01` (G/L 1110) Кт 100,000.00 батлаад, 12-р сарыг дахин хаана. Сарыг нээхэд жил `OPEN` болсон (13 SEC-POST-04); `GJ` цуврал `date_order` тул 2026-ийн `GJ`-ийн `last_date_used` ≤ 2026-12-20 байх ёстой (эс бөгөөс `ERN02`, ⚠ OQ-PST-03). `:close` дахин:
 
 | Данс | net (хаалт орно) |
 |---|---|
@@ -2005,7 +2111,7 @@ E-H-ийн дараа, шилжүүлгийн ноорог батлагдааг�
 | 7102 | 3500 | 100,000.00 | | +100,000.00 |
 | **Σ** | | **100,000.00** | **100,000.00** | **0.00** |
 
-`fiscal_year.closing_transaction_no = 1530`. Шилжүүлгийн өмнөх ноорог (`J-000201`) устаж шинэ санал үүснэ: `B = −2,115,000.00 + 100,000.00 = −2,015,000.00`. Гуравдахь удаа `:close` → бичих зүйлгүй (`posted = false`), дугаар зарцуулагдахгүй.
+`fiscal_year.closing_transaction_no = 1530`. Шилжүүлгийн өмнөх ноорог (`J-000201`) устаж шинэ санал үүснэ: `B = −2,115,000.00 + 100,000.00 = −2,015,000.00`. Гуравдахь удаа `:close` → бичих зүйлгүй (`posted = false`), дугаар, register, posting log үүсэхгүй; жил `CLOSED` хэвээр, шилжүүлгийн санал (`B` өөрчлөгдөөгүй) дахин үүсгэгдэнэ (BR-PST-56).
 
 ### E-J. Хуримтлагдсан ашиг руу шилжүүлэх (GS-GL-010)
 
@@ -2068,13 +2174,13 @@ E-H-ийн дараа, шилжүүлгийн ноорог батлагдааг�
 |---|---|---|---|---|
 | 1 | OpenAPI schema (төрөл, заавал талбар, `amount` string) | Api pipeline | Тийм | 400 `api.request_invalid` (14 API-ERR-07) |
 | 2 | Эрх (`ACTION gl.journal.post X` г.м.) | Api pipeline | Тийм | 403 `platform.permission_denied` |
-| 3 | Idempotency (давхар, өөр hash) | `IdempotencyFilter` (§5.14) | Тийм | Replay / 422 / 409 |
+| 3 | Idempotency Шат 0 (A үеэс өмнө; `COMPLETED` бол replay эсвэл өөр hash) ба B үеийн `INSERT … ON CONFLICT` (зэрэг хүсэлт) | `IdempotencyFilter` (§5.14, 14 §7) | Тийм | Replay / 422 / 409 |
 | 4 | A үе: `CheckJournalLine` (журнал), эх модулийн шалгалт (баримт), `CheckDocument`, `ValidateAsync` | Handler, engine | **Үгүй** — бүгдийг цуглуулна | 422 |
 | 5 | Advisory lock | Engine | Тийм | 503 `api.lock_timeout` |
 | 6 | `LockSourceAsync` (ETag, мөрийн олонлог, setup stamp) | `IPostedDocumentWriter` | Тийм | 412 / 409 |
-| 7 | B үе: `CheckLockedAsync` + writer-ийн `ValidateLockedAsync` | Engine, writer | **Үгүй** — бүгдийг цуглуулна | 422 / 409 |
+| 7 | B үе: `CheckLockedAsync` (үе, цонх, данс, dimension, шалтгаан, **дугаарын цувралын урьдчилсан шалгалт**) + writer-ийн `ValidateLockedAsync` | Engine, writer | **Үгүй** — бүгдийг цуглуулна | 422 / 409 |
 | 8 | Self-check (Σ = 0, бөөрөнхий) | Engine | Тийм | 500 `api.internal_error` (P1) |
-| 9 | Хуулийн дугаар (`ERN01..03`) | `fn_next_document_no` | Тийм | 422 `platform.number_series_*` |
+| 9 | Хуулийн дугаар (`ERN01..03`) — 7-д урьдчилж илэрсэн тул ердийн үед гарахгүй | `fn_next_document_no` | Тийм | 422 `platform.number_series_*` |
 | 10 | Insert-ийн trigger (`ERP01`, `ERG01`, `ERD01`, `ERC01`, `ERV01`) | DB | Тийм | §8.6 (апп урьдчилж шалгадаг тул ховор) |
 | 11 | Deferred тэнцэл ба FK (`ERB01`, register FK) | DB, COMMIT эсвэл preview-ийн `SET CONSTRAINTS ALL IMMEDIATE` | Тийм | 500 (P1) |
 
@@ -2093,6 +2199,7 @@ E-H-ийн дараа, шилжүүлгийн ноорог батлагдааг�
 | `gl.amount_not_rounded` | 422 | Дүн {precision} нарийвчлалаар бөөрөнхийлөгдөөгүй байна. | `amount_lcy` эсвэл G/L мөрийн дүн | BR-PST-05, -13 |
 | `gl.journal_empty` | 422 | Журналд батлах мөр алга. | Хоосон мөрөөс бусад мөр байхгүй | BR-PST-62 |
 | `gl.journal_changed` | 409 | Журнал өөр хэрэглэгчээр өөрчлөгдсөн. Дахин ачаалж батална уу. | `expectedLineCount` эсвэл B үеийн мөрийн олонлог зөрсөн | §5.4.1 |
+| `gl.journal_series_missing` | 422 | Журнал {template}/{batch}-д батлах дугаарын цуврал тохируулаагүй байна. | Batch ба template хоёулаа `posting_no_series_id`-гүй | §5.4.1 |
 | `gl.setup_changed` | 409 | Дансны эсвэл НӨАТ-ын тохиргоо батлах явцад өөрчлөгдсөн. Дахин оролдоно уу. | A үед ашигласан setup-ийн `row_version` B үед өөр | §5.2 |
 | `gl.closing_template_manual_line` | 422 | Жилийн хаалтын журналыг гараар батлах боломжгүй. "Жилийн хаалт" хуудсыг ашиглана уу. | `CLSINCOME` template-ийн batch-ийг `:post` | BR-PST-17 |
 | `gl.closing_entry_invalid` | 422 | Хаалтын бичилтийг зөвхөн жилийн хаалт 12-р сарын 31-ний огноогоор үүсгэнэ. | `IsClosing` буруу (кодын хамгаалалт) | BR-PST-17 |
@@ -2150,6 +2257,7 @@ E-H-ийн дараа, шилжүүлгийн ноорог батлагдааг�
 | `gl.year_close_periods_open` | 422 | {year} оны бүх сар хаагдаагүй: {periods}. | | BR-PST-54 |
 | `gl.year_close_result_account_missing` | 422 | Ерөнхий дэвтрийн тохиргоонд "Тайлант үеийн ашиг (алдагдал)" данс заагаагүй байна. | | BR-PST-54 |
 | `gl.year_close_result_account_invalid` | 422 | Данс {account} нь тайлант үеийн ашгийн данс байж болохгүй: гүйлгээний, балансын, өөрийн хөрөнгийн блоклогдоогүй данс байх ёстой. | | BR-PST-54 |
+| `gl.year_close_previous_year_open` | 422 | {previousYear} оны санхүүгийн жил хаагдаагүй байна. Жилүүдийг дарааллаар нь хаана уу. | Y−1 бичилттэй, `OPEN` | BR-PST-54 |
 
 ### 8.6 Бусад баримтын эзэмшдэг, энэ engine-ээс гардаг код
 
@@ -2173,6 +2281,7 @@ E-H-ийн дараа, шилжүүлгийн ноорог батлагдааг�
 | `W-03` (`gl.correction_vat_recalculated`) | НӨАТ-ын хувь өөрчлөгдсөн тул залруулгын НӨАТ эх бичилтээс ялгаатай байж болно. | §5.11 |
 | `W-04` (`gl.next_fiscal_year_missing`) | {nextYear} оны санхүүгийн жил үүсээгүй тул хуримтлагдсан ашиг руу шилжүүлэх ноорог үүсээгүй. | BR-PST-58 |
 | `W-05` (`gl.re_transfer_date_changed`) | Шилжүүлгийн огноог {date} болгосон тул дахин хаалт хийхэд тооцогдохгүй. | §6.8 |
+| `W-06` (`gl.re_transfer_draft_skipped`) | Хуримтлагдсан ашиг руу шилжүүлэх ноорог үүсээгүй: {reason} (ерөнхий журналын DEFAULT багц эсвэл хуримтлагдсан ашгийн данс тохируулаагүй). | §5.13, BR-PST-58 |
 
 Анхааруулгын кодыг хариунд `warnings[] = { code, message, params }` хэлбэрээр (14-т `warnings` өргөтгөл нэмэх санал, §10.3).
 
@@ -2183,8 +2292,8 @@ E-H-ийн дараа, шилжүүлгийн ноорог батлагдааг�
 | SQLSTATE / constraint | Апп-ийн код | HTTP | Тайлбар |
 |---|---|---|---|
 | `ERB01` (тэнцэл), `ERB02` (огноо/register зөрсөн) | `api.internal_error` | 500 | Self-check (BR-PST-25)-ийг давсан кодын алдаа; P1 alert |
-| `ERP01` | `gl.period_closed` / `gl.posting_date_outside_window` | 422 | `CheckLockedAsync`-ийг давсан бол P3 (урьдчилсан шалгалт дутуу) |
-| `ERP02` | `gl.period_locked` | 409 | |
+| `ERP01` | `gl.period_not_found` / `gl.period_closed` / `gl.period_locked` (409) / `gl.posting_date_outside_window` | 422 / 409 | DB нэг код (`ERP01`)-оор бүх тохиолдлыг өгнө: mapper `CheckPostingDateAsync`-ийг (уншилт) дахин ажиллуулж тодорхой кодыг сонгоно, олдохгүй бол `gl.period_closed`. `CheckLockedAsync`-ийг давсан бол P3 (урьдчилсан шалгалт дутуу) |
+| `ERP02` | `gl.fiscal_year_locked` (posting-д зөвхөн `FiscalYearCloseWriter`-ийн `UPDATE gl.fiscal_year`-ээс); үеийн төлөвийн үйлдэлд `gl.period_locked` (13 §18) | 409 | Posting-ийн огноо `LOCKED` үед `ERP02` биш `ERP01` гардаг (910 `fn_assert_posting_date_allowed`) |
 | `ERG01` | `gl.account_not_posting` | 422 | |
 | `ERD01` | `gl.dimension_value_not_found` | 422 | |
 | `ERV01` | `tax.vat_period_closed` | 422 | |
@@ -2194,7 +2303,9 @@ E-H-ийн дараа, шилжүүлгийн ноорог батлагдааг�
 | `ERT01`, `42501` | `platform.context_error` | 500 | P1 |
 | `23505` `ux_gl_transaction__reverses` | `gl.transaction_already_reversed` | 409 | Зэрэг хоёр буцаалт (BR-PST-50) |
 | `23505` `gl_entry (company_id, entry_no)`, `gl_transaction (company_id, transaction_no)`, `gl_register (company_id, no)` | `api.internal_error` | 500 | Counter-ийг тойрсон кодын алдаа; P1 |
-| `55P03`, `57014` | `api.lock_timeout` + `Retry-After: 2` | 503 | BR-PST-63 |
+| `55P03` (advisory lock, дугаарын цуврал, ledger counter, ноорог `FOR UPDATE`), `57014` | `api.lock_timeout` + `Retry-After: 2` | 503 | BR-PST-63 |
+| `55P03` (`integration.idempotency_key`-ийн `INSERT … ON CONFLICT`) | `api.idempotency_in_progress` + `Retry-After: 1` | 409 | 14 API-IDEM-07; аль statement дээр гарсныг pipeline мэднэ |
+| `22023` (`fn_next_entry_no(count < 1)`) | `api.internal_error` | 500 | W9 зөрчсөн кодын алдаа; P2 |
 | `40001`, `40P01` | Нэг удаа автомат давталт, дараа нь `api.lock_timeout` | 503 | §5.15 |
 
 ---
@@ -2209,7 +2320,7 @@ E-H-ийн дараа, шилжүүлгийн ноорог батлагдааг�
 |---|---|---|---|---|---|
 | `gl.register.posted` | Run бүрийн commit (preview-гүй) | `{ companyId, registerNo, sourceCode, postingType, transactionNos: [..], fromEntryNo, toEntryNo, documentNos: [..] }` | `gl.register.posted:{companyId}:{registerNo}` | R2: webhook fan-out (`gl_register.posted` event), тайлангийн кэш хүчингүй болгох | R2 (R1-д handler байхгүй тул бичигдэхгүй) |
 | `gl.transaction.reversed` | Буцаалтын run | `{ companyId, registerNo, reversals: [{ originalTransactionNo, reversalTransactionNo, documentNo }], reasonCodeId }` | `gl.transaction.reversed:{companyId}:{registerNo}` | Мэдэгдэл (Owner/нягтлан), eBarimt-ийн хяналт (банкны МХ баримтад хамааралгүй) | R1 |
-| `gl.fiscal_year.closed` | Жилийн хаалт (эхний ба дахин ажиллуулалт) | `{ companyId, fiscalYearId, year, closingTransactionNo, documentNo, rerun: bool, reTransferDraftJournalId? }` | `gl.fiscal_year.closed:{companyId}:{year}:{transactionNo}` | Тайлангийн архив (FR-RPT-017, Маягт А-гийн snapshot), мэдэгдэл | R1 |
+| `gl.fiscal_year.closed` | Жилийн хаалт (эхний, дахин ажиллуулалт, ваучергүй no-op хаалт; preview-гүй) | `{ companyId, fiscalYearId, year, closingTransactionNo (no-op үед хуучин эсвэл null), documentNo?, voucherPosted: bool, rerun: bool, reTransferDraftJournalId? }` | `gl.fiscal_year.closed:{companyId}:{year}:{requestId}` (no-op үед transactionNo байхгүй тул хүсэлтийн id; ижил хүсэлтийн давталт Idempotency-Key-ээр replay болдог) | Тайлангийн архив (FR-RPT-017, Маягт А-гийн snapshot), мэдэгдэл | R1 |
 
 - Payload нь "нимгэн": дугаар ба түлхүүр талбар; дүн, харилцагчийн нэр, PII агуулахгүй. Consumer `GET`-ээр бүрэн өгөгдлийг уншина (14 §11.2-ын зарчим).
 - `aggregate_type = 'gl.gl_register'`, `aggregate_id` = register-ийн `id`; `request_id` = хүсэлтийн id.
@@ -2240,7 +2351,7 @@ Posting engine нь outbox/inbox-оос **юу ч хэрэглэхгүй** (си
 | `IVatPostingComposer` | `Erp.Tax.Contracts` | Tax | НӨАТ-ын G/L мөр ба VAT line (§5.7) |
 | `IReversalService` | `Erp.GeneralLedger.Contracts.Posting` | GL | Tax (НӨАТ-ын хаалтын буцаалт), R2 модулиуд (§5.10) |
 | `IDimensionSetService` | `Erp.GeneralLedger.Contracts.Dimensions` | GL | Set олох/үүсгэх (§5.6) |
-| `IPostingHashContributor` | `Erp.GeneralLedger.Contracts.Posting` | Platform (CR-15-ийн дараа) | Register-ийн hash (§5.9) |
+| `ILedgerHashContributor` | `Erp.GeneralLedger.Contracts.Posting` | Tax (`vat_entry`), бусад writer (CR-15-ийн дараа) | Register-ийн hash-д өөрийн мөрийн каноник байт өгөх (§5.9) |
 
 ### 9.5 Ажиглалт (observability)
 
@@ -2287,6 +2398,8 @@ Posting engine нь outbox/inbox-оос **юу ч хэрэглэхгүй** (си
 - 14 §9.5-ын "05" мөрийг §8.2–8.5-ын эцсийн жагсаалтаар солих. `gl.account_in_use`, `gl.account_has_entries`, `gl.income_balance_mismatch` (дансны CRUD) нь posting engine-ийнх биш — дансны төлөвлөгөөний (CoA) хэсэгт үлдэнэ.
 - 15 S-GL-07: "Залруулах журнал" товч → `correction-proposal` → `POST /journals/{id}/lines` (сервер санал, клиент хадгална; Z-PST-13).
 - `gl.journal.preview` эрхийн объект seed-д алга (15 OQ-UI-23) — 13 §6.3 ба `mn_00_catalogs.sql`-д нэмэх.
+- 14 §9.5-д шинэ код нэмэх: `gl.journal_series_missing`, `gl.year_close_previous_year_open`; анхааруулга `W-06`. 14-ийн `gl.fiscal_year_already_closed`-ыг `:close`-д **хэрэглэхгүй** (дахин ажиллуулалт нь зөрүү/no-op, BR-PST-56); үеийн spec-д үлдэнэ.
+- Бусад spec (Z-PST-15): 07 BR-PUR-72 — бэлэн худалдан авалтын 2 дахь ваучер `document_no` = posted нэхэмжлэхийн дугаар (`PI-…`, `SameAsVoucher`), МХ-2 дугаар `KZ`-оос тусдаа (09 BR-BNK-21); 06 BR-SAL-50 аль хэдийн нийцсэн.
 
 ---
 
@@ -2300,11 +2413,11 @@ Posting engine нь outbox/inbox-оос **юу ч хэрэглэхгүй** (си
 - **AT-PST-002** (BR-PST-02). **Өгөгдсөн нь** 3 ваучертай журнал; **Хэрэв** батлавал; **Тэгэхэд** 1 `gl_register`, 3 `gl_transaction` (дараалсан `transaction_no`), entry бүр register-ийн мужид.
 - **AT-PST-003** (BR-PST-03). **Өгөгдсөн нь** HTTP клиентийг mock-лосон writer; **Хэрэв** B үед гадаад дуудлага хийвэл; **Тэгэхэд** architecture test унана (B үеийн interface-д `HttpClient` inject хийгдэхгүй).
 - **AT-PST-004** (BR-PST-04). **Өгөгдсөн нь** 3 алдаатай мөр (хоосон данс, блоклогдсон данс, тэнцээгүй ваучер); **Хэрэв** `:post`; **Тэгэхэд** `422 api.validation_failed`, `errors[]` = 3; **Мөн** `GJ` counter өөрчлөгдөөгүй, `gl_entry` мөр нэмэгдээгүй.
-- **AT-PST-005** (BR-PST-05). Дүн `100.005` → `gl.amount_not_rounded`; `precision = 1` компанид `100.50` → `gl.amount_not_rounded`.
+- **AT-PST-005** (BR-PST-05). API-аар `100.005` хадгалах гэвэл ноорог хадгалах үед `422 api.amount_precision_exceeded` (14 API-JSON-06a; engine-д хүрэхгүй). Ноорог 0.01-ээр хадгалагдсаны дараа компанийн `amount_rounding_precision`-ийг 1 болгоод `100.50`-тай журнал батлах → `gl.amount_not_rounded` (`precision = 1`); тестийн assembler `GlPostingLine.Amount = 100.005` өгвөл → self-check 500 (BR-PST-25).
 - **AT-PST-006** (BR-PST-06). Батлагдсан кредит мөрийн `debit_amount = 0`, `credit_amount = |amount|`; engine-ийн INSERT баганын жагсаалтад `debit_amount` байхгүй (SQL snapshot тест).
 - **AT-PST-007** (BR-PST-07). Global dimension 1 = DEPT; set {DEPT=ADMIN} мөрийн `global_dim_1_value_id` = ADMIN (trigger); engine-ийн INSERT-д багана байхгүй.
 - **AT-PST-008** (BR-PST-09). `PostingRun.SourceCode = "FOO"` → `500 api.internal_error` (FK `platform.source_code`), лог `FAILED`.
-- **AT-PST-010** (BR-PST-10). Хоосон мөр (данс, дүн хоосон) бүхий журнал → хоосон мөрийг алгасаж батлагдана; хоосон мөр устна.
+- **AT-PST-010** (BR-PST-10). Хоосон мөр (данс, дүн хоосон; мөн зөвхөн `bal_account_id`-тэй, дүн 0, `system_created = false` мөр) бүхий журнал → хоосон мөрийг алгасаж батлагдана; батласны дараа batch-д нэг ч мөр үлдэхгүй (хоосон мөр ч устна).
 - **AT-PST-011** (BR-PST-11). Огноогүй мөр → `gl.posting_date_required` (`pointer = /lines/0/postingDate`).
 - **AT-PST-012** (BR-PST-12). `CUSTOMER` ↔ `VENDOR` мөр → `gl.line_partner_pair_invalid`.
 - **AT-PST-013** (BR-PST-13). Дүн 0 мөр (данстай) → `gl.line_amount_zero`.
@@ -2331,14 +2444,14 @@ Posting engine нь outbox/inbox-оос **юу ч хэрэглэхгүй** (си
 - **AT-PST-039** (BR-PST-39). Writer мөрийн `posting_date` ваучерынхаас өөр бол DB `ERB02` → 500 (тестийн writer).
 - **AT-PST-040** (BR-PST-40). Writer-уудын дуудлагын дараалал log-оор: VAT → CUST → BANK → posted doc → outbox → register.
 - **AT-PST-041** (BR-PST-41). `GlLineKeys` олдохгүй subledger мөр → `500 api.internal_error`.
-- **AT-PST-043** (BR-PST-43). Register-ийн `from_entry_no..to_entry_no` = run-ий бүх entry; `UPDATE gl.gl_register SET source_code = …` → `ERL01`.
+- **AT-PST-043** (BR-PST-43). Register-ийн `from_entry_no..to_entry_no` = run-ий бүх entry; `app_user`-ээр `UPDATE gl.gl_register SET source_code = …` → `42501` (REVOKE); эзэмшигч (`app_owner`) ч → `ERL01` (`fn_guard_immutable`).
 - **AT-PST-044** (BR-PST-44, CR-15-ийн дараа). Register 41-ийн `hash` = `sha256(prev_hash ‖ canonical(run))`; 40-ийн өгөгдлийг гараар өөрчлөхөд шөнийн шалгалт 41-ээс хойш тасралт мэдээлнэ.
 - **AT-PST-045** (BR-PST-45). `SALES` гүйлгээг `:reverse` → `409 gl.reversal_use_credit_memo`; `CLSINCOME` → `409 gl.reversal_not_reversible`; буцаалтыг дахин → `gl.reversal_not_reversible`.
 - **AT-PST-046** (BR-PST-46). Төлбөрийн журнал (C0001-ийн авлагыг тулгасан) → `gl.reversal_entries_applied`; хуулгад тулгагдсан банкны мөр → `bank.entry_reconciled`; НӨАТ-ын үе хаагдсан → `gl.reversal_vat_settled`; бүгд нэг хариунд (`api.validation_failed`).
 - **AT-PST-047** (BR-PST-30, -47). E-F: буцаалтын `document_no = GJ-2026-00042`, `GJ` counter өөрчлөгдөөгүй, эх 531/532 `reversed = true`.
 - **AT-PST-050** (BR-PST-50). Ижил гүйлгээг 2 зэрэгцээ хүсэлтээр (өөр key) буцаахад → нэг нь 201, нөгөө нь `409 gl.transaction_already_reversed`.
 - **AT-PST-052** (BR-PST-52). Preview → хариуны `documentNo = "***"`, `registerNo = null`, entry 1..n; дараа нь бүх counter, `gl_entry`, `outbox`, `posting_log`, `dimension_set` өөрчлөгдөөгүй.
-- **AT-PST-054** (BR-PST-54). 2026-11 `OPEN` → `gl.year_close_periods_open` (`periods = ["2026-11"]`); 3500 блоклогдсон → `gl.year_close_result_account_invalid`; жил `LOCKED` → `409 gl.fiscal_year_locked`.
+- **AT-PST-054** (BR-PST-54). 2026-11 `OPEN` → `gl.year_close_periods_open` (`periods = ["11-р сар 2026"]` — `accounting_period.name`); 2026-01..10 `LOCKED`, 11–12 `CLOSED` → нөхцөл хангагдана; 2026-12 `LOCKED` → `409 gl.period_locked` (хаалтын ваучерын огноо); 3500 блоклогдсон → `gl.year_close_result_account_invalid`; жил `LOCKED` → `409 gl.fiscal_year_locked`.
 - **AT-PST-057** (BR-PST-57). E-H-ийн дараа `fiscal_year.status = 'CLOSED'`, `closing_transaction_no = 1500`; E-I-ийн дараа 1530.
 - **AT-PST-060** (BR-PST-60). Session A `fn_lock_company_posting`-ийг барьж 6 s хүлээхэд session B-ийн `:post` → `503 api.lock_timeout`, `Retry-After: 2`; өөр компанийн posting хүлээхгүй.
 - **AT-PST-061** (BR-PST-61). Posting ба сар хаах 100 удаа зэрэг → deadlock 0 (`40P01` тоолуур 0).
@@ -2352,6 +2465,12 @@ Posting engine нь outbox/inbox-оос **юу ч хэрэглэхгүй** (си
 - **AT-PST-070** (BR-PST-70). `:apply` огноо 2026-01-20 ба 2026-01 `CLOSED` → `gl.period_closed`.
 - **AT-PST-071** (BR-PST-71). G/L-гүй run-ий body `GL_ENTRY` дугаар нөөцлөх гэвэл → `500 api.internal_error`.
 - **AT-PST-072** (BR-PST-72). `:apply` амжилттай → `posting_log` (`APPLICATION`, `gl_register_no = NULL`, `source_no` = application_no).
+- **AT-PST-073** (BR-PST-56, -57). **Өгөгдсөн нь** E-H-ийн дараа 2026-12 дахин нээгдсэн (жил `OPEN`), зөвхөн `BANK01` → `CASH01` 50,000 шилжүүлэг батлагдсан, 12-р сар дахин `CLOSED`; **Хэрэв** `:close`; **Тэгэхэд** `200`, `posted = false`, `CL` counter, `GL_*` counter, `gl_register`, `posting_log` өөрчлөгдөөгүй; **Мөн** `fiscal_year.status = 'CLOSED'`, `closing_transaction_no = 1500` хэвээр, шилжүүлгийн санал дахин үүссэн; `:preview-close` нь жилийн төлөвийг өөрчлөхгүй (ROLLBACK). Бичилтгүй жил (бүх данс 0) → мөн `CLOSED`, `closing_transaction_no = NULL`.
+- **AT-PST-074** (BR-PST-62, 14 API-IDEM-12). Нэхэмжлэх `:post` амжилттай (ноорог устсан); ижил key, ижил body-оор давтахад → хадгалсан `200` хариу, `Idempotent-Replayed: true` (`409 api.document_already_posted` биш); A үеийн handler дуудагдаагүй (log). Хоёр зэрэг хүсэлтийн хоёр дахь нь эхнийх 6 s commit хийхгүй байхад → `409 api.idempotency_in_progress`, `Retry-After: 1`.
+- **AT-PST-075** (BR-PST-51). Эх гүйлгээний 2026-02 `OPEN` боловч `allow_posting_from = 2026-03-01` → `:reverse` → `gl.posting_date_outside_window`; `correction-proposal` → санал буцна (`gl.correction_use_reversal` биш). Тэр гүйлгээ E-B-тэй ижил бүтэцтэй (7213 НӨАТ-тай, касс) бол санал: `GL_ACCOUNT 7213` `−12,345.00` (gross, `PURCHASE`, `DOMESTIC`/`VAT10`), `BANK_ACCOUNT CASH01` `+12,345.00`, Σ = 0; 1300 ба 1100-ийн мөр саналд орохгүй (дахин үүснэ).
+- **AT-PST-076** (BR-PST-30, Z-PST-15). E-E: V2-ийн `document_no = SI-2026-00043`, `document_type = PAYMENT`; `SI` counter +1 (V2 дугаар авахгүй); `posted_cash_voucher.no = KO-2026-00031`, `KO` counter +1.
+- **AT-PST-077** (BR-PST-26, BR-PST-04). 2027 оны `GJ` мөр байхгүй + блоклогдсон данстай журнал (2027-01-05) → нэг хариунд `platform.number_series_missing_line` ба `gl.account_blocked` (`422 api.validation_failed`, `errors[]` = 2); counter өөрчлөгдөөгүй.
+- **AT-PST-078** (BR-PST-54). 2026 жил бичилттэй, `OPEN`; 2027-ийн бүх сар `CLOSED` → 2027 `:close` → `gl.year_close_previous_year_open`.
 
 ### 11.2 Golden scenario (`tests/Golden/Scenarios/gl/`)
 
@@ -2372,6 +2491,12 @@ Posting engine нь outbox/inbox-оос **юу ч хэрэглэхгүй** (си
 | `GS-GL-013-preview-equals-post` | E-D + E-C | Preview-ийн entry = Post-ийн entry (дугаараас бусад) |
 | `GS-GL-014-dimension-header-line` | E-C | Авлага header-ийн set 7, орлого мөрийн set 9/7 |
 | `GS-GL-015-rollback-no-gap` | AT-PST-026 | Бүтэлгүй posting-ийн дараа `GJ`, `GL_*` counter завсаргүй |
+| `GS-GL-016-unbalanced-rejected` | AT-PST-022, AT-PST-004 | Тэнцээгүй ваучер 422, дугаар зарцуулаагүй ([16](./16-test-strategy.md) §12.2) |
+| `GS-GL-017-all-errors-at-once` | AT-PST-004, AT-PST-077 | Бүх алдаа нэг хариунд (цувралын алдаа орно) |
+| `GS-GL-018-document-reversal-blocked` | AT-PST-045 | `SALES`/`PURCHASES` → `gl.reversal_use_credit_memo` |
+| `GS-GL-019-company-posting-window` | AT-PST-018, AT-PST-075 | Цонхноос гадуур posting, буцаалт хориглогдох; залруулгын санал |
+| `GS-GL-020-year-crossing-numbering` | AT-PST-077 | Оны мөр байхгүй → `platform.number_series_missing_line`; 2027-ийн мөр нэмсний дараа `GJ-2027-00001` |
+| `GS-GL-021-year-close-noop-status` | AT-PST-073 | Зөрүү 0 дахин хаалт: ваучергүй, жил `CLOSED` (шинэ; 16-д нэмэх) |
 
 Scenario бүр: (1) seed + урьдчилсан нөхцөл, (2) команд, (3) хүлээгдэх `gl_entry`, `gl_transaction`, `gl_register`, writer-ийн мөр (олонлогоор, `entry_no` тасралтгүй), (4) хяналт: Σ = 0, хяналтын данс = дэд дэвтэр.
 
@@ -2405,7 +2530,12 @@ Scenario бүр: (1) seed + урьдчилсан нөхцөл, (2) команд,
 - Register буцаалт: гүйлгээнүүдийн нэг нь аль хэдийн буцаагдсан → `gl.transaction_already_reversed` (бүх register-ийг буцаахгүй; үлдсэнийг гүйлгээ тус бүрээр).
 - Жилийн хаалт: орлогын тайлангийн бүх данс 0 (бизнес бичилтгүй жил) → no-op, ваучер, дугаар үүсэхгүй, жил `CLOSED`.
 - Жилийн хаалт: Y+1 санхүүгийн жил байхгүй → хаалт амжилттай, `W-04`.
-- `gl.dimension_value_must_match` ба хоосон default (`SAME_CODE`, утга NULL) → мөрөнд утгатай бол алдаа.
+- `SAME_CODE`-ийг утгагүйгээр хадгалах боломжгүй (030 CHECK); BC-ийн "SAME_CODE + хоосон" (dimension байх ёсгүй)-г `NO_CODE`-оор тохируулна → мөрөнд утгатай бол `gl.dimension_value_not_allowed`.
+- Буцаах гүйлгээний dimension утга одоо блоклогдсон → буцаалт амжилттай (`SystemGenerated`, BR-PST-33); шинэ журналд тэр утга → `gl.dimension_value_blocked`.
+- Нэхэмжлэх доторх эерэг ба сөрөг мөр ижил buffer түлхүүртэй → нэг G/L мөр, нэг VAT entry (цэвэр дүн); цэвэр 0 бол мөр үүсэхгүй (§5.7.1).
+- Эхний үлдэгдэлд 2300-ийн үлдэгдлийг `GL_ACCOUNT 2300`-оор оруулах → `gl.direct_posting_not_allowed`; 2310-оор оруулна (§5.4.4).
+- Журнал batch/template-д цуврал байхгүй → `gl.journal_series_missing`.
+- НӨАТ-гүй run → `VAT_ENTRY` counter дуудагдахгүй, register-ийн VAT муж NULL (W9).
 - Preview дээр шинэ dimension set үүсгээд rollback → дараагийн Post ижил set-ийг дахин үүсгэнэ (id өөр байж болно, BR-PST-35).
 - Эхний үлдэгдэл 20,000-аас их entry → хэд хэдэн run (§5.4.4), хэсэг бүр тэнцсэн.
 
@@ -2419,6 +2549,8 @@ Scenario бүр: (1) seed + урьдчилсан нөхцөл, (2) команд,
 | CR-PST-02 | `gl.gl_register.hash_version smallint`, `prev_hash bytea`, `hash bytea` (= [13](./13-security-audit-tenancy.md) CR-15) | FR-GL-028, BR-PST-44: register-ийн hash chain; engine-ийн hook бэлэн (§5.9) | Дунд (13-ийн CR-15-аас хамаарна) |
 | CR-PST-03 | `db/seed`-ийн `fn_mn_number_series_def`: `GJ`, `BR`, `BP`, `OB`, `CL` цувралд `date_order = false` (SI, PI, KO, KZ г.м. баримтын цувралд `true` хэвээр) | Журнал ба хаалтын ваучерыг хойш огноогоор (сарын хаалтын өмнө өмнөх сард) бичихэд `ERN02` (`platform.number_series_date_order`) гарна; ⚠ D-C7 (OQ-PST-03) | Дунд |
 | CR-PST-04 | `platform.number_series.yearly_prefix_pattern text NULL` (жишээ `'SI-{YYYY}-'`), `INumberAllocator` нь шинэ оны мөр (`number_series_line`) байхгүй бол үүсгэнэ | FR-PLT-008 AC3 (оны эхэнд дугаар автоматаар 00001-ээс); одоо мөр байхгүй бол `ERN01` (Z-PST-12) | Бага (эзэмшигч: платформ) |
+| CR-PST-05 | `gl.journal_line.system_origin text NULL CHECK (system_origin ~ '^[A-Z_]+:[0-9A-Za-z_-]+$')` + индекс `(company_id, journal_batch_id, system_origin) WHERE system_origin IS NOT NULL` | BR-PST-58: хуримтлагдсан ашгийн шилжүүлгийн саналын мөрийг одоо чөлөөт `comment` текстээр (`{"kind":"RE_TRANSFER","year":Y}`) танина — хэрэглэгч comment-ийг засвал санал давхардана. Багана нь `RE_TRANSFER:2026` хэлбэрээр системийн гарлыг найдвартай тэмдэглэнэ (CR-PST-01-ийн залруулгын холбоостой хамт) | Бага |
+| CR-PST-06 | `910_ledger_guards.sql` `gl.fn_assert_posting_date_allowed`: тохиолдол бүрд тусдаа SQLSTATE (`ERP01` үе алга, `ERP03` үе/жил `OPEN` биш, `ERP04` `LOCKED`, `ERP05` компанийн цонхноос гадуур) эсвэл `ERP01`-ийн `DETAIL`-д машинаар уншигдах шалтгаан | §8.8: одоо бүх тохиолдол `ERP01` тул апп-ийн кодыг (`gl.period_closed` / `gl.period_locked` / `gl.posting_date_outside_window`) сонгохын тулд mapper дахин уншилт хийдэг | Бага |
 
 Тэмдэглэл: posting engine-д шинэ хүснэгт шаардлагагүй. `gl.company_counter`, `gl_entry_reversal`, проекц хүснэгт (Z-PST-02, -03, -08) нь **санал биш** — схемийн одоогийн загвар хангалттай.
 
@@ -2434,3 +2566,45 @@ Scenario бүр: (1) seed + урьдчилсан нөхцөл, (2) команд,
 | OQ-PST-04 | Хуримтлагдсан ашиг руу шилжүүлэх ваучерын огноо: (Y+1)-01-01 уу, хувьцаа эзэмшигчдийн хурлын шийдвэрийн огноо уу? Цуврал `GJ` үү, `CL` үү? | ⚠ D-D4; BR-PST-58 | (Y+1)-01-01, `GJ`, журналын ноорог (хэрэглэгч засна) | Нягтлан зөвлөх |
 | OQ-PST-05 | R1-д журналаар НӨАТ (ДДТД-тэй орцын НӨАТ) оруулахыг зөвшөөрөх үү? Seed-ийн тайлбар "НӨАТ зөвхөн баримтаас" гэдэг; хасагдах эсэх (D-E4) журналын мөрөнд ДДТД-гүй бол хэрхэх вэ? | ⚠ D-E4; BR-PST-38 | Engine дэмжинэ (gross арга); Tax ДДТД-гүй орцын НӨАТ-ыг хасагдахгүй гэж ангилна; UI-д бүлгийн багана нуугдсан | Татварын зөвлөх |
 | OQ-PST-06 | `CLSINCOME`, `VATSTMT` гүйлгээг нийтийн `:reverse`-ээр (Owner, step-up) буцаах боломж хэрэгтэй юу? | D-D5; §3.7 | Үгүй: жилийн хаалт дахин ажиллуулалтаар, НӨАТ-ын хаалт Tax модулийн өөрийн undo-оор | Бүтээгдэхүүн, нягтлан зөвлөх |
+| OQ-PST-07 | Бэлэн мөнгөний гүйлгээг буцаахад (CASHVOUCHER, PAYMENTJNL-ийн касс) шинэ МХ-1/МХ-2 үүсэхгүй (09 BR-BNK-29: эх баримтад "БУЦААГДСАН" тэмдэг). Кассын баримтын бүртгэлд (МХ дугаарын дараалал) буцаалтын тусдаа баримт шаардлагатай юу? | ⚠ D-C7; §5.10 CashBank | Шинэ МХ үүсгэхгүй | Нягтлан зөвлөх |
+
+---
+
+## Хяналтын тэмдэглэл (Review log)
+
+**Огноо:** 2026-10-08. **Хамрах хүрээ:** нягтлан бодох зөв байдал (§7-ийн жишээ бүрийг дахин тооцсон), `db/schema/*.sql` ба seed-тэй нэрийн нийцэл, DECISIONS, 02/13/14-ийн алдааны код ба idempotency, 06/07/08/09/11/16-гийн 05-д хандсан хүсэлт, research-ийн MUST дүрэм.
+
+**Шалгаад зөв гарсан:** E-A … E-L-ийн бүх ваучер Дт = Кт; НӨАТ (1,122.27 / 11,222.73; 70,000 / 30,000; 333.33 / 333.34 / 333.33), жилийн хаалт (Σ net = −2,115,000; хаалт 12,050,000 = 12,050,000; дахин хаалт 100,000; B = −2,015,000), эхний үлдэгдэл (7,100,000 = 7,100,000), counter/register-ийн муж; `gl_entry` INSERT-ийн 37 багана ба `unnest` массивын дараалал; §3-ийн бүх хүснэгт/багана/функц/trigger-ийн нэр 010/020/030/040/060/090/140/910-д байгаа; FR/NFR ба research-ийн rule id бүгд оршин байгаа.
+
+| # | Олдсон асуудал | Засвар | Хэсэг |
+|---|---|---|---|
+| 1 | Зөрүү 0 үед жилийн хаалт `null` буцааж, `FiscalYearCloseWriter` ажиллахгүй → дахин нээсэн жил (13 SEC-POST-04-өөр `OPEN`) хэзээ ч `CLOSED` болохгүй; бичилтгүй жилийн хаалт ч мөн. 11.5-ын "жил CLOSED" хүлээлттэй зөрчилдөж байв | No-op хаалт: ваучергүйгээр жилийн төлөв ба шилжүүлгийн саналыг шинэчилнэ; preview-д rollback; outbox түлхүүр | BR-PST-56, -57, §5.2 цөм, §5.13, §9.1, AT-PST-073 |
+| 2 | Жилийн хаалтын нөхцөл `status <> 'CLOSED'` нь `LOCKED` сарыг "нээлттэй" гэж тооцно; 12-р сар `LOCKED`, өмнөх жил нээлттэй байх (R-PERIODS-REPORTING-05 MUST) тохиолдол тодорхойгүй | `status = 'OPEN'`; 12-р сар LOCKED → `gl.period_locked`; шинэ код `gl.year_close_previous_year_open` | BR-PST-54, §5.13, §8.5, AT-PST-054, -078 |
+| 3 | Idempotency нь 14 (эзэмшигч)-тэй зөрчилтэй: Шат 0 байхгүй (амжилттай `:post`-ийн давталт 409 авна), hash-ийн томьёо өөр, idempotency мөрийн `55P03` → 503 | 14 API-IDEM-03/-07/-12-ийг дагасан | Z-PST-14, BR-PST-62, -63, §5.2, §5.14, §5.15, §8.1, §8.8, AT-PST-074 |
+| 4 | НӨАТ-ын хуваарилалт D-E3 ба 08 BR-TAX-20-ийн running remainder биш, хуримтлагдсан бөөрөнхийлөлтөөр бичигдсэн | Running remainder (сүүлийн мөр = үлдэгдэл); E-D-ийг хүснэгтээр дахин тооцсон (үр дүн ижил) | Z-PST-16, §6.6 |
+| 5 | Бэлэн борлуулалтын 2 дахь ваучерын дугаар 06/09/BC-тэй зөрчилтэй (`KO-…` vs `SI-…`); өмнөх ваучерын дугаарыг авах механизм гэрээнд байгаагүй | `VoucherNumbering.SameAsVoucher`; E-E: V2 `SI-2026-00043` (`PAYMENT`), МХ-1 `KO-2026-00031` тусдаа | Z-PST-15, §5.1, §5.5, BR-PST-30, §3.7, §5.8, E-E, AT-PST-076 |
+| 6 | Хасагдахгүй НӨАТ-тай мөрийн VAT G/L дүн тодорхойгүй (суурьт ND нэмээд VAT мөрөнд бүтэн НӨАТ бичвэл тэнцэхгүй); FULL_VAT-ын суурь дүн 1-р дүрэмтэй зөрчилтэй; борлуулалтын RC | `D = VAT − ND`; RC: 1300 `+D`, 2305 `−VAT`; FULL_VAT: суурь = `row.VatAmount` 1300 дээр; мөрийн тэнцлийн assert | BR-PST-36, §5.7.1, §5.7.2 |
+| 7 | Залруулгын санал: (а) эх үе `OPEN` боловч цонхноос гадуур бол буцаалт ч, санал ч боломжгүй; (б) gross томьёо `amount + vat_amount` нь ND, RC, FULL_VAT-д буруу (Σ ≠ 0) | (а) `CheckPostingDateAsync`-оор шийднэ; (б) VAT entry-ийн тооцооны төрлөөр томьёо; FULL_VAT суурийг оруулна | BR-PST-51, §5.11, AT-PST-075 |
+| 8 | Жишээнд хяналтын данс 1110-ыг журналын `GL_ACCOUNT` мэт бичсэн (E-G, E-I) — BR-PST-15-аар унах ёстой | `BANK_ACCOUNT BANK01 (G/L 1110)` болгож тодруулсан | E-G, E-I |
+| 9 | Ижил dimension хослолд хоёр set id (5 ба 7) — `UNIQUE (company_id, key_hash)`-тэй зөрчилтэй | Set 5-ыг хасаж E-A-д 7 | §7 мастер, E-A |
+| 10 | Эхний үлдэгдэлд дэд дэвтэргүй хяналтын данс (1300/2300/2305/2320/8290)-ын үлдэгдлийг оруулах зам байгаагүй; 1360/2210/2365-ийн зам тодорхойгүй | 2310/2325 тооцооны данс; EMPLOYEE/CUSTOMS бүлгийн зам | §5.4.4 |
+| 11 | Журнал: огноо/дугааргүй мөр ваучер бүлэглэхэд `null`-оор унах; хоосон мөр устахгүй (AT-PST-010-тай зөрчилтэй); BC-ийн хоосон мөрийн томьёоноос зөрүүтэй; цувралгүй template | Бүлэглэлтээс хасах; бүх мөрийг устгах; BC `EmptyLine`; `gl.journal_series_missing` | BR-PST-10, §5.4.1, §8.2 |
+| 12 | ERN01..03 нь B үеийн дугаар олголтын үед л илэрч BR-PST-04 ("бүх алдааг нэг дор")-ийг зөрчинө | `CheckLockedAsync`-ийн query (5)-аар урьдчилж шалгана | BR-PST-26, §5.3, §8.1, AT-PST-077 |
+| 13 | `fn_next_entry_no(count < 1)` → `22023`; writer 0 мөрөнд дуудах, нэг ledger-ийг хоёр удаа нөөцлөх (register-ийн муж тасрах) эрсдэл | §3.3 тэмдэглэл, W9, §8.8 | §3.3, §5.5, §5.8 |
+| 14 | `ReversalMarker`-ийг writer-ийн бүртгэлээр хайвал BR-PST-41-ээр 500 болно; `ReverseAsync`-ийг хэдэн удаа дуудах нь тодорхойгүй | Тусгай `Ledger = "REVERSAL"`, бүх `IReversibleLedger`-ийг `Order`-оор нэг plan-аар нэг удаа | §5.10 |
+| 15 | `SystemGenerated` мөрийг dimension-ий блокийн шалгалтаас код чөлөөлдөг боловч BR-PST-33 чөлөөлөөгүй (буцаалт блоклогдсон утгаар унах); `SAME_CODE` + хоосон утга схемийн CHECK-ээр боломжгүй | BR-PST-33 тодруулсан; код ба хязгаарын тохиолдлыг засав | BR-PST-33, §5.6, §11.5 |
+| 16 | `ERP02`-ийг `gl.period_locked`-д буулгасан нь буруу (posting-ийн LOCKED нь `ERP01`); `ERP01` олон утгатай | Mapper-ийн дүрэм; CR-PST-06 | §8.8, §12 |
+| 17 | Preview-ийн no-op замд `MarkRollbackOnly` дуудагдахгүй | Засав | §5.2 |
+| 18 | Posting log-ийн FAILED хүрээ (A үе, COMMIT-ийн deferred алдаа) тодорхойгүй | `PostingLogFilter`-ийн хүрээ | BR-PST-67, §5.17 |
+| 19 | Шилжүүлгийн ноорогийн batch-ийг дугаар олгосны дараа түгжих (BR-PST-61-ийн дараалал зөрчих), маркерыг JSON-оор хайх, batch байхгүй тохиолдол, GJ `date_order`-ийн `ERN02` эрсдэл | `LockSourceAsync`-д түгжинэ; тэмдэгт мөрийн тэнцүү; `W-06`; анхааруулга ба CR-PST-05 | BR-PST-58, -61, §5.13, §8.7 |
+| 20 | Posting buffer-т тэмдгийн дүрэм (16 Q10), хасагдахгүй НӨАТ-ын шалтгаан ба НХАТ-ын код (08 Z-TAX-15) байхгүй | Тэмдэг түлхүүрт орохгүй (BC); `NonDeductibleReason`, `CityTaxCodeId` нэмсэн | §5.7.1 |
+| 21 | FX томьёо 09 BR-FX-21/-26-тэй зөрчилтэй | 09-ийг дагасан | Z-PST-17, §6.10 |
+| 22 | 11 X-04/X-05: `FA_DEPRECIATION_RUN`, `ItemApplicationEntry`, `PHYSINVJNL` | Нэмсэн | §3.3, §5.1, §3.7 |
+| 23 | `Source` дүрэм E-A-тай зөрчилтэй (банкны мөрийг partner гэж тооцоогүй); hash contributor-ийн нэр 2 өөр; `GlPostingLine.Key`-ийн жишээ §5.4.2-тэй зөрүүтэй; R-VAT-26 буруу ишлэл | Тааруулсан | §5.4.2, §9.4, §5.1, §5.7.2 |
+| 24 | Тестүүд: AT-PST-005 (14 API-JSON-06a-тай зөрчил), AT-PST-043 (`app_user` → `42501`), AT-PST-054 (үеийн нэр); 16-д байгаа GS-GL-016…020 05-д алга | Засаж, AT-PST-073…078, GS-GL-016…021 нэмсэн | §11 |
+
+**Schema change requests (шинэ):** CR-PST-05 (`gl.journal_line.system_origin`), CR-PST-06 (`fn_assert_posting_date_allowed`-ийн тусдаа SQLSTATE). CR-PST-01…04 хэвээр.
+
+**Бусад баримтад дамжуулах:** 07 BR-PUR-72 (бэлэн худалдан авалтын 2 дахь ваучерын дугаар, Z-PST-15); 14 §9.5 (шинэ код, `gl.fiscal_year_already_closed`-ийг `:close`-д хэрэглэхгүй); 16 (GS-GL-021, AT-PST-073…078); 08 Z-TAX-09 ба Z-TAX-15 хаагдсан.
+
+**Нээлттэй хэвээр:** OQ-PST-01…06 (⚠ D-C3, D-C7, D-D4, D-E4), шинэ OQ-PST-07 (кассын буцаалтын МХ баримт).

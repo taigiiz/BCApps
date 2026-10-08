@@ -1,6 +1,6 @@
 # 09. Мөнгөн хөрөнгө (касс, банк, хэтэвч) ба валют (Cash, Bank & FX) — модулийн тодорхойлолт
 
-> **Төлөв:** Хөгжүүлэлтэд бэлэн ноорог v1.0. **Огноо:** 2026-10-07.
+> **Төлөв:** Хөгжүүлэлтэд бэлэн ноорог v1.1 (adversarial хяналт хийгдсэн — төгсгөлийн "Хяналтын тэмдэглэл"). **Огноо:** 2026-10-08.
 > **Модуль:** `bank` schema (мөнгөний данс: касс / банк / хэтэвч, банкны дэд дэвтэр, кассын баримт МХ-1/МХ-2, хуулга импорт, автомат тулгалт, банкны тулгалт, кассын тооллого, хэтэвчийн тооцоо) + `fx` schema (валют, ханш, Монголбанкны өдрийн ханшийн job, хөрвүүлэлт, тулгалтын хэрэгжсэн ханшийн зөрүү, хэрэгжээгүй ханшийн зөрүүний дахин үнэлгээ).
 > **Нэг эх сурвалж:** [DECISIONS.md](./DECISIONS.md) (§K: нэршлийг [`db/schema/*.sql`](./db/schema/) тодорхойлно). Бусад баримттай зөрвөл DECISIONS → schema → энэ баримт гэсэн дарааллаар давамгайлна.
 > **Уншигч:** backend хөгжүүлэгч, QA, нягтлан ба татварын зөвлөх.
@@ -24,6 +24,7 @@
 - [12. Schema change requests](#12-schema-change-requests)
 - [13. Нээлттэй асуулт](#13-нээлттэй-асуулт)
 - [Хавсралт А. Бусад баримттай зөрүү](#хавсралт-а-бусад-баримттай-зөрүү)
+- [Хяналтын тэмдэглэл (Review log)](#хяналтын-тэмдэглэл-review-log)
 
 ---
 
@@ -58,7 +59,7 @@
 | `currency.ref_currency`, `currency.ref_official_rate`, `currency.company_rate`, `currency.rate_fetch_log` (02 §4.2.3) | `fx.iso_currency`, `fx.official_exchange_rate`, `fx.currency`, `fx.currency_exchange_rate`; татлагын лог = `integration.job_run` |
 | `fx_reval_run`, `fx_reval_line` (research §7) | `fx.exch_rate_adjmt_register` (BC T86), `fx.exch_rate_adjmt_ledger_entry` (BC T186) |
 | Ханшийн эх сурвалж `MONGOLBANK_AUTO` (FR-FX-002/003, 02 §9.5) | `fx.official_exchange_rate.source = 'MONGOLBANK'`; `fx.currency_exchange_rate.source ∈ {'MONGOLBANK','MANUAL','IMPORT'}` |
-| R1-д `currency_code = MNT` (FR-FX-001 AC1) | `currency_code IS NULL` = LCY (MNT) (бүх хүснэгтийн COMMENT; `CHECK (currency_code IS NOT NULL OR amount = amount_lcy)`) |
+| R1-д `currency_code = MNT` (FR-FX-001 AC1) | `currency_code IS NULL` = LCY (MNT) (бүх хүснэгтийн COMMENT; `gl.journal_line`-д `CHECK (currency_code IS NOT NULL OR amount = amount_lcy)`, бусад ledger-д апп/writer баталгаажуулна) |
 | `12-bank-cash spec`, `13-currency-fx spec`, "Банк/кассын spec", "Валютын spec", "FX spec" (05, 06, 07, 14, 16) | Энэ баримт (`09-bank-cash-fx.md`) |
 | `event.PaymentPosted`, `BankStatementImported`, `BankReconciled`, `ExchangeRatesUpdated` (02 §4.2.3, §4.2.10) | Outbox topic `event.payment.posted`, `event.bank_statement.imported`, `event.bank_reconciliation.posted`, `event.exchange_rates.updated` (`integration.outbox.topic` CHECK жижиг үсэг шаарддаг; 06 §0.2-тай ижил) |
 | `MongolbankRateFetchJob` (02 §9.5) | `integration.job_definition.code = 'fx.mongolbank_rates'` (scope `SYSTEM`, `max_attempts = 5`) |
@@ -119,10 +120,10 @@
 | FR-BNK-007 | Мөнгөний данс хоорондын шилжүүлэг | R1 | BR-BNK-30..32, §5.4, P2, P16 |
 | FR-BNK-008 | Хуулга импорт (CSV/XLSX wizard) | R1 | BR-BNK-40..49, §5.7, §5.8 |
 | FR-BNK-009 | Хаан ба Голомт банкны preset | R1 (Should) | §5.8.4, OQ-BNK-01 |
-| FR-BNK-010 | Давхар импортоос сэргийлэх | R1 | BR-BNK-44..46, §6.6 |
+| FR-BNK-010 | Давхар импортоос сэргийлэх | R1 | BR-BNK-44..46, BR-BNK-80 (хаях), §6.6 |
 | FR-BNK-011 | Автомат тулгалт | R1 | BR-BNK-50..62, §5.9, §6.7 |
 | FR-BNK-012 | Текстээс данс руу дүрэм | R1 (Should) | BR-BNK-58, §5.9.6 |
-| FR-BNK-013 | Хянах ба "Батлах ба тулгах" | R1 | BR-BNK-63..72, §5.10, §5.11, P6, P7 |
+| FR-BNK-013 | Хянах ба "Батлах ба тулгах" | R1 | BR-BNK-63..72, BR-BNK-81, 83, §5.10, §5.11, P6, P7 |
 | FR-BNK-014 | Хуулгын тулгалтыг буцаах | R1 (Should) | BR-BNK-73..75, §5.12, P17, SCR-BNK-02 |
 | FR-BNK-015 | Мөнгөний бичилтийг буцаах | R1 | BR-BNK-76..77 |
 | FR-BNK-016 | Банкны тулгалтын тайлан | R1 | BR-BNK-78, §6.8 |
@@ -284,7 +285,7 @@ flowchart LR
 | `entry_no` | Counter `BANK_LEDGER_ENTRY` |
 | `bank_account_id`, `posting_date`, `document_date`, `document_type`, `document_no`, `external_document_no`, `description` | Ваучерын мэдээлэл. `document_no` = ваучерын хуулийн дугаар (`KO-…`, `BR-…`, `SI-…` г.м.) |
 | `counterparty_name` | Харьцагчийн нэр (кассын дэвтэр, тулгалтын текст харьцуулалт) |
-| `currency_code`, `amount`, `amount_lcy` | `amount` = **мөнгөний дансны валютаар**, тэмдэгтэй (орлого +); `amount_lcy` = G/L мөрийнх. LCY дансанд `amount = amount_lcy` |
+| `currency_code`, `amount`, `amount_lcy` | `currency_code` = **мөнгөний дансны** валют (гүйлгээний валют биш; LCY данс USD төлбөр хүлээн авсан ч NULL, P15); `amount` = мөнгөний дансны валютаар, тэмдэгтэй (орлого +); `amount_lcy` = G/L мөрийнх. LCY дансанд `amount = amount_lcy` (BLE-д энэ CHECK схемд байхгүй — writer баталгаажуулна; `gl.journal_line`-д л `CHECK (currency_code IS NOT NULL OR amount = amount_lcy)`) |
 | `debit_amount`, `credit_amount` | Generated (тэмдгээс) |
 | `remaining_amount`, `open`, `positive` | Тулгалтын төлөв (`open = amount ≠ 0` бичихэд; 0 дүнтэй бол `false`) |
 | `closed_by_entry_no`, `closed_at_date` | Хаасан entry / хуулгын огноо |
@@ -343,7 +344,7 @@ flowchart LR
 | `fx.official_exchange_rate` | `currency_code`, `rate_date`, `rate_mnt` (1 нэгжид ногдох MNT), `source = 'MONGOLBANK'`, `fetched_at`, `source_reference`; `UNIQUE (source, currency_code, rate_date)` | Глобал (`tenant_id`-гүй), зөвхөн worker бичнэ |
 | `fx.currency` | `code`, `iso_code`, `description`, `amount_rounding_precision` (USD 0.01, JPY/KRW 1), `unit_amount_rounding_precision`, `invoice_rounding_*`, `realized_gains/losses_account_id`, `unrealized_gains/losses_account_id` (NULL = `general_ledger_setup`-ийн анхдагч), `last_date_adjusted` (сүүлийн дахин үнэлгээний огноо, BR-FX-53), `blocked` | Компанийн валют (LCY мөр биш) |
 | `fx.currency_exchange_rate` | `currency_id`, `starting_date`, `exchange_rate_amount` (= 1), `relational_exch_rate_amount` (= MNT), `adjustment_exch_rate_amount`, `relational_adjmt_exch_rate_amount` (**үргэлж эхний хоёртой ижил**, BR-FX-06), `source` (`MONGOLBANK`/`MANUAL`/`IMPORT`), `official_exchange_rate_id`; `UNIQUE (company_id, currency_id, starting_date)` | Компанийн ханш |
-| `fx.exch_rate_adjmt_register` | `no`, `run_no`, `posting_date`, `document_no`, `account_type` (`CUSTOMER`/`VENDOR`/`BANK_ACCOUNT`), `posting_group_code`, `currency_code`, `currency_factor`, `adjusted_base` (Σ FCY), `adjusted_base_lcy` (Σ LCY өмнө), `adjusted_amt_lcy` (Σ delta), `transaction_no`, `gl_register_no` | BC T86, run × данс төрөл × бүлэг × валют бүрд нэг мөр |
+| `fx.exch_rate_adjmt_register` | `no`, `run_no`, `posting_date`, `document_no`, `account_type` (`CUSTOMER`/`VENDOR`/`BANK_ACCOUNT`), `posting_group_code`, `currency_code`, `currency_factor`, `adjusted_base` (Σ FCY), `adjusted_base_lcy` (Σ LCY өмнө), `adjusted_amt_lcy` (Σ delta), `transaction_no`, `gl_register_no` | BC T86, run × данс төрөл × бүлэг × валют × `posting_date` бүрд нэг мөр (BR-FX-47) |
 | `fx.exch_rate_adjmt_ledger_entry` | `entry_no`, `register_no`, `posting_date`, `account_type`, `account_id`, `account_no`, `document_type/no` (дахин үнэлсэн entry-ийнх), `currency_code`, `currency_factor`, `base_amount` (FCY үлдэгдэл), `base_amount_lcy` (LCY үлдэгдэл өмнө), `adjustment_amount` (delta), `detailed_ledger_entry_no`, `ledger_entry_no` | BC T186, item бүрийн аудит |
 | `gl.general_ledger_setup` | `cash_over_account_id` (8240), `cash_short_account_id` (8440), `realized_fx_gain/loss_account_id` (8500/8500), `unrealized_fx_gain/loss_account_id` (8510/8510) | Seed (D-G1, D-G3) |
 | `party.cust/vendor_ledger_entry` | `currency_code`, `original_currency_factor` (posting-ийн ханш, өөрчлөгдөхгүй), `adjusted_currency_factor` (сүүлийн дахин үнэлгээний ханш; whitelist), `remaining_amount`, `remaining_amount_lcy` (кэш = Σ detailed) | R2 |
@@ -372,6 +373,9 @@ flowchart LR
 3. "Нэг G/L данс = нэг мөнгөний данс" (FR-BNK-001 AC2)-ийг DB хамгаалдаггүй → **SCR-BNK-03**.
 4. Баримт/entry-д MNT ханш биш зөвхөн `currency_factor` хадгалагддаг → дунд цэгийн (midpoint) бөөрөнхийлөлт алдагдана (§6.2) → **SCR-FX-01**.
 5. Банкны дахин үнэлгээний дансны сонголт → **SCR-FX-02**.
+6. Дахин үнэлгээний run-ийг буцаасныг тэмдэглэх багана байхгүй → **SCR-FX-05**.
+7. `BR`/`BP` цувралын `date_order = true` (схемийн анхдагч) нь тулгалтын ваучерын огнооны дарааллыг хаана → **SCR-BNK-08** (seed).
+8. `bank_account_statement`-ийн буцаалтын баганыг `fn_ledger_update`-ээр (bigint түлхүүр) шинэчлэх боломжгүй → **SCR-BNK-02**-т тусгай функц.
 
 ---
 
@@ -385,7 +389,7 @@ flowchart LR
 |---|---|---|
 | BR-BNK-01 | `kind` нь үүсгэсний дараа өөрчлөгдөхгүй, хэрэв BLE байвал (`bank.account_has_entries`). | D-G1, R-BANK-CASH-01 |
 | BR-BNK-02 | Мөнгөний данс бүр өөрийн `bank_account_posting_group`-тэй; тэр бүлгийн `gl_account_id` нь өөр ямар ч мөнгөний дансны бүлэгт ашиглагдаагүй, `account_type = 'POSTING'`, `direct_posting = false` байна. Зөрвөл `bank.gl_account_in_use`. | FR-BNK-001 AC2, R-BANK-CASH-06, SCR-BNK-03 |
-| BR-BNK-03 | `iban` өгвөл: `MN`-ээр эхэлсэн бол яг 20 тэмдэгт, ISO 13616 mod-97 = 1; бусад улсын IBAN ≤ 34 тэмдэгт, mod-97. Буруу бол `bank.iban_invalid`. `bank_account_no` нь зөвхөн тоо ба зураас (≤ 30). | I-10, 02 §9.4 |
+| BR-BNK-03 | `iban` өгвөл: эхлээд бүх зай/зураасыг хасаж том үсэг болгоно (схемийн CHECK `^[A-Z]{2}[0-9]{2}[A-Z0-9]{8,30}$` зайг зөвшөөрдөггүй; UI нь 4-өөр бүлэглэж харуулна); `MN`-ээр эхэлсэн бол яг 20 тэмдэгт, ISO 13616 mod-97 = 1; бусад улсын IBAN ≤ 34 тэмдэгт, mod-97. Буруу бол `bank.iban_invalid`. `bank_account_no` нь зөвхөн тоо ба зураас (≤ 30). | I-10, 02 §9.4 |
 | BR-BNK-04 | `currency_code`-ийг зөвхөн тухайн дансны `balance = 0`, `balance_lcy = 0` ба `open = true` BLE байхгүй үед солино (`bank.account_currency_locked`). R1-д `currency_code` заавал NULL (`gl.currency_not_enabled`). | R-BANK-CASH-01, FR-FX-001 |
 | BR-BNK-05 | `CASH` данс `cash_receipt_no_series_id` ба `cash_payment_no_series_id`-тэй байна; тэдгээр нь `gapless = true`, `reset_yearly = true`, `manual_nos = false` цуврал. Касс бүр өөрийн цувралтай (D-C7, seed `KO`/`KZ`; хоёр дахь касс нэмэхэд wizard `KO2`/`KZ2` үүсгэнэ). | D-C7 ⚠, FR-BNK-002 |
 | BR-BNK-06 | BLE-тэй мөнгөний дансыг устгахгүй, зөвхөн `blocked = true` (`api.resource_in_use`). | R-BANK-CASH-09, D-I3 |
@@ -398,7 +402,7 @@ flowchart LR
 | ID | Дүрэм | Эх |
 |---|---|---|
 | BR-BNK-10 | Posting-ийн өмнө (түгжээний дор): мөнгөний данс `blocked = false`, posting group ба G/L данстай. Эс бөгөөс `bank.account_blocked` / `bank.posting_group_missing`. | R-BANK-CASH-02 |
-| BR-BNK-11 | Валютын нийцэл: (a) мөрийн валют NULL → данс LCY байна; (b) данс FCY → мөрийн валют = дансны валют; (c) данс LCY, мөр FCY (R2) → BLE `amount = amount_lcy`. Зөрвөл `bank.account_currency_mismatch`. | R-BANK-CASH-03, R-CURRENCY-FX-11 |
+| BR-BNK-11 | Валютын нийцэл: (a) мөрийн валют NULL → данс LCY байна; (b) данс FCY → мөрийн валют = дансны валют; (c) данс LCY, мөр FCY (R2) → BLE `amount = amount_lcy` — **зөвхөн `BANK`/`WALLET`-д**; `CASH` данс нь биет мөнгөн тэмдэгт тул мөрийн валют = кассын валют байх ёстой (MNT касс USD мөр хүлээн авахгүй; валютын бэлэн мөнгийг 1101 валютын кассаар). Зөрвөл `bank.account_currency_mismatch`. | R-BANK-CASH-03, R-CURRENCY-FX-11 |
 | BR-BNK-12 | `BankLedgerLine` бүр яг нэг BLE ба мөнгөний дансны G/L данс руу нэг G/L мөр (`amount_lcy` ижил, ижил `transaction_no`) үүсгэнэ. BLE: `remaining_amount = amount`, `open = (amount ≠ 0)`, `positive = (amount > 0)`, `statement_status = 'OPEN'`. | R-BANK-CASH-04, 06 |
 | BR-BNK-13 | Мөнгөний дансны G/L данс (1100–1121) руу `GL_ACCOUNT` төрлийн мөрөөр шууд бичихийг хориглоно (`gl.direct_posting_not_allowed`); зөвхөн `BANK_ACCOUNT` төрлийн мөр/тал. | Z-BNK-02, FR-GL-003 |
 | BR-BNK-14 | Invariant (шөнийн шалгалт, 02 §8.8): мөнгөний данс бүрд Σ BLE `amount_lcy` = G/L дансны үлдэгдэл (бүх огноо). LCY дансанд мөн Σ `amount` = G/L. | R-BANK-CASH-06 |
@@ -426,11 +430,11 @@ flowchart LR
 |---|---|---|
 | BR-BNK-30 | Данс хоорондын шилжүүлэг (`partyType = BANK_ACCOUNT`) нь **нэг** G/L transaction: хүлээн авах данс Дт, илгээх данс Кт, хоёр BLE. Хоёр данс ижил бол `bank.transfer_same_account`. | FR-BNK-007 AC1 |
 | BR-BNK-31 | Шилжүүлгийн ваучерын дугаар: хүлээн авах данс CASH бол түүний `KO`; эс бөгөөс илгээх данс CASH бол түүний `KZ`; бусад тохиолдолд илгээх дансны `BP`. Нөгөө тал CASH бол түүний МХ-ийг BR-BNK-21-ээр тусдаа дугаартай үүсгэнэ. Source code: CASH оролцвол `CASHVOUCHER`, эс бөгөөс `PAYMENTREG`. | GS-CASH-003, GS-CASH-005 |
-| BR-BNK-32 | Өөр валютын хоёр данс хоорондын шилжүүлэг (R2, валют арилжаа): илгээх FCY тал = `rc(FCY)`, LCY = `r(FCY × rate_D)` (албан ханш); хүлээн авах MNT тал = хэрэглэгчийн өгсөн бодит MNT дүн (`counterAmount`); зөрүү → хэрэгжсэн ханшийн зөрүүний данс (8500). | R-CURRENCY-FX-11, P16 |
-| BR-BNK-33 | Кассын тооллого (`:count-cash`): `difference = counted − balance_at(countDate)`. `< 0` → `cash_short_account` (8440) Дт / касс Кт; `> 0` → касс Дт / `cash_over_account` (8240) Кт; `= 0` → posting хийхгүй (`posting = null`). Ваучер `GJ` цуврал, source `CASHCOUNT`, шалтгаан `CASH_DIFF`, МХ үүсэхгүй. `countDate` ≤ өнөөдөр, нээлттэй үе. Данс нь CASH биш бол `bank.not_cash_account`. | D-G1, FR-BNK-004, GS-CASH-004 |
+| BR-BNK-32 | Өөр валютын хоёр данс хоорондын шилжүүлэг (R2, валют арилжаа): `amount` = `bankAccountId`-ийн валютаар, `counterAmount` = нөгөө дансны валютаар (хоёулаа заавал, > 0; валют ижил бол `counterAmount` хориотой → `bank.transfer_counter_amount_invalid`). Тал бүрийн LCY: MNT тал = өөрийн дүн; FCY тал = `r(FCY × rate_D)` (тухайн валютын албан ханш, BR-FX-04). `diff = LCY_to − LCY_from`; `diff > 0` → хэрэгжсэн ханшийн зөрүүний gain данс (8500) Кт `diff`, `< 0` → loss данс (8500) Дт `|diff|`, `= 0` → мөргүй. Чиглэл (USD → MNT зарах, MNT → USD худалдаж авах, USD → EUR) бүгд энэ нэг томьёогоор. R1-д (зөвхөн MNT) хэрэглэгдэхгүй. | R-CURRENCY-FX-11, P16 |
+| BR-BNK-33 | Кассын тооллого (`:count-cash`): `difference = counted − balance_at(countDate)`. `< 0` → `cash_short_account` (8440) Дт / касс Кт; `> 0` → касс Дт / `cash_over_account` (8240) Кт; `= 0` → posting хийхгүй (`posting = null`). Ваучер `GJ` цуврал, source `CASHCOUNT`, шалтгаан `CASH_DIFF`, МХ үүсэхгүй. `countDate` ≤ өнөөдөр, нээлттэй үе; `counted ≥ 0` ба кассын валютын нарийвчлалтай (`api.amount_precision_exceeded`). Валютын касс (R2): `difference` нь FCY, BLE `amount = difference`, G/L/BLE `amount_lcy = r(difference × rate_countDate)` (BR-FX-04). Хоцорсон огноотой тооллогын дутагдал нь хойших өдрийн үлдэгдлийг сөрөг болговол BR-BNK-25 (`bank.cash_negative_balance`). Данс нь CASH биш бол `bank.not_cash_account`. | D-G1, FR-BNK-004, GS-CASH-004 |
 | BR-BNK-34 | QPay/картын төлбөрийн хэлбэр (`QPAY`, `CARD`) нь `bal_account_type = 'BANK_ACCOUNT'` WALLET дансыг заана; бэлэн бус тул МХ үүсэхгүй; eBarimt `payments[].code` = `BANK_TRANSFER_QPAY` / `PAYMENT_CARD`. | D-G2, FR-BNK-017, I-11 |
-| BR-BNK-35 | **Хэтэвчийн тооцоо** (`:settle-wallet`): сонгосон нээлттэй WALLET BLE-үүдийн Σ = `gross`; `fee = gross − net ≥ 0`. Нэг transaction: банк Дт `net`, шимтгэлийн данс (анхдагч 8300) Дт `fee`, WALLET Кт `gross`. Сонгосон WALLET BLE-үүд ба шинэ WALLET BLE (−gross) шууд хаагдана (`statement_status = 'CLOSED'`, `statement_no` = тооцооны ваучерын дугаар, `closed_at_date` = тооцооны огноо). Банкны шинэ BLE нээлттэй үлдэж хуулгаар тулгагдана. | FR-BNK-017 AC1, GS-CASH-006 |
-| BR-BNK-36 | Хэтэвчийн тооцоонд `fee < 0` (банкинд орсон нь их) бол `bank.wallet_settlement_invalid`; шимтгэлийн НӨАТ нь шимтгэлийн дансны VAT тохиргоогоор (анхдагч EXEMPT; ⚠ OQ-BNK-04). | FR-BNK-017 |
+| BR-BNK-35 | **Хэтэвчийн тооцоо** (`:settle-wallet`): сонгосон нээлттэй WALLET BLE-үүдийн Σ = `gross`; `fee = gross − net ≥ 0`. Нэг transaction: банк Дт `net`, шимтгэлийн данс (анхдагч 8300) Дт `fee`, WALLET Кт `gross`. Сонгосон WALLET BLE-үүд ба шинэ WALLET BLE (−gross) шууд хаагдана (`statement_status = 'CLOSED'`, `statement_no` = тооцооны ваучерын дугаар, `closed_at_date` = тооцооны огноо). Банкны шинэ BLE нээлттэй үлдэж хуулгаар тулгагдана. WALLET дансны `last_statement_no` / `balance_last_statement`-ийг **өөрчлөхгүй** (тэдгээр нь зөвхөн хуулгын тулгалтад, BR-BNK-70; эс бөгөөс QPay-ийн тайланг хуулга мэт тулгах үед BR-BNK-65/66 эвдэрнэ). Нээлттэй тулгалтын бүлэгт орсон WALLET BLE-ийг сонговол `bank.entry_in_reconciliation`. | FR-BNK-017 AC1, GS-CASH-006 |
+| BR-BNK-36 | Хэтэвчийн тооцоонд `fee < 0` (банкинд орсон нь их), `net ≤ 0`, `gross ≤ 0` эсвэл сонгосон бичилтгүй бол `bank.wallet_settlement_invalid`; WALLET ба хүлээн авах дансны валют ижил. Шимтгэлийн мөр нь seed-ийн `gen_posting_type = NONE` тул **НӨАТ-гүй** (VAT entry үүсэхгүй; 05 BR-PST-38); НӨАТ-тай гэж үзвэл (⚠ OQ-BNK-04) хүсэлтэд `feeVat {genPostingType, vatBusPostingGroup, vatProdPostingGroup}` өгнө. | FR-BNK-017, 05 BR-PST-38 |
 
 ### 4.5 Хуулга импорт (BR-BNK-40..49)
 
@@ -438,14 +442,14 @@ flowchart LR
 |---|---|---|
 | BR-BNK-40 | Импорт нь мөнгөний данс ба профайлтай (`importFormatId ?? bank_account.import_format_id`); профайлгүй бол wizard-аар (§5.8) үүсгэнэ. Файл ≤ 20 MB, ≤ 10 000 мөр (`api.payload_too_large`, `bank.statement_too_large`). | FR-BNK-008, 14 §15.4 |
 | BR-BNK-41 | Баганыг `column_no` (1-ээс) эсвэл `column_header`-аар (нормчилсон гарчиг тэнцүү, §5.8.2) олно. `optional = false` багана олдохгүй эсвэл мөрөнд хоосон бол тэр мөр алдаа (`required_missing`). | R-BANK-CASH-35 |
-| BR-BNK-42 | Дүн: `SIGNED` → `amount = parse(AMOUNT) × multiplier`; `DEBIT_CREDIT` → `amount = parse(CREDIT_AMOUNT) × m_c − parse(DEBIT_AMOUNT) × m_d` (хуулгын **кредит = данс руу орсон**, дебит = гарсан). Нүд `negative_sign_identifier`-ээр эхэлсэн/төгссөн бол тэр утгыг сөрөг болгоно. Үр дүнг дансны валютын нарийвчлалаар `rc()` хийж, бөөрөнхийлөлтөөр өөрчлөгдвөл алдаа (`amount_precision`). `amount = 0` мөрийг алгасна (тоолно). | R-BANK-CASH-35, research §8 "Sign handling" |
+| BR-BNK-42 | Дүн: `SIGNED` → `amount = parse(AMOUNT) × multiplier`; `DEBIT_CREDIT` → `amount = parse(CREDIT_AMOUNT) × m_c − parse(DEBIT_AMOUNT) × m_d` (хуулгын **кредит = данс руу орсон**, дебит = гарсан). Нүд `negative_sign_identifier`-ээр эхэлсэн/төгссөн бол тэр утгыг сөрөг болгоно. Үр дүнг дансны валютын нарийвчлалаар `rc()` хийж, бөөрөнхийлөлтөөр өөрчлөгдвөл алдаа (`amount_precision`). `amount = 0` мөрийг алгасна (тоолно). `CURRENCY` багана харгалзуулсан бол утга нь (ISO код; `MNT`, `₮`, `ТӨГ` → MNT) дансны валюттай тэнцүү байх ёстой, эс бөгөөс мөрийн алдаа `currency_mismatch`; `bank_statement_line.currency_code` = дансны валют (NULL = MNT). | R-BANK-CASH-35, research §8 "Sign handling", BR-BNK-11 |
 | BR-BNK-43 | Огноо: `data_format ?? date_format`-аар, invariant culture; цагтай бол огнооны хэсгийг авна. `VALUE_DATE` байхгүй бол NULL. | R-BANK-CASH-35, 37 |
 | BR-BNK-44 | **Ижил файл:** `file_sha256` нь тухайн дансны `DISCARDED` биш хуулгатай давхцвал бүхэлд нь татгалзана — 409 `bank.statement_already_imported` (`existingResourceId`). | FR-BNK-010, `ux_bank_statement__file` |
 | BR-BNK-45 | **Давхар мөр:** `dedupe_key` (§6.6) нь тухайн дансны `IGNORED` биш мөртэй давхцвал тэр мөрийг алгасаж `skippedDuplicateCount`-д тоолно (posted ба нээлттэй тулгалтын аль алинд). | FR-BNK-010 AC1, R-BANK-CASH-34 |
 | BR-BNK-46 | Давхардлын түлхүүрийн бүрэлдэхүүн нь файлын гүйлгээний id (`TRANSACTION_ID`, Хаан `record`/`journal`) байвал түүнийг, эс бөгөөс (огноо, дүн, нормчилсон тайлбар, үлдэгдэл, давтамжийн дугаар)-ын SHA-256. | I-10, research §7.7 |
 | BR-BNK-47 | **Үлдэгдлийн шалгалт:** `opening + Σ amount = closing` (өгөгдсөн/үүсгэсэн үед) — зөрвөл импорт **хийгдэнэ**, хариуны `balanceCheck.ok = false`, `difference`; мөн `RUNNING_BALANCE` байвал мөр бүрд `prev + amount = running` шалгаж зөрсөн мөрийг `warnings[]`-д. Батлах үед BR-BNK-66 хатуу шалгана. | FR-BNK-008 AC1 |
 | BR-BNK-48 | Хуулгын `opening_balance` ≠ (`balance_last_statement` + нээлттэй тулгалтын Σ мөр) бол анхааруулга `W-BNK-02` "Өмнөх хуулгатай залгаагүй (зөрүү …)" (дутуу хуулга). | R-BANK-CASH-11 |
-| BR-BNK-49 | Импорт нь posting хийхгүй, ledger өөрчлөхгүй. Тухайн дансанд `OPEN` тулгалт байвал мөрүүдийг **түүнд нэмнэ** (`statement_ending_balance := closing`), эс бөгөөс шинэ тулгалт үүсгэнэ (`statement_no` = хүсэлтийн, эс бөгөөс §5.8.5). Импортын дараа автомат тулгалт (§5.9) ажиллана. | FR-BNK-008, 14 §17.4 |
+| BR-BNK-49 | Импорт нь posting хийхгүй, ledger өөрчлөхгүй. Тухайн дансанд `OPEN` тулгалт байвал мөрүүдийг **түүнд нэмнэ** (`statement_ending_balance := closing`, `statement_date := max(statement_date, шинэ хуулгын statement_date)`, `statement_line_no` нь тулгалтын одоогийн хамгийн их дугаараас үргэлжилнэ), эс бөгөөс шинэ тулгалт үүсгэнэ (`statement_no` = хүсэлтийн, эс бөгөөс §5.8.5). Импортын дараа автомат тулгалт (§5.9) ажиллана. | FR-BNK-008, 14 §17.4 |
 
 ### 4.6 Автомат тулгалт (BR-BNK-50..62)
 
@@ -461,9 +465,9 @@ flowchart LR
 | BR-BNK-57 | Оноо = `1000 × (c + 1) − priority`, c: LOW = 1, MEDIUM = 2, HIGH = 3; дүрмийн хүснэгт §6.7.2 (BC-ийн анхдагч, Direct Debit-гүй). Ямар ч дүрэмд таараагүй нэр дэвшигчийг хасна. | R-BANK-CASH-26 |
 | BR-BNK-58 | **Текстээс данс руу:** нормчилсон `mapping_text` нь мөрийн `transaction_text`-д бүтэн агуулагдвал тохирно; данс = орлогод `debit_account_id`, зарлагад `credit_account_id` (эсвэл `bal_source_*`). Оноо = `3000 + min(len(norm(mapping_text)), 498) + 1` → `HIGH_TEXT_TO_ACCOUNT`. Хэрэв ижил дүнтэй, \|Δогноо\| ≤ 2, харьцсан данс нь тэр данс болох нээлттэй BLE байвал **тэр BLE-тэй** тулгана (давхар бичилтээс сэргийлэх). Олон дүрэм таарвал оноо их, дараа нь `line_no` бага. | R-BANK-CASH-26, 29 |
 | BR-BNK-59 | Мөр бүрд хамгийн их 5 саналыг `payment_application_proposal`-д `quality` буурахаар хадгална. Автоматаар тулгах (`accepted = true`): `HIGH` ба `HIGH_TEXT_TO_ACCOUNT`, мөн дүн нь мөрийн дүнтэй тэнцүү (эсвэл 1:n бүлгийн нийлбэр тэнцүү). `MEDIUM`/`LOW` нь хэрэглэгчийн шийдвэр шаардана. | R-BANK-CASH-26, 31; FR-BNK-011 AC2 |
-| BR-BNK-60 | **Тулгалтын бүлэг:** 1:1, 1:n (нэг мөр ↔ олон BLE эсвэл нэг харьцагчийн олон баримт), n:1 (олон мөр ↔ нэг BLE). n:m-ийг хориглоно (`bank.match_spec_invalid`). Σ мөрийн `statement_amount` = Σ BLE `remaining_amount` + Σ батлагдсан саналын `applied_amount` байна, эс бөгөөс `bank.match_amount_mismatch`. | R-BANK-CASH-13, 14; FR-BNK-013 |
+| BR-BNK-60 | **Тулгалтын бүлэг:** 1:1, 1:n (нэг мөр ↔ олон BLE эсвэл нэг харьцагчийн олон баримт), n:1 (олон мөр ↔ нэг BLE). n:m-ийг хориглоно (`bank.match_spec_invalid`). Нэг мөр нь **эсвэл** BLE-тэй бүлэгт, **эсвэл** BLE бус зорилттой (батлагдсан санал / `account_type`) байна — хоёуланг холихгүй (`bank.match_spec_invalid`; BLE-ээр хэсэгчлэн тайлбарлагдсан мөрийн үлдэгдлийг BR-BNK-62-оор хувааж хүү мөрөнд өгнө). Ингэснээр §5.11-ийн ваучерын дүн = BLE бус мөрүүдийн `statement_amount` болж, ваучер үргэлж тэнцэнэ. Σ мөрийн `statement_amount` = Σ BLE `remaining_amount` (BLE бүлэг) эсвэл Σ батлагдсан саналын `applied_amount` (+ `account_type` мөрт бүтэн дүн) байна, эс бөгөөс `bank.match_amount_mismatch`. | R-BANK-CASH-13, 14; FR-BNK-013 |
 | BR-BNK-61 | Нэг мөрийн бүх батлагдсан санал **нэг** харьцагчид (`account_type` + `account_id`) хамаарна (`bank.match_party_mixed`). | R-BANK-CASH-28 |
-| BR-BNK-62 | **Зөрүүг хуваах:** мөрийн `applied < statement` үед хэрэглэгч "Зөрүүг данс руу" сонговол эх мөрийн `statement_amount := applied_amount`, шинэ хүү мөр (`statement_line_no = эх + 1`, ижил `bank_statement_line_id`) `statement_amount = зөрүү`, `account_type/id` = сонгосон данс, `match_confidence = 'MANUAL'`. Батлахад эх ба хүү мөр **нэг ваучер, нэг BLE** болно (§5.11). | R-BANK-CASH-30, SCR-BNK-04 |
+| BR-BNK-62 | **Зөрүүг хуваах:** мөрийн `applied < statement` үед хэрэглэгч "Зөрүүг данс руу" сонговол эх мөрийн `statement_amount := applied_amount`, шинэ хүү мөр (`statement_line_no = эх + 1`, ижил `bank_statement_line_id`) `statement_amount = зөрүү`, `account_type/id` = сонгосон данс, `match_confidence = 'MANUAL'`. Батлахад: эх мөр BLE бус зорилттой (харилцагч/нийлүүлэгчийн санал) бол эх ба хүү мөр **нэг ваучер, нэг BLE** болно; эх мөр BLE-тэй бүлэгт (хүлцэлтэй BLE, §5.9.5) бол зөвхөн хүү мөр өөрийн ваучер, BLE-тэй болно (§5.11). `applied = 0` бол хуваахгүй — мөрийг бүхэлд нь данс руу (`PATCH …/lines/{lineId}`). Харилцагчийн илүү төлөлтийн зөрүүнд анхдагч санал нь **тухайн харилцагчийн урьдчилгаа** (`CUSTOMER`, `applies_to_entry_no = NULL`, D-F4); орлогын данс (8200) зөвхөн хэрэглэгч сонговол. | R-BANK-CASH-30, SCR-BNK-04, D-F4 |
 
 ### 4.7 Тулгалтыг батлах, буцаах, тайлан (BR-BNK-63..79)
 
@@ -472,20 +476,29 @@ flowchart LR
 | BR-BNK-63 | Данс бүрд нэг л `OPEN` тулгалт (`bank.reconciliation_already_open`). CASH дансанд тулгалт үүсгэхгүй (`bank.not_reconcilable`), касс тооллогоор шалгагдана. | `ux_bank_reconciliation__one_open`, research F7 |
 | BR-BNK-64 | Тулгалтын ажлын хуудсыг засах (тулгах/арилгах/хуваах) нь ledger-ийг өөрчлөхгүй; BLE-ийн `statement_status` батлах хүртэл `OPEN` хэвээр (`BANK_ACC_ENTRY_APPLIED` v1-д хэрэглэхгүй). Нэг BLE нэг тулгалтын нэг л бүлэгт байна (апп шалгалт, тулгалтын толгойг `FOR UPDATE`). | R-BANK-CASH-12 (хялбарчилсан) |
 | BR-BNK-65 | Тулгалт нээхэд `balance_last_statement := bank_account.balance_last_statement`; хэрэглэгч өөрчилвөл `confirmBalanceOverride = true` ба аудитын лог. | R-BANK-CASH-11 |
-| BR-BNK-66 | Батлах нөхцөл (1): `statement_date` бөглөсөн, `statement_date ≥` өмнөх батлагдсан хуулгын огноо; Σ мөрийн `statement_amount` = `statement_ending_balance − balance_last_statement` (`bank.reconciliation_balance_mismatch`, зөрүүтэй). | R-BANK-CASH-15, FR-BNK-013 AC2 |
+| BR-BNK-66 | Батлах нөхцөл (1): `statement_date` бөглөсөн, `statement_date ≥` өмнөх батлагдсан хуулгын огноо, мөр бүрийн `transaction_date ≤ statement_date` (`bank.reconciliation_date_invalid`; эс бөгөөс `closed_at_date < posting_date` болж §6.8 эвдэрнэ); Σ мөрийн `statement_amount` = `statement_ending_balance − balance_last_statement` (`bank.reconciliation_balance_mismatch`, зөрүүтэй). | R-BANK-CASH-15, FR-BNK-013 AC2 |
 | BR-BNK-67 | Батлах нөхцөл (2): мөр бүрийн `difference = 0` (BLE, батлагдсан санал, эсвэл `account_type/id`-аар бүрэн тайлбарлагдсан). Тайлбаргүй мөр байвал `bank.reconciliation_unmatched_lines` (жагсаалттай). "Зөрүүтэйгээр батлах" байхгүй. | R-BANK-CASH-15, 18 |
-| BR-BNK-68 | Харилцагч/нийлүүлэгч/G/L/мөнгөний данс руу тулгасан мөр бүр (хүү мөртэйгээ) **нэг ваучер** болно: `posting_date = transaction_date`, `document_date = transaction_date`, дугаар = дансны `BR` (орлого) / `BP` (зарлага) цуврал, `external_document_no = transaction_id` (≤ 35), `description` = мөрийн тайлбар (≤ 100), source `PAYMTRECON`. Харилцагч/нийлүүлэгчийн тал нь `applies_to_entry_no`-оор тулгагдана; `applies_to_entry_no IS NULL` бол урьдчилгаа (D-F4). G/L данс НӨАТ-ын тохиргоотой бол journal-ын gross аргаар НӨАТ (08; орцын НӨАТ ДДТД-гүй тул `deductible_confirmed = false`, D-E4). | R-BANK-CASH-32; Z-BNK-08 |
+| BR-BNK-68 | Харилцагч/нийлүүлэгч/G/L/мөнгөний данс руу тулгасан мөр бүр (хүү мөртэйгээ) **нэг ваучер** болно: `posting_date = transaction_date`, `document_date = transaction_date`, дугаар = дансны `BR` (орлого) / `BP` (зарлага) цуврал, `external_document_no = transaction_id` (≤ 35), `description` = мөрийн тайлбар (≤ 100), source `PAYMTRECON`. Харилцагч/нийлүүлэгчийн тал нь `applies_to_entry_no`-оор тулгагдана; `applies_to_entry_no IS NULL` бол урьдчилгаа (D-F4). G/L мөр нь **НӨАТ-гүй** — seed-ийн бүх данс `gen_posting_type = NONE` бөгөөд журналын НӨАТ зөвхөн мөрөнд `gen_posting_type ∈ {SALE, PURCHASE}` ба хоёр VAT бүлэг тодорхой өгөгдсөн үед (05 BR-PST-38); тулгалтын ажлын хуудас эдгээрийг R1-д авахгүй (НӨАТ-тай зардлыг худалдан авалтын нэхэмжлэх эсвэл `POST /payments`-ийн `vat` талбараар). Ваучерууд нэг цувралд **(`posting_date`, `statement_line_no`) өсөхөөр** дугаарлагдана (цувралын `date_order`, BR-BNK-81). | R-BANK-CASH-32; Z-BNK-08; 05 BR-PST-38 |
 | BR-BNK-69 | Тулгалтаас үүссэн шинэ BLE нь posting дотроо шууд хаагдана: `open = false`, `remaining_amount = 0`, `statement_status = 'CLOSED'`, `statement_no`, `statement_line_no`, `closed_at_date = statement_date`. | R-BANK-CASH-32 |
 | BR-BNK-70 | Батлахад: тулгагдсан бүх BLE → `open = false`, `remaining_amount = 0`, `statement_status = 'CLOSED'`, `statement_no`, `statement_line_no` (n:1-д `-1`), `closed_at_date = statement_date`; `bank_account.last_statement_no := statement_no`, `balance_last_statement := тулгалтын balance_last_statement + Σ мөр` (= ending); `bank_account_statement(_line)` агшин зураг; тулгалт `POSTED`, хуулга `POSTED`, хуулгын мөр `POSTED`. Бүгд **нэг DB transaction**. | R-BANK-CASH-16 |
 | BR-BNK-71 | Батлах үед (түгжээний дор) зорилт бүрийг дахин шалгана: BLE `open = true` хэвээр, CLE/VLE `remaining` ≥ батлагдсан дүн, тэмдэг ижил. Өөрчлөгдсөн бол бүгд rollback, 409 `bank.match_target_changed` (мөрүүдийн жагсаалт). | R-BANK-CASH-28; 05 `ValidateLockedAsync` |
 | BR-BNK-72 | Батлахад харьцагч тодорхой (`account_type ∈ {CUSTOMER, VENDOR}`) мөрийн `counterparty_account`-ыг тэр харьцагчид "сурсан" данс болгон бүртгэнэ (SCR-BNK-01; дараагийн тулгалтын `FULLY`). | R-BANK-CASH-23 |
-| BR-BNK-73 | **Буцаах** (`bank-account-statements/{id}:undo`): зөвхөн тухайн дансны **хамгийн сүүлийн** батлагдсан хуулга (`bank.statement_not_latest`). Хуулгад хаагдсан BLE-үүд → `open = true`, `remaining_amount = amount`, `statement_status = 'OPEN'`, `statement_no/line_no = NULL`, `closed_at_date = NULL`, `closed_by_entry_no = NULL`; `bank_account.last_statement_no/balance_last_statement` = өмнөх (буцаагаагүй) хуулгынх; агшин зураг `undone_at` (SCR-BNK-02); тулгалт `OPEN` болж (бүлэг, мөр хэвээр) дахин засах боломжтой. | R-BANK-CASH-38, FR-BNK-014 AC1 |
+| BR-BNK-73 | **Буцаах** (`bank-account-statements/{id}:undo`): зөвхөн тухайн дансны **хамгийн сүүлийн** батлагдсан хуулга (`bank.statement_not_latest`). Хуулгад хаагдсан BLE-үүд (`bank_account_id` = тухайн данс **ба** `statement_no` = хуулгын дугаар **ба** `statement_status = 'CLOSED'`) → `open = true`, `remaining_amount = amount`, `statement_status = 'OPEN'`, `statement_no/line_no = NULL`, `closed_at_date = NULL`, `closed_by_entry_no = NULL`; `bank_account.last_statement_no/balance_last_statement` = өмнөх (буцаагаагүй) хуулгынх; агшин зураг `undone_at` (SCR-BNK-02); тулгалт `OPEN` болж (бүлэг, мөр хэвээр) дахин засах боломжтой. | R-BANK-CASH-38, FR-BNK-014 AC1 |
 | BR-BNK-74 | Буцаалт нь тулгалтаас үүссэн төлбөр, дүрмийн ваучерыг **буцаахгүй** (тусад нь буцаана, BR-BNK-76). Ажлын хуудасны тэдгээр мөр нь батлах үед үүссэн BLE-тэй бүлэгт шилжсэн байна (§5.11 алхам 8). | FR-BNK-014 AC1 |
 | BR-BNK-75 | Буцаах үйлдэл нь шалтгаантай (`reasonCodeId`), эрх `bank.reconciliation.post`, аудитын логтой. | D-I3 |
 | BR-BNK-76 | Мөнгөний BLE-ийг буцаах (05 §5.10 `IReversalService`) нөхцөл: `open = true`, `statement_no IS NULL`, нээлттэй тулгалтын бүлэгт ороогүй (`bank.entry_in_reconciliation`), харилцагч/нийлүүлэгчийн тал тулгагдаагүй (`gl.reversal_entries_applied`). Эс бөгөөс 409 `bank.entry_reconciled` "Эхлээд хуулгын тулгалтыг буцаана уу". | R-BANK-CASH-39, FR-BNK-015 AC1 |
 | BR-BNK-77 | Буцаалтын толин BLE: `amount = −эх`, `open = false`, `remaining = 0`, `reversed = true`, `reversed_entry_no`; эх: `open = false`, `remaining = 0`, `reversed = true`, `reversed_by_entry_no`. Хоёулаа тулгалтын нэр дэвшигчид орохгүй. Буцаалтын дараа касс сөрөг болбол `bank.cash_negative_balance`. | R-BANK-CASH-39, 05 |
-| BR-BNK-78 | **Тулгалтын тайлан** (D огноогоор): `G/L(D) − Outstanding(D) + Unreconciled(D) − Statement(D) = 0` (§6.8). Тэнцэхгүй бол "Анхаар" мөр (жишээ нь хуулгын үеийн өмнөх огноогоор шинэ бичилт). | FR-BNK-016 AC1, research §8 "proof equation" |
-| BR-BNK-79 | `amount = 0` BLE (ханшийн тэгшитгэл) нь `open = false`-ээр бичигдэж хэзээ ч тулгалт, outstanding-д орохгүй. | R-BANK-CASH-04 |
+| BR-BNK-78 | **Тулгалтын тайлан** (D огноогоор): `G/L(D) − Outstanding(D) + Unreconciled(D) − Statement(D) = 0` (§6.8). `Outstanding` нь нээлттэй тулгалтад аль хэдийн BLE-тэй бүлэглэгдсэн BLE-ийг **оруулахгүй**, `Unreconciled` нь батлагдаагүй хуулгын BLE-тэй бүлэглэгдээгүй бүх мөр (санал/данс руу тулгагдсан ч ledger-д хараахан ороогүй) — §6.8. D нь хамгийн сүүлийн батлагдсан хуулгын огнооноос өмнө бол батлагдсан агшин зургийн тайланг (`bank_account_statement`) харуулна. Тэнцэхгүй бол "Анхаар" мөр (жишээ нь хуулгын үеийн өмнөх огноогоор шинэ бичилт). | FR-BNK-016 AC1, research §8 "proof equation" |
+| BR-BNK-79 | `amount = 0` BLE (ханшийн тэгшитгэл) нь `open = false`, `remaining_amount = 0`, `closed_at_date = posting_date`-ээр бичигдэж (R-BANK-CASH-04; `statement_status` нь схемийн CHECK-ээс болж `OPEN` хэвээр, SCR-BNK-05) хэзээ ч тулгалт, outstanding-д орохгүй. | R-BANK-CASH-04 |
+
+### 4.7a Нэмэлт дүрэм (хяналтаар нэмсэн, BR-BNK-80..83)
+
+| ID | Дүрэм | Эх |
+|---|---|---|
+| BR-BNK-80 | **Хуулга хаях** (`POST /bank-statements/{id}:discard`, шалтгаантай): зөвхөн `status ∈ {IMPORTED, IN_RECONCILIATION}` бөгөөд түүний аль ч мөр бүлэг/батлагдсан санал/`account_type`-гүй үед (эс бөгөөс 409 `bank.statement_in_use`). Нэг transaction (тулгалтын толгой `FOR UPDATE` + `If-Match`): тухайн хуулгын `bank_reconciliation_line`-уудыг устгана (санал, member cascade); `bank_statement_line.status := 'IGNORED'` (dedupe index чөлөөлөгдөж дахин импортлох боломжтой, BR-BNK-45); `bank_statement.status := 'DISCARDED'` (`ux_bank_statement__file` чөлөөлөгдөнө); тулгалтад мөр үлдээгүй бөгөөд энэ хуулгаар үүссэн бол тулгалтыг устгана, эс бөгөөс `statement_ending_balance` := үлдсэн хамгийн сүүлийн хуулгын `closing_balance` (байхгүй бол `balance_last_statement`). Ledger өөрчлөгдөхгүй. | FR-BNK-010, `ux_bank_statement_line__dedupe` |
+| BR-BNK-81 | **Огноо ба цуврал:** тулгалтаас үүсэх ваучер `posting_date = transaction_date` (BR-BNK-68) тул (a) тухайн огнооны үе хаалттай/түгжээтэй эсвэл компанийн posting цонхоос гадуур бол бүх батлалт 422 (`gl.period_closed` / `gl.period_locked` / `gl.posting_date_outside_window`, мөрийн жагсаалттай; A үед бүгдийг цуглуулна); (b) FCY дансанд `transaction_date ≤ fx.currency.last_date_adjusted` бол `fx.posting_before_last_revaluation` (BR-FX-53) — **сарын хаалтад валютын дансны тулгалтыг дахин үнэлгээнээс өмнө** хийнэ (FR-GL-025 шалгах хуудасны дараалал); (c) `BR`/`BP` цуврал `date_order = true` (схемийн анхдагч) бол хамгийн сүүлийн дугаарын огнооноос өмнөх `transaction_date`-тэй ваучер `platform.number_series_date_order` (ERN02)-д унана → seed-д `BR`/`BP`-ийн `date_order = false` (SCR-BNK-08). Засах арга (a)/(b): тэр мөрийг `POST /payments`-аар нээлттэй огноогоор бүртгээд BLE-тэй гараар тулгана (гар тулгалтад огнооны хүлцэл үйлчлэхгүй). | D-D3, D-C7 ⚠, BR-FX-53 |
+| BR-BNK-82 | **Шилжүүлгийн валют:** `partyType = BANK_ACCOUNT` бөгөөд хоёр дансны валют ижил бол `counterAmount` өгөхийг хориглоно; өөр бол заавал (BR-BNK-32). R1-д хоёр тал MNT. | BR-BNK-32 |
+| BR-BNK-83 | Тулгалтын тэмдэг/дүнгийн шалгалтад хуулгын мөр, BLE, CLE/VLE-ийн дүнг **банкны тэмдгээр** харьцуулна: CLE/VLE-ийн `remaining_amount` нь банкны тэмдэгтэй **ижил** (авлагын нэхэмжлэх +1 100 → банкинд +1 100 орлого; өглөгийн нэхэмжлэх −2 200 → −2 200 зарлага; харилцагчийн кредит нот −500 → −500 буцаан олголт). Саналын `applied_amount` мөн банкны тэмдгээр; харьцагчийн journal мөр = `−applied_amount`. | R-BANK-CASH-22, research §5 sign convention |
 
 ### 4.8 Валют ба ханш (BR-FX-01..18)
 
@@ -548,15 +561,15 @@ flowchart LR
 | BR-FX-43 | Item delta: `delta = r(remFCY(D) × rate_D) − remLCY(D)`, `remLCY(D) = Σ detailed.amount_lcy (posting_date ≤ D)` (энэ run-д үүссэн мөр орно). `delta ≠ 0` → detailed мөр `UNREALIZED_GAIN` (> 0) / `UNREALIZED_LOSS` (< 0), FCY = 0, LCY = delta, `posting_date = D`, `document_no` = run-ийн дугаар, `exch_rate_adjmt_reg_no`. `adjusted_currency_factor := f_D` (delta = 0 байсан ч). | R-CURRENCY-FX-16..18 |
 | BR-FX-44 | Хоёр мөр болгон хуваахгүй (BC-ийн OldAdj split-ийг хассан): нэг delta = нэг мөр. Gain/loss данс ижил тул (8510) цэвэр нөлөө ижил. | R-CURRENCY-FX-17 (хялбарчилсан), Z-FX-02 |
 | BR-FX-45 | G/L: (валют, posting огноо) бүрд нэг тэнцсэн transaction. Мөр: (хяналтын данс, dimension set) бүрд `+Σdelta`; (gain данс, set)-д `−Σ(delta > 0)`, (loss данс, set)-д `−Σ(delta < 0)`; gain = loss данс бол нэг мөр `−Σdelta`. Dimension = item-ийн `dimension_set_id`. `system_created = true`, source `EXCHRATADJ`, VAT/gen. бүлэггүй. | R-CURRENCY-FX-20, D-C5 |
-| BR-FX-46 | Мөнгөний данс (`currency_code = X`, CASH/BANK/WALLET): `delta = r(balance_at(D) × rate_D) − balance_lcy_at(D)`; `≠ 0` → BLE `amount = 0`, `amount_lcy = delta`, `open = false`, `remaining = 0`, `statement_status = 'OPEN'` (CHECK, BR-BNK-79), МХ үүсэхгүй; G/L: мөнгөний данс +delta, эсрэг тал = `bank_reval_gain_loss_kind` (SCR-FX-02; анхдагч `REALIZED` → 8500, `UNREALIZED` → 8510). | R-BANK-CASH-42, R-CURRENCY-FX-22, FR-FX-009 ⚠ |
-| BR-FX-47 | Register: run × `account_type` × `posting_group_code` × валют бүрд `fx.exch_rate_adjmt_register` (`adjusted_base` = Σ FCY, `adjusted_base_lcy` = Σ LCY өмнө, `adjusted_amt_lcy` = Σ delta); item бүрд `fx.exch_rate_adjmt_ledger_entry` (delta = 0 бол бичихгүй). Counter: `EXCH_RATE_ADJMT_RUN`, `EXCH_RATE_ADJMT_REG`, `EXCH_RATE_ADJMT_ENTRY`. | R-CURRENCY-FX §2 (T86/T186) |
+| BR-FX-46 | Мөнгөний данс (`currency_code = X`, CASH/BANK/WALLET): `delta = r(balance_at(D) × rate_D) − balance_lcy_at(D)`; `≠ 0` → BLE `amount = 0`, `amount_lcy = delta`, `open = false`, `remaining = 0`, `closed_at_date = D`, `statement_status = 'OPEN'` (CHECK, BR-BNK-79), МХ үүсэхгүй; валютын касс (`CASH`) дээр 0 дүнтэй BLE нь BR-BNK-25-ийн running үлдэгдэлд нөлөөлөхгүй; G/L: мөнгөний данс +delta, эсрэг тал = `bank_reval_gain_loss_kind` (SCR-FX-02; анхдагч `REALIZED` → 8500, `UNREALIZED` → 8510). | R-BANK-CASH-42, R-CURRENCY-FX-22, FR-FX-009 ⚠ |
+| BR-FX-47 | Register: run × `account_type` × `posting_group_code` × валют × **`posting_date`** бүрд нэг `fx.exch_rate_adjmt_register` мөр (`adjusted_base` = Σ FCY, `adjusted_base_lcy` = Σ LCY өмнө, `adjusted_amt_lcy` = Σ delta, `transaction_no`/`gl_register_no` = тухайн огнооны ваучерынх) — хоцорсон run (BR-FX-49) нэг валютад хэд хэдэн огнооны ваучер үүсгэдэг тул огноогоор салгахгүй бол register-ийн ганц `transaction_no` хоёрдмол болно. Дахин үнэлгээнд хамрагдсан item **бүрд** (`delta = 0` байсан ч, `adjustment_amount = 0`) `fx.exch_rate_adjmt_ledger_entry` бичнэ — `adjusted_currency_factor` delta = 0-д ч шинэчлэгддэг тул (BR-FX-43) буцаалт (BR-FX-54) өмнөх хүчин зүйлийг эндээс сэргээнэ. Counter: `EXCH_RATE_ADJMT_RUN`, `EXCH_RATE_ADJMT_REG`, `EXCH_RATE_ADJMT_ENTRY`. | R-CURRENCY-FX §2 (T86/T186) |
 | BR-FX-48 | Run амжилттай бол хамрагдсан валют бүрд `fx.currency.last_date_adjusted := D`. Run бүхэлдээ нэг DB transaction, компанийн advisory lock-той (posting-той зэрэг ажиллахгүй, 02 §6.9). Preview нь ижил код, ROLLBACK. | R-CURRENCY-FX-14, 02 §6.7 |
 | BR-FX-49 | **Хоцорсон run** (R-CURRENCY-FX-19): item-д D-ээс хойших огноотой detailed мөр байвал, тэдгээрийн ялгаатай огноо d₁ < d₂ < … бүрд `delta_k = r(remFCY(d_k) × rate_D) − remLCY(d_k)` (өмнөх алхмын мөрүүд орно) тооцож `≠ 0` бол `posting_date = d_k` мөр нэмнэ. d_k-ийн үе хаалттай бол 422 `gl.period_closed` (run бүхэлдээ). | R-CURRENCY-FX-19 |
 | BR-FX-50 | Урьдчилгаа (нээлттэй PAYMENT entry) BC-тэй адил дахин үнэлэгдэнэ (⚠ OQ-FX-04: IAS 21 мөнгөн бус зүйл). | R-CURRENCY-FX-15, research §9 Q5 |
 | BR-FX-51 | Хэрэгжээгүй мөрийн МГТ ангилал `FX_EFFECT`; мөнгөний дансны дахин үнэлгээ МГТ-ийн 4-р мөр ("ханшийн зөрүүний нөлөө"). | seed §4.2 |
 | BR-FX-52 | Run-ийн ваучерын дугаар нь `FXA` цуврал (seed хүсэлт SCR-FX-04; тэр хүртэл `GJ`). | D-C7 |
-| BR-FX-53 | **Хамгаалалт:** `currency_code = X` бүхий ямар ч posting (баримт, журнал, төлбөр, тулгалт, буцаалт)-ын `posting_date ≤ fx.currency(X).last_date_adjusted` бол 422 `fx.posting_before_last_revaluation`. Үл хамаарах: дахин үнэлгээний run ба түүний буцаалт (source `EXCHRATADJ`). | FR-FX-010 AC1, Z-FX-05 |
-| BR-FX-54 | **Run буцаах** (`exch-rate-adjustments/{runNo}:reverse`): зөвхөн валют бүрийн хамгийн сүүлийн run; run-аас хойш (`created_at`) тухайн валютаар posting хийгдээгүй (`fx.revaluation_has_later_postings`); үе нээлттэй. Үр дүн: detailed мөр бүрийн толин (ижил төрөл, LCY эсрэг), BLE `amount_lcy` эсрэг, G/L толин, register/ledger entry-ийн сөрөг мөр, `adjusted_currency_factor` → өмнөх утга (өмнөх run-ийн ledger entry-ийн `currency_factor`, эс бөгөөс `original_currency_factor`), `last_date_adjusted` → өмнөх run-ийн огноо (эсвэл NULL). | FR-FX-010, 02 §6.8 |
+| BR-FX-53 | **Хамгаалалт:** `currency_code = X` бүхий ямар ч posting (баримт, журнал, төлбөр, тулгалт, буцаалт)-ын `posting_date ≤ fx.currency(X).last_date_adjusted` бол 422 `fx.posting_before_last_revaluation`. Үл хамаарах: дахин үнэлгээний run ба түүний буцаалт (source `EXCHRATADJ`). Дүгнэлт: сарын хаалтад тухайн сарын валютын бүх баримт, төлбөр ба **валютын дансны хуулгын тулгалт** (BR-BNK-81 b) дахин үнэлгээнээс **өмнө** хийгдэнэ; дахин үнэлгээний wizard (S-FX-03) нь `OPEN` тулгалттай валютын данс байвал `W-FX-04` анхааруулна. | FR-FX-010 AC1, Z-FX-05 |
+| BR-FX-54 | **Run буцаах** (`exch-rate-adjustments/{runNo}:reverse`): зөвхөн валют бүрийн хамгийн сүүлийн run; run-аас хойш (`created_at`) тухайн валютаар posting хийгдээгүй (`fx.revaluation_has_later_postings`); үе нээлттэй. Үр дүн: detailed мөр бүрийн толин (ижил төрөл, LCY эсрэг), BLE `amount_lcy` эсрэг, G/L толин, register/ledger entry-ийн сөрөг мөр (register-ийн `reverses_run_no` = буцаасан run, SCR-FX-05), `adjusted_currency_factor` → өмнөх утга: тухайн entry-ийн буцаагдаагүй (`reverses_run_no`-оор заагдаагүй) өмнөх run-уудын `fx.exch_rate_adjmt_ledger_entry`-ээс `posting_date` хамгийн их мөрийн `currency_factor` (BR-FX-47 нь delta = 0 item-ийг ч бичдэг тул заавал олдоно), байхгүй бол `original_currency_factor`; `last_date_adjusted` → тухайн валютын буцаагдаагүй өмнөх run-ийн `posting_date` (эсвэл NULL). | FR-FX-010, 02 §6.8 |
 | BR-FX-55 | Мөнгөний дансны дахин үнэлгээ хэзээ ч автоматаар буцаагдахгүй (хуримтлагдсан, BLE-ийн balance as of D-д суурилна). | R-CURRENCY-FX-22 |
 
 ---
@@ -618,7 +631,9 @@ public interface IFxConverter                          // цэвэр функц,
 
 ### 5.2 Төлбөр, орлого, шилжүүлэг: `POST /payments` (FR-BNK-002..007)
 
-**Оролт:** `PaymentCreate` (14 §15.4): `bankAccountId`, `direction` (RECEIPT/PAYMENT), `postingDate` (анхдагч өнөөдөр), `documentDate`, `amount` (> 0), `partyType` (CUSTOMER/VENDOR/GL_ACCOUNT/BANK_ACCOUNT), `partyId|partyNumber`, `description`, `externalDocumentNo`, `applyTo[]` | `applyToOldest`, `cashVoucher`, `reasonCodeId`, `dimensions[]`. R2-ын нэмэлт (14-д санал, §10.3): `currencyCode`, `amountLcy` (гараар MNT), `counterAmount` (валют арилжаа).
+**Оролт:** `PaymentCreate` (14 §15.4): `bankAccountId`, `direction` (RECEIPT/PAYMENT), `postingDate` (анхдагч өнөөдөр), `documentDate`, `amount` (> 0), `partyType` (CUSTOMER/VENDOR/GL_ACCOUNT/BANK_ACCOUNT), `partyId|partyNumber`, `description`, `externalDocumentNo`, `applyTo[]` | `applyToOldest`, `cashVoucher`, `reasonCodeId`, `dimensions[]`, `vat?` (`partyType = GL_ACCOUNT`-д л: `{genPostingType: SALE|PURCHASE, vatBusPostingGroup, vatProdPostingGroup, supplierEbarimtId?}`; §10.3 санал). R2-ын нэмэлт (14-д санал, §10.3): `currencyCode` (гүйлгээний валют; анхдагч = мөнгөний дансны валют, NULL = MNT), `amountLcy` (гараар MNT, BR-FX-25), `counterAmount` (валют арилжаа, BR-BNK-32).
+
+**`amount`-ын утга:** `amount` нь үргэлж **`currencyCode`-оор** (гүйлгээний валютаар). (i) Данс FCY → `currencyCode` = дансны валют (BR-BNK-11 b), BLE `amount = s × amount`. (ii) Данс LCY (BANK/WALLET), `currencyCode = USD` (P15) → харьцагчийн мөр USD `amount`, LCY = `amountLcy ?? r(amount × rate_D)`, BLE `amount = amount_lcy` (BR-FX-24). (iii) R1 / MNT → `amount = amount_lcy`. `amountFcy` нэртэй талбар **байхгүй** (өмнөх хувилбарын §10.3-ын нэрийг энэ дүрмээр орлуулав).
 
 **Алхам (A үе — түгжээгүй, Application давхарга):**
 
@@ -627,7 +642,7 @@ public interface IFxConverter                          // цэвэр функц,
 3. Тэмдэг: `s = direction == RECEIPT ? +1 : −1`; мөнгөний дансны мөр `+s × amount`, харьцагчийн мөр `−s × amount`.
 4. Харьцагчийн талыг өргөтгөнө (05 `IJournalAccountTypeHandler`):
    - `CUSTOMER` / `VENDOR`: Parties-ийн handler → хяналтын дансны G/L мөр + `CustomerLedgerLine`/`VendorLedgerLine` (`DocumentType` BR-BNK-16, `Apply` = `applyTo[]` эсвэл `applyToOldest` (төлөх огноогоор), үлдсэн нь урьдчилгаа D-F4).
-   - `GL_ACCOUNT`: данс `direct_posting = true` байх (BR-BNK-13); НӨАТ-ын тохиргоотой бол `IJournalVatHandler` (gross арга, 08).
+   - `GL_ACCOUNT`: данс `direct_posting = true` байх (BR-BNK-13). НӨАТ нь **зөвхөн** хүсэлтэд `vat` өгсөн үед (`genPostingType ∈ {SALE, PURCHASE}` + хоёр VAT бүлэг; 05 BR-PST-38) `IJournalVatHandler`-ээр (gross арга, 08); seed-ийн данснууд `gen_posting_type = NONE` тул `vat`-гүй бол НӨАТ-гүй бүтэн дүнгээр бичнэ (дансны `vat_prod_posting_group_id`-оос далдуур НӨАТ **тооцохгүй**). Орцын НӨАТ-ын хасагдах эсэхийг `supplierEbarimtId`-ээр Tax шийднэ (D-E4, 07 BR-AP-64).
    - `BANK_ACCOUNT`: §5.4.
 5. Ваучерын дугаарын цуврал: `IBankAccountQuery.GetVoucherSeries(bankAccountId, direction)` (шилжүүлэгт BR-BNK-31). Source code: CASH → `CASHVOUCHER`, эс бөгөөс `PAYMENTREG`.
 6. `BankLedgerLine` (+ CASH бол `CashVoucherInfo` = хүсэлтийн `cashVoucher` + `counterpartyType/Id` + BR-BNK-23-ийн ID). `PostingDocument` угсарч `IPostingService.PostAsync(…, Post|Preview)`.
@@ -642,11 +657,16 @@ async Task<PaymentResult> PostPaymentAsync(PaymentCreate c, PostingMode mode, Ca
     if (acc.Kind == "CASH") Require(c.CashVoucher is not null, "bank.cash_voucher_required");
     int s = c.Direction == "RECEIPT" ? +1 : -1;
     var posting = c.PostingDate ?? Today(company.TimeZone);
-    var fx = await ResolveFxAsync(acc, c, posting, ct);        // R1: Fx.None; R2: rate/override (BR-FX-20, 25)
-    var moneyGl = Gl(acc.GlAccountId, s * fx.Lcy(c.Amount), LineOrigin.SystemDerived, currency: fx.Code, fcy: s * c.Amount);
-    var counter = await ExpandCounterpartyAsync(c, -s, fx, posting, ct);   // GL мөр(үүд) + Party/Vat/Bank дэд мөр
+    var cur = c.CurrencyCode ?? acc.CurrencyCode;                               // NULL = MNT
+    Require(acc.CurrencyCode is null ? (acc.Kind != "CASH" || cur is null) : cur == acc.CurrencyCode,
+            "bank.account_currency_mismatch");                                  // BR-BNK-11 (CASH LCY нь FCY авахгүй)
+    var fx = await ResolveFxAsync(cur, c.Amount, c.AmountLcy, posting, ct);    // R1: Fx.None; R2: rate/override (BR-FX-20, 25)
+    var lcy = s * fx.Lcy(c.Amount);                                             // amountLcy ?? r(amount × rate)
+    var moneyGl = Gl(acc.GlAccountId, lcy, LineOrigin.SystemDerived, currency: cur, fcy: s * c.Amount);
+    var counter = await ExpandCounterpartyAsync(c, -s, fx, posting, ct);   // GL мөр(үүд) + Party/Vat/Bank дэд мөр; Σ LCY = −lcy (BR-FX-26)
     var docType = DocTypeOf(c.PartyType, s);                                // BR-BNK-16
-    var bankLine = new BankLedgerLine(acc.Id, s * c.Amount, moneyGl.AmountLcy, docType, c.ExternalDocumentNo,
+    var bleAmount = acc.CurrencyCode is null ? lcy : s * c.Amount;          // LCY данс → MNT (BR-FX-24), FCY данс → FCY
+    var bankLine = new BankLedgerLine(acc.Id, bleAmount, moneyGl.AmountLcy, docType, c.ExternalDocumentNo,
         c.Description, CounterpartyName: counter.DisplayName, BalAccount: counter.Ref, CashFlowCategoryId: null,
         CashVoucher: acc.Kind == "CASH" ? BuildCashVoucher(c, counter, s) : null,      // BR-BNK-20..23
         Mode: BankEntryMode.Normal, GlLineKeys: [moneyGl.Key]);
@@ -711,7 +731,7 @@ async Task WriteCashVoucherAsync(IPostingContext ctx, BankLedgerLine l, long ble
 2. Ижил валют: G/L `to` Дт `amount_lcy`, `from` Кт; BLE: `to` +amount, `from` −amount.
 3. CASH тал бүрд `CashVoucherInfo` (`counterpartyType = 'BANK_ACCOUNT'`, нэр = нөгөө дансны нэр, `purpose` анхдагч: касс руу "Банкнаас бэлэн мөнгө татсан", кассаас "Бэлэн мөнгө банкинд тушаасан"; МХ-2-т тушаагч ажилтны бичиг баримт заавал).
 4. Дугаар BR-BNK-31.
-5. Өөр валют (R2, BR-BNK-32): `fromFcy = amount` (USD), `fromLcy = r(amount × rate_D)`; `toAmount = counterAmount` (MNT); `diff = toAmount − fromLcy`; G/L: `to` Дт `toAmount`, `from` Кт `fromLcy`, `diff > 0` → 8500 Кт `diff`; `< 0` → 8500 Дт `|diff|` (P16).
+5. Өөр валют (R2, BR-BNK-32): `fromAmt`, `toAmt` = тал бүрийн өөрийн валютын дүн (`amount` ба `counterAmount`-ийг `direction`-оор хуваарилна); `LcyOf(x, cur) = cur is null ? x : r(x × rate_D(cur))`; `fromLcy = LcyOf(fromAmt)`, `toLcy = LcyOf(toAmt)`; `diff = toLcy − fromLcy`. G/L: `to` Дт `toLcy`, `from` Кт `fromLcy`; `diff > 0` → gain данс (8500) Кт `diff`; `< 0` → loss данс (8500) Дт `|diff|`. BLE: `to` (+toAmt, +toLcy), `from` (−fromAmt, −fromLcy). Жишээ: USD → MNT (P16); MNT → USD: BANK01 −3 440 000 MNT, GOL-USD +1 000 USD @ 3 420 = +3 420 000 → `diff = 3 420 000 − 3 440 000 = −20 000` → 8500 Дт 20 000 (Σ Дт 3 440 000 = Σ Кт 3 440 000).
 
 ### 5.5 Кассын тооллого (`POST /bank-accounts/{id}:count-cash`, FR-BNK-004)
 
@@ -720,14 +740,17 @@ CashCountResult CountCash(Guid cashId, DateOnly countDate, decimal counted)
 {
     var acc = bank.Get(cashId); Require(acc.Kind == "CASH", "bank.not_cash_account");
     Require(counted >= 0 && countDate <= Today(), "bank.cash_count_date_invalid");
+    Require(counted == Round(counted, acc.AmountPrecision), "api.amount_precision_exceeded");
     var book = bank.GetBalance(cashId, countDate, lcy: false);              // BR-BNK-15 (А үе; B үед дахин уншина)
     var diff = Round(counted - book, acc.AmountPrecision);
     if (diff == 0) return new(book, counted, 0, posting: null);
     var gs = glSetup;                                                         // 8240 / 8440
     var other = diff > 0 ? gs.CashOverAccountId : gs.CashShortAccountId;
+    var diffLcy = acc.CurrencyCode is null ? diff                              // R2 валютын касс: албан ханшаар
+                : fx.ToLcy(diff, rates.GetRate(acc.CurrencyCode, countDate).Rate);
     var doc = Voucher(series: "GJ", source: "CASHCOUNT", reason: "CASH_DIFF", date: countDate,
-        Gl(acc.GlAccountId, +diff), Gl(other, -diff),
-        Bank(new BankLedgerLine(cashId, diff, diff, "NONE", null, $"Кассын тооллого {countDate:yyyy.MM.dd}", null, null, null,
+        Gl(acc.GlAccountId, +diffLcy, currency: acc.CurrencyCode, fcy: diff), Gl(other, -diffLcy),
+        Bank(new BankLedgerLine(cashId, diff, diffLcy, "NONE", null, $"Кассын тооллого {countDate:yyyy.MM.dd}", null, null, null,
                                 CashVoucher: null, BankEntryMode.Normal, …)));
     // B үе: book-ийг түгжээний дор дахин тооцож, өөрчлөгдсөн бол 409 bank.cash_count_stale (хэрэглэгч дахин тоолно)
     return new(book, counted, diff, postingService.Post(doc));
@@ -738,9 +761,9 @@ CashCountResult CountCash(Guid cashId, DateOnly countDate, decimal counted)
 
 Оролт: `settlementDate`, `toBankAccountId` (BANK), `netAmount`, `feeAccountId` (анхдагч 8300), сонголт: `entryNos[]` эсвэл `dateFrom..dateTo` (анхдагч: `settlementDate`-ээс өмнөх бүх нээлттэй WALLET BLE), `externalDocumentNo` (QPay тооцооны дугаар).
 
-1. A үе: WALLET (`kind = 'WALLET'`) ба BANK дансны валют ижил; сонгосон BLE-үүд `open`, `statement_no IS NULL`; `gross = Σ amount` (буцаалт сөрөг орно), `gross > 0`; `fee = gross − netAmount` (BR-BNK-35/36).
-2. Ваучер: цуврал = WALLET-ийн `BP`, source `PAYMENTREG`, `document_type = 'NONE'`. G/L: банк Дт `net`, шимтгэл Дт `fee` (НӨАТ — шимтгэлийн дансны тохиргоо), WALLET Кт `gross`. BLE: банк +net (`Normal`), WALLET −gross (`ReconciledOnPost(statementNo = документын дугаар, lineNo = 0, settlementDate)`).
-3. Writer-ийн дараа (ижил transaction): сонгосон WALLET BLE бүрд `platform.fn_ledger_update` → `open = false`, `remaining_amount = 0`, `statement_status = 'CLOSED'`, `statement_no` = тооцооны дугаар, `closed_at_date = settlementDate`, `closed_by_entry_no` = шинэ WALLET BLE; `bank_account.last_statement_no` (WALLET) := тооцооны дугаар.
+1. A үе: WALLET (`kind = 'WALLET'`) ба BANK дансны валют ижил; сонгосон BLE-үүд `open`, `statement_no IS NULL`, `reversed = false`, нээлттэй тулгалтын бүлэгт ороогүй (`bank.entry_in_reconciliation`), `posting_date ≤ settlementDate`; `gross = Σ amount` (буцаалт сөрөг орно), `gross > 0`, `netAmount > 0`; `fee = gross − netAmount ≥ 0` (BR-BNK-35/36).
+2. Ваучер: цуврал = WALLET-ийн `BP`, source `PAYMENTREG`, `document_type = 'NONE'`. G/L: банк Дт `net`, шимтгэл Дт `fee` (`fee = 0` бол мөргүй; НӨАТ-гүй, BR-BNK-36), WALLET Кт `gross`. BLE: банк +net (`Normal`), WALLET −gross (`ReconciledOnPost(statementNo = документын дугаар, lineNo = 0, settlementDate)`).
+3. Writer-ийн дараа (ижил transaction): сонгосон WALLET BLE бүрд `platform.fn_ledger_update` → `open = false`, `remaining_amount = 0`, `statement_status = 'CLOSED'`, `statement_no` = тооцооны дугаар, `closed_at_date = settlementDate`, `closed_by_entry_no` = шинэ WALLET BLE. `bank_account.last_statement_no` / `balance_last_statement`-д **хүрэхгүй** (BR-BNK-35).
 4. Түгжээний дор сонгосон BLE-үүд нээлттэй хэвээр эсэхийг дахин шалгана (`bank.match_target_changed`).
 
 Хувилбар: QPay тооцооны тайланг (CSV) WALLET дансанд хуулга мэт импортолж §5.9–5.11-ээр тулгаж болно (BR-BNK-09).
@@ -944,18 +967,20 @@ HashSet<Guid> PhaseA_ExactBankEntries(List<RecLine> lines, Ctx ctx)
                 select new Pair(l, e, DateDiff: Math.Abs(l.TransactionDate.DayNumber - e.PostingDate.DayNumber),
                                 Text: TextScore(l, e));                      // §6.10.3: max(nearness, exact) BLE document_no/ext/description ↔ line text
     var byLine = new Dictionary<Guid, Pair>(); var byEntry = new Dictionary<long, Pair>();
-    bool changed;
+    bool changed; int pass = 0;
+    var ordered = pairs.OrderBy(p => p.DateDiff).ThenByDescending(p => p.Text).ThenBy(p => p.Entry.EntryNo).ToList();
     do {                                                                       // R-BANK-CASH-21: илүү сайн мөр BLE-ийг "булааж" авна
         changed = false;
-        foreach (var p in pairs.OrderBy(p => p.DateDiff).ThenByDescending(p => p.Text).ThenBy(p => p.Entry.EntryNo))
+        foreach (var p in ordered)
         {
-            if (byLine.TryGetValue(p.Line.Id, out var cur) && !Better(p, cur)) continue;
+            if (byLine.TryGetValue(p.Line.Id, out var cur) && (cur == p || !Better(p, cur))) continue;
             if (byEntry.TryGetValue(p.Entry.EntryNo, out var other) && !Better(p, other)) continue;
-            if (other is not null) { byLine.Remove(other.Line.Id); changed = true; }
-            if (cur is not null) byEntry.Remove(cur.Entry.EntryNo);
+            if (other is not null) byLine.Remove(other.Line.Id);               // булаагдсан мөр дараагийн давталтад өөр BLE хайна
+            if (cur is not null) byEntry.Remove(cur.Entry.EntryNo);            // чөлөөлөгдсөн BLE-ийг бусад мөр авч болно
             byLine[p.Line.Id] = p; byEntry[p.Entry.EntryNo] = p;
+            changed = true;                                                    // аливаа өөрчлөлтөд дахин давтана
         }
-    } while (changed);
+    } while (changed && ++pass <= lines.Count + 1);                            // хамгаалалт: хос бүр зөвхөн сайжирдаг тул төгсгөлөг
     foreach (var p in byLine.Values) {
         var rivals = pairs.Count(q => q.Line.Id == p.Line.Id);
         var tie = pairs.Any(q => q.Line.Id == p.Line.Id && q.Entry != p.Entry && !Better(p, q) && !Better(q, p));
@@ -976,7 +1001,7 @@ IEnumerable<Proposal> ScoreLedgerEntries(RecLine l, IReadOnlyList<OpenEntry> ent
     int inRangeCountOfType = ctx.CountInRange(type, min, max);                  // бүх харьцагчаар (R-BANK-CASH-25)
     foreach (var e in entries)
     {
-        var bankSigned = -e.RemainingAvailable;                                   // CLE +1 100 → банкинд +1 100 орлого
+        var bankSigned = e.RemainingAvailable;                                    // BR-BNK-83: CLE +1 100 → банкинд +1 100 орлого; VLE −2 200 → −2 200 зарлага
         if (Math.Sign(bankSigned) != Math.Sign(l.StatementAmount)) continue;     // BR-BNK-53
         if (l.TransactionDate < e.PostingDate) continue;
         var party  = MatchParty(l, e.Party, ctx);
@@ -1047,7 +1072,10 @@ async Task<ReconciliationPostResult> PostReconciliationAsync(Guid recId, int ifM
     // A үе (түгжээгүй): толгой, мөр, бүлэг, санал унших; урьдчилсан шалгалт
     var rec = await recRepo.LoadAsync(recId, ct);
     Require(rec.Status == "OPEN", "bank.reconciliation_not_open");
-    Require(rec.StatementDate >= LastPostedStatementDate(rec.BankAccountId), "bank.reconciliation_date_invalid");
+    Require(rec.StatementDate >= LastPostedStatementDate(rec.BankAccountId)
+            && rec.Lines.All(l => l.TransactionDate <= rec.StatementDate), "bank.reconciliation_date_invalid");   // BR-BNK-66
+    Require(rec.Lines.All(l => !(l.HasBleMatch && l.HasNonBleTargets)), "bank.match_spec_invalid");          // BR-BNK-60
+    // BR-BNK-81: ваучер үүсэх мөр бүрийн transaction_date-ийн үе/цонх/FX хоригийг энд (A үе) цуглуулж нэг 422-оор
     var sum = rec.Lines.Sum(l => l.StatementAmount);
     Require(sum == rec.StatementEndingBalance - rec.BalanceLastStatement, "bank.reconciliation_balance_mismatch",
             new { difference = rec.StatementEndingBalance - rec.BalanceLastStatement - sum });          // BR-BNK-66
@@ -1056,10 +1084,12 @@ async Task<ReconciliationPostResult> PostReconciliationAsync(Guid recId, int ifM
 
     // Ваучер угсрах: зорилт нь BLE биш мөрүүдийг (эх + хүү) эх хуулгын мөрөөр бүлэглэнэ
     var vouchers = new List<PostingVoucher>();
-    foreach (var g in rec.Lines.Where(l => l.HasNonBleTargets).GroupBy(l => l.BankStatementLineId ?? l.Id))
+    foreach (var g in rec.Lines.Where(l => l.HasNonBleTargets)              // BR-BNK-60: BLE-тэй мөр энд орохгүй
+                 .GroupBy(l => l.BankStatementLineId ?? l.Id)
+                 .OrderBy(g => g.Min(l => l.TransactionDate)).ThenBy(g => g.Min(l => l.StatementLineNo)))   // BR-BNK-81 (date_order)
     {
         var first = g.OrderBy(l => l.StatementLineNo).First();
-        var total = g.Sum(l => l.StatementAmount);                          // = хуулгын мөрийн дүн
+        var total = g.Sum(l => l.StatementAmount);                          // = BLE бус мөрүүдийн дүн (эх BLE-тэй бол зөвхөн хүү мөр)
         int s = Math.Sign(total);
         var totalLcy = acc.Currency is null ? total : fx.ToLcy(total, (await rates.GetRateAsync(acc.Currency, first.TransactionDate, ct)).Rate);  // R2: FCY данс
         var moneyGl = Gl(acc.GlAccountId, totalLcy, LineOrigin.SystemDerived, currency: acc.Currency, fcy: total);
@@ -1095,9 +1125,9 @@ async Task<ReconciliationPostResult> PostReconciliationAsync(Guid recId, int ifM
 3. Ваучерын writer-ууд (BLE шинэ, хаалттай — BR-BNK-69; Parties тулгалт).
 4. Тулгагдсан бүх хуучин BLE: `platform.fn_ledger_update('bank.bank_ledger_entry', entry_no, {open:false, remaining_amount:0, statement_status:'CLOSED', statement_no, statement_line_no: (n:1 бол -1, эс бөгөөс мөрийн), closed_at_date: statement_date})` (BR-BNK-70).
 5. `bank.bank_account`: `last_statement_no := statement_no`, `balance_last_statement := rec.balance_last_statement + Σ statement_amount`.
-6. `bank.bank_account_statement`: `gl_balance_at_posting_date` = Σ BLE `amount` (`posting_date ≤ statement_date`, энэ transaction-ий шинэ BLE орно), `outstanding_payments` = Σ нээлттэй BLE `amount < 0` (`posting_date ≤ statement_date`, тулгагдаагүй), `outstanding_transactions` = Σ нээлттэй BLE `amount > 0`; мөр бүрд `_line` (`applied_entry_nos[]`, `applied_document_no` = ваучерын дугаар эсвэл BLE-ийн `document_no`).
+6. `bank.bank_account_statement`: `gl_balance_at_posting_date` = Σ BLE `amount` (`posting_date ≤ statement_date`, энэ transaction-ий шинэ BLE орно), `outstanding_payments` = Σ нээлттэй BLE `amount < 0` (`posting_date ≤ statement_date`, тулгагдаагүй), `outstanding_transactions` = Σ нээлттэй BLE `amount > 0`; мөр бүрд `_line` (`applied_entry_nos[]` = энэ мөрөөр хаагдсан бүх BLE, тулгалтаар шинээр үүссэн BLE орно; `applied_document_no` = ваучерын дугаар эсвэл BLE-ийн `document_no`).
 7. `bank_reconciliation.status = 'POSTED'`, `posted_at/by`; `bank_statement.status = 'POSTED'`; хуулгын мөрүүд `POSTED`.
-8. Ваучер үүсгэсэн мөр бүрд шинэ BLE-ийг `bank_rec_match_member` (`BANK_LEDGER_ENTRY`)-ээр бүлэгт нэмнэ (буцаахад ажлын хуудас тууштай, BR-BNK-74).
+8. Ваучер үүсгэсэн мөр бүрд шинэ BLE-ийг `bank_rec_match_member` (`BANK_LEDGER_ENTRY`)-ээр бүлэгт нэмж (`bank_rec_match.rule_code` хадгалагдана), тэр мөрийн батлагдсан саналыг (`payment_application_proposal`) **устгаж**, `bank_reconciliation_line.account_type/account_id := NULL`, `match_confidence := 'ACCEPTED'` болгоно. Ингэснээр буцаасны дараа (BR-BNK-73/74) мөр нь зөвхөн шинэ BLE-тэй тулгагдсан байх тул дахин батлахад **давхар төлбөр/ваучер үүсэхгүй**.
 9. SCR-BNK-01 хэрэгжсэн бол BR-BNK-72-ийн сурсан данс UPSERT.
 
 **Transaction:** бүгд нэг DB transaction, компанийн advisory lock (05 §6.3). Preview: ижил код, `SET CONSTRAINTS ALL IMMEDIATE`, ROLLBACK; дугаар `***`. `statement_timeout` = 120 s (≤ 2 000 мөр).
@@ -1105,8 +1135,8 @@ async Task<ReconciliationPostResult> PostReconciliationAsync(Guid recId, int ifM
 ### 5.12 Тулгалтыг буцаах (`POST /bank-account-statements/{id}:undo`, FR-BNK-014)
 
 1. Advisory lock (ledger өөрчлөнө). `bank_account_statement` нь тухайн дансны `undone_at IS NULL` хамгийн сүүлийнх (`bank.statement_not_latest`).
-2. `statement_no`-тэй, `statement_status = 'CLOSED'` бүх BLE → BR-BNK-73-ын утга (`fn_ledger_update`).
-3. Агшин зураг: `undone_at = now()`, `undone_by`, `undo_reason` (SCR-BNK-02).
+2. `bank_account_id` = тухайн данс, `statement_no` = хуулгын дугаар, `statement_status = 'CLOSED'` бүх BLE-ийг `FOR UPDATE` уншиж → BR-BNK-73-ын утга (`fn_ledger_update`). Олдсон `entry_no`-ийн олонлог нь агшин зургийн `bank_account_statement_line.applied_entry_nos`-ийн нэгдэлтэй (§5.11 алхам 6-д тулгалтаар үүссэн BLE мөн бичигдсэн) тэнцүү эсэхийг шалгана (зөрвөл 409 `bank.statement_inconsistent`, rollback).
+3. Агшин зураг: `undone_at = now()`, `undone_by`, `undo_reason_code_id` (SCR-BNK-02; `bank_account_statement` нь `ledger_guard`-д `key_column = NULL` тул `fn_ledger_update`-ээр биш, SCR-BNK-02-ын тусгай `bank.fn_mark_account_statement_undone(id, reason)` SECURITY DEFINER функцээр).
 4. `bank_account.last_statement_no/balance_last_statement` := өмнөх `undone_at IS NULL` агшин зургийнх (байхгүй бол `NULL` / 0 — эхний үлдэгдлийн тулгалт).
 5. `bank_reconciliation` (`bank_reconciliation_id`) → `status = 'OPEN'`, `posted_at/by = NULL`; `bank_statement.status = 'IN_RECONCILIATION'`; мөрүүд `MATCHED`. Өөр `OPEN` тулгалт байвал 409 `bank.reconciliation_already_open`.
 6. Outbox `event.bank_account_statement.undone`. Тулгалтаас үүссэн ваучерууд хэвээр (BR-BNK-74).
@@ -1239,10 +1269,12 @@ async Task<FxRunResult> RunRevaluationAsync(FxRunRequest q, PostingMode mode, Ca
         var rq = await rates.GetRateAsync(cur.Code, D, ct);                       // BR-FX-04, алдаа → fx.exchange_rate_not_found
         decimal rate = rq.Rate, fD = fx.FactorOf(rate);
         var rows = new List<RevalRow>();                                          // (entry, postingDate, delta, kind)
+        var revaluedItems = new List<OpenItem>();
 
         if (q.Scope.Customers || q.Scope.Vendors)
-            foreach (var e in await parties.OpenAsOfAsync(cur.Code, D, q.Scope, ct))   // BR-FX-42: remFCY(D) ≠ 0
+            foreach (var e in await parties.OpenAsOfAsync(cur.Code, D, q.Scope, ct))   // BR-FX-42: remFCY(D) ≠ 0; CLE/VLE FOR UPDATE
             {
+                revaluedItems.Add(e);                                                   // BR-FX-47/54: delta = 0 ч бүртгэнэ
                 decimal delta = R(e.RemFcyAt(D) * rate) - e.RemLcyAt(D);                 // BR-FX-43
                 if (delta != 0) rows.Add(RevalRow.Item(e, D, delta));
                 e.SetAdjustedFactor(fD);                                                // delta = 0 байсан ч
@@ -1262,7 +1294,7 @@ async Task<FxRunResult> RunRevaluationAsync(FxRunRequest q, PostingMode mode, Ca
 
         foreach (var g in rows.GroupBy(r => r.PostingDate))                           // BR-FX-45: (валют, огноо) бүрд нэг ваучер
             vouchers.Add(BuildRevalVoucher(cur, g.Key, fD, g.ToList()));
-        regs.AddRange(BuildRegisters(cur, D, fD, rows));                              // BR-FX-47
+        regs.AddRange(BuildRegisters(cur, fD, rows, revaluedItems));                  // BR-FX-47: (type, group, posting_date) бүрд; delta = 0 item-д ч ledger entry
     }
     var doc = new PostingDocument(vouchers, postedDocument: new FxRunWriter(currencies, D, regs),   // last_date_adjusted, register, ledger entry
                                   outbox: [Event("event.exch_rate_adjustment.posted")], idempotency: Ctx.Idempotency);
@@ -1291,9 +1323,11 @@ PostingVoucher BuildRevalVoucher(Currency cur, DateOnly date, decimal fD, List<R
 ```
 
 - `MergeSameAccountAndDims`: ижил (данс, dimension set) мөрүүдийг нэгтгэнэ (gain = loss данс үед цэвэр дүн, BR-FX-45); `LineKey`-ийн холбоос нэгтгэсэн мөрийг заана.
-- `FxRunWriter` (`IPostedDocumentWriter`): `fx.exch_rate_adjmt_register` (run × account_type × posting group × валют), `fx.exch_rate_adjmt_ledger_entry` (item бүр, `detailed_ledger_entry_no` = Parties writer-ийн буцаасан дугаар, `ledger_entry_no` = CLE/VLE/BLE), `party.*_ledger_entry.adjusted_currency_factor := fD` (`fn_ledger_update`), `fx.currency.last_date_adjusted := D` (BR-FX-48).
+- `FxRunWriter` (`IPostedDocumentWriter`): `fx.exch_rate_adjmt_register` (run × account_type × posting group × валют × posting_date; `transaction_no` = тухайн огнооны ваучер), `fx.exch_rate_adjmt_ledger_entry` (item бүр, delta = 0 бол `adjustment_amount = 0`, `detailed_ledger_entry_no = NULL`; `detailed_ledger_entry_no` = Parties writer-ийн буцаасан дугаар, `ledger_entry_no` = CLE/VLE/BLE), `party.*_ledger_entry.adjusted_currency_factor := fD` (`fn_ledger_update`), `fx.currency.last_date_adjusted := D` (BR-FX-48).
 - Lock: компанийн advisory lock (05); item-үүдийн CLE/VLE-г `FOR UPDATE` (research §8 "Concurrency"). Хугацаа: 10 000 item ≤ 30 s, `statement_timeout = 120s`.
 - Preview: G/L, item бүрийн delta, register-ийн нийлбэрийг буцаана (дугаар `***`).
+- Бүх delta = 0 (ваучергүй) run: engine-ийн G/L-гүй замаар (05 §5.19) `FxRunWriter` ажиллаж register (`transaction_no = NULL`), ledger entry (`adjustment_amount = 0`), `adjusted_currency_factor`, `last_date_adjusted`-ийг бичнэ; хоосон хүрээ (item ч, валютын данс ч байхгүй) бол зөвхөн `last_date_adjusted`.
+- Ваучерууд `FXA` цувралд огноо өсөхөөр дугаарлагдана (хоцорсон run-ий d_k ваучерууд D-ийнхаас хойш; SCR-FX-04-т `FXA`-ийн `date_order = false`, учир нь хоцорсон run-ий d_k нь дараагийн run-ий D-ээс хойш байж болно).
 
 ### 5.17 Хамгаалалт ба run буцаах (FR-FX-010)
 
@@ -1308,7 +1342,8 @@ PostingVoucher BuildRevalVoucher(Currency cur, DateOnly date, decimal fD, List<R
 | Хуулга импорт | 1 (бичих); parse гадна | `bank_account FOR SHARE`; давхардал unique index-ээр | `Idempotency-Key` + `file_sha256` | Object storage (transaction-ий өмнө) |
 | Auto-match, гар тулгалт | 1 (ажлын хуудас) | `bank_reconciliation FOR UPDATE` + `If-Match` | ETag | Үгүй |
 | "Батлах ба тулгах" | 1 (posting, олон ваучер) | Advisory lock + тулгалт `FOR UPDATE` + BLE `FOR UPDATE` | `Idempotency-Key` + `If-Match` | Үгүй |
-| Тулгалт буцаах | 1 | Advisory lock | `Idempotency-Key` | Үгүй |
+| Тулгалт буцаах | 1 | Advisory lock + BLE `FOR UPDATE` | `Idempotency-Key` | Үгүй |
+| Хуулга хаях (BR-BNK-80) | 1 (ажлын хуудас, ledger биш) | `bank_reconciliation FOR UPDATE` + `If-Match` | `Idempotency-Key`; дахин дуудахад `DISCARDED` → 200 (no-op) | Үгүй |
 | Монголбанкны job | Глобал 1 + компани бүрд 1 | Үгүй (ledger биш); `ON CONFLICT` | `UNIQUE (source, currency_code, rate_date)` | HTTP (transaction-ий **өмнө**) |
 | Дахин үнэлгээ / буцаалт | 1 | Advisory lock + item `FOR UPDATE` | `Idempotency-Key`; ижил (валют, D) хоёр дахь run → `fx.revaluation_date_invalid` | Үгүй |
 
@@ -1491,19 +1526,26 @@ else:
 
 ### 6.8 Тулгалтын тайлан (FR-BNK-016, BR-BNK-78)
 
-D огноонд, мөнгөний данс (BANK/WALLET) бүрд:
+D огноонд, мөнгөний данс (BANK/WALLET) бүрд. **Хүчинтэй муж:** `D ≥ S.statement_date` (S = хамгийн сүүлийн буцаагдаагүй батлагдсан агшин зураг); D түүнээс өмнө бол тайлан нь `D`-ээс өмнөх хамгийн сүүлийн агшин зургийг (`gl_balance_at_posting_date`, `outstanding_*`) харуулна — эс бөгөөс S-ээр хаагдсан, `transaction_date ≤ D` мөрүүд Statement-д орохгүй тул тэгшитгэл зөрнө.
 
 ```
 GL(D)            = Σ BLE.amount          (posting_date ≤ D)                       -- LCY дансанд = G/L 11xx үлдэгдэл
+M(D)             = нээлттэй тулгалтын (status = OPEN) BLE-тэй бүлгийн гишүүн BLE-үүд,
+                   бүлгийн хуулгын мөрийн transaction_date ≤ D                      -- "тулгагдсан, батлах хүлээгдэж буй"
 Outstanding(D)   = Σ BLE.amount          (posting_date ≤ D, amount ≠ 0, NOT reversed,
-                                          (open = true) OR (closed_at_date > D))   -- тэмдэгтэй
-Statement(D)     = S.statement_ending_balance  (S = statement_date ≤ D, undone_at IS NULL хамгийн сүүлийн агшин зураг; байхгүй бол 0)
-                   + Σ импортолсон, батлагдаагүй, IGNORED биш хуулгын мөр (S.statement_date < transaction_date ≤ D)
-Unreconciled(D)  = Σ тэр батлагдаагүй хуулгын мөрүүдээс тулгагдаагүй (difference ≠ 0) мөрийн statement_amount
+                                          ((open = true) OR (closed_at_date > D)), BLE ∉ M(D))   -- тэмдэгтэй
+U(D)             = импортолсон, батлагдаагүй, IGNORED биш хуулгын мөрүүд (S.statement_date < transaction_date ≤ D)
+Statement(D)     = S.statement_ending_balance (байхгүй бол 0) + Σ U(D).statement_amount
+Unreconciled(D)  = Σ U(D)-ээс BLE-тэй бүлэгт **ороогүй** мөрийн statement_amount
+                   (тулгагдаагүй + санал/данс руу тулгагдсан ч ledger-д хараахан бичигдээгүй)
 Шалгалт:  GL(D) − Outstanding(D) + Unreconciled(D) − Statement(D) = 0
 ```
 
-GS-REC-004: `9 847 500 − (−400 000) + 0 − 10 247 500 = 0` ✔. Тэнцэхгүй бол (жишээ нь батлагдсан хуулгын огнооноос өмнөх огноотой шинэ BLE) зөрүүг "Шалгах шаардлагатай" мөрөнд харуулна.
+Нотолгоо: `GL − Outstanding = E + Σ M` (E = S-ээр хаагдсан BLE-ийн нийлбэр = S.ending, эхний тулгалтаас хойш); `Statement − Unreconciled = E + Σ (BLE-тэй бүлгийн мөр) = E + Σ M` (бүлэг бүрт Σ мөр = Σ BLE, BR-BNK-60). Тиймээс зөрүү зөвхөн "хуулгын үеийн өмнөх огноотой шинэ BLE", гараар өөрчилсөн `balance_last_statement` (BR-BNK-65) зэргээс гарна.
+
+Жишээ 1 — батласны дараа (GS-REC-004): `9 847 500 − (−400 000) + 0 − 10 247 500 = 0` ✔.
+Жишээ 2 — P6-ийн ажлын хуудас **батлахаас өмнө** (03-31): GL = 10 000 000 − 550 000 − 300 000 − 400 000 = 8 750 000; M = {#2, #3}; Outstanding = −400 000 (#4); U = 4 мөр, Statement = 10 000 000 + 247 500 = 10 247 500; Unreconciled = +1 100 000 − 2 500 = 1 097 500 (санал/дүрмээр тулгагдсан, ledger-д ороогүй) → `8 750 000 − (−400 000) + 1 097 500 − 10 247 500 = 0` ✔. (Өмнөх томьёогоор — M-ийг Outstanding-д оруулж, Unreconciled-д зөвхөн `difference ≠ 0` мөрийг тооцвол — `8 750 000 + 1 250 000 + 0 − 10 247 500 = −247 500` болж худал "зөрүү" гарах байсан.)
+Тэнцэхгүй бол зөрүүг "Шалгах шаардлагатай" мөрөнд харуулна.
 
 ### 6.9 Дүнг монголоор үсгээр бичих (`MoneyWords.ToMongolian`, BR-BNK-24)
 
@@ -1572,11 +1614,13 @@ TextScore(line, BLE) = max over f ∈ {document_no, external_document_no, descri
 Апп (түгжээний дор, posting-ийн шинэ мөрүүдийг оруулж):
   for each (CASH эсвэл prevent_negative) данс A, posting огноо P:
      running(d) = Σ BLE.amount (posting_date ≤ d) + Σ шинэ мөр (posting_date ≤ d),   d ∈ {P} ∪ {A-ийн P-ээс хойших posting огноонууд}
-     min_d running(d) < 0 → 422 bank.cash_negative_balance { account, date: argmin, available: running(P) − шинэ мөрүүд, shortfall: −min }
+     min_d running(d) < 0 → 422 bank.cash_negative_balance { account, date: argmin,
+                                available: min_{d ≥ P} (Σ BLE.amount (posting_date ≤ d)),   -- шинэ мөргүй, P-д зарцуулж болох дээд хэмжээ
+                                shortfall: −min_d running(d) }
 DB (COMMIT, 910): ижил тооцоог өдөр бүрээр (ERC01) — хоёр дахь хамгаалалт
 ```
 
-Жишээ (DBT-CASH-01): 03-01 +100 000, 03-10 −80 000; дараа нь 03-05-нд −50 000 → running(03-05) = 50 000, running(03-10) = −30 000 → татгалзана.
+Жишээ (DBT-CASH-01): 03-01 +100 000, 03-10 −80 000; дараа нь 03-05-нд −50 000 → running(03-05) = 50 000, running(03-10) = −30 000 → татгалзана: `date = 03-10`, `available = min(100 000; 20 000) = 20 000`, `shortfall = 30 000` (= 50 000 − 20 000). (03-05-ны үлдэгдэл 100 000 боловч 03-10-ны зарлагын улмаас зөвхөн 20 000 зарцуулах боломжтой.)
 
 ---
 ## 7. Posting-ийн жишээнүүд
@@ -1627,7 +1671,7 @@ BLE: BANK01 `−1,000,000.00` (open, хуулгаар тулгагдана); CAS
 
 ### P3. Кассын зарлага (МХ-2), НӨАТ-тэй зардал — R1 (FR-BNK-003, D-E4)
 
-03-12: `{bankAccountId: CASH01, direction: PAYMENT, amount: "88000.00", partyType: GL_ACCOUNT, partyNumber: "7213", cashVoucher: {counterpartyName: "Номин супермаркет", counterpartyIdDocument: "2861727", purpose: "Бичиг хэрэг худалдан авалт"}}`. 7213: `gen_posting_type = PURCHASE`, `DOMESTIC × VAT10`. НӨАТ = r(88 000 × 10/110) = 8 000.00; суурь 80 000.00 (gross арга, 08). Кассын үлдэгдэл өмнө 1 000 880 → дараа 912 880 ≥ 0 ✔.
+03-12: `{bankAccountId: CASH01, direction: PAYMENT, amount: "88000.00", partyType: GL_ACCOUNT, partyNumber: "7213", cashVoucher: {counterpartyName: "Номин супермаркет", counterpartyIdDocument: "2861727", purpose: "Бичиг хэрэг худалдан авалт"}, vat: {genPostingType: PURCHASE, vatBusPostingGroup: DOMESTIC, vatProdPostingGroup: VAT10, supplierEbarimtId: null}}`. Seed-ийн 7213 нь `gen_posting_type = NONE` тул НӨАТ нь **хүсэлтийн `vat`-аар** л тооцогдоно (05 BR-PST-38; `vat`-гүй бол 7213 Дт 88 000 / 1100 Кт 88 000, НӨАТ-гүй). НӨАТ = r(88 000 × 10/110) = 8 000.00; суурь 80 000.00 (gross арга, 05 §6.4). Кассын үлдэгдэл өмнө 1 000 880 → дараа 912 880 ≥ 0 ✔.
 
 Ваучер `KZ-2026-00001`, source `CASHVOUCHER`:
 
@@ -1695,7 +1739,7 @@ BANK01: `balance_last_statement` = 10 000 000.00 (хуулга №5). Нээлт
 | | 1110 Харилцах данс | | 2,500.00 |
 | | **Σ** | **1,102,500.00** | **1,102,500.00** |
 
-8300 нь EXEMPT (НӨАТ 0) тул НӨАТ-ын мөр үүсэхгүй.
+Тулгалтын G/L мөр `gen_posting_type = NONE` (BR-BNK-68) тул НӨАТ-ын мөр, VAT entry үүсэхгүй (8300-ийн анхдагч VAT бүлэг EXEMPT нь зөвхөн баримтын мөрөнд хэрэглэгдэнэ).
 
 | BLE | Огноо | Дүн | Үр дүн |
 |---|---|---:|---|
@@ -1709,7 +1753,7 @@ BANK01: `balance_last_statement` = 10 000 000.00 (хуулга №5). Нээлт
 
 ### P7. MEDIUM санал, зөрүүг хуваах — R1 (FR-BNK-013, R-BANK-CASH-30)
 
-Хуулга №7, мөр 10000, 04-20, +505 000.00, "SI-2026-00003", харьцсан данс хоосон. CLE `SI-2026-00003` (C-B2B2) үлдэгдэл 500 000.00. BANK01 хүлцэл AMOUNT 10 000 → муж [495 000; 515 000]; бүх харилцагчаас ганц → `ONE_MATCH`; харьцагч NO; баримт YES → **M06, 2994, MEDIUM** — автоматаар тулгахгүй. Хэрэглэгч саналыг батлав (`applied 500,000`, `difference 5,000`) → `:split` 8200 → хүү мөр 10001 (+5 000.00, `GL_ACCOUNT 8200`, `MANUAL`).
+Хуулга №7, мөр 10000, 04-20, +505 000.00, "SI-2026-00003", харьцсан данс хоосон. CLE `SI-2026-00003` (C-B2B2) үлдэгдэл 500 000.00. BANK01 хүлцэл AMOUNT 10 000 → муж [495 000; 515 000]; бүх харилцагчаас ганц → `ONE_MATCH`; харьцагч NO; баримт YES → **M06, 2994, MEDIUM** — автоматаар тулгахгүй. Хэрэглэгч саналыг батлав (`applied 500,000`, `difference 5,000`) → `:split` 8200 → хүү мөр 10001 (+5 000.00, `GL_ACCOUNT 8200`, `MANUAL`). (Анхдагч санал нь C-B2B2-ийн урьдчилгаа `CUSTOMER`, `applies_to_entry_no = NULL` — BR-BNK-62; энэ жишээнд хэрэглэгч бага дүнгийн илүү төлөлтийг орлогод бичихээр сонгосон. Урьдчилгаа сонгосон бол 1200 Кт 505 000 болж 8200 мөргүй.)
 
 Ваучер `BR-2026-00002` (04-20; эх + хүү мөр = нэг ваучер, нэг BLE):
 
@@ -1773,7 +1817,7 @@ Run: D = 2026-01-31, `rate_D = 3 450`, `f_D = 0.000289855072463768`, хүрээ:
 | 2 | VENDOR | FOREIGN | −2,000.00 | −6,800,000.00 | −100,000.00 |
 | 3 | BANK_ACCOUNT | BANK_FCY | 5,000.00 | 17,000,000.00 | 250,000.00 |
 
-`fx.exch_rate_adjmt_ledger_entry` 3 мөр (CLE#1, VLE#5, GOL-USD; `currency_factor = 0.000289855072463768`). CLE#1, VLE#5 `adjusted_currency_factor := 0.000289855072463768`. `fx.currency(USD).last_date_adjusted = 2026-01-31`.
+`fx.exch_rate_adjmt_ledger_entry` 3 мөр (CLE#1, VLE#5, GOL-USD; `currency_factor = 0.000289855072463768`; delta = 0 item байсан бол түүнд ч `adjustment_amount = 0` мөр, BR-FX-47). Register-ийн 3 мөр бүгд `posting_date = 01-31`, ижил `transaction_no` (FXA-2026-00001). CLE#1, VLE#5 `adjusted_currency_factor := 0.000289855072463768`. `fx.currency(USD).last_date_adjusted = 2026-01-31`.
 
 ### P11. Харилцагчийн USD төлбөр ба хэрэгжсэн зөрүү 02-10 — R2 (GS-FX-004, FR-FX-007 AC1)
 
@@ -1855,11 +1899,21 @@ VLE#5 үлдэгдэл: −1 000 / (−6 800 000 − 100 000 + 50 000 + 3 400 00
 | | | | 1201 | | 55,000.00 |
 | | | | **Σ** | **110,000.00** | **110,000.00** |
 
-1201 as of 01-31 = 3 795 000 (= 1 100 × 3 450) ✔; as of 02-10 = 0 ✔. 02-10-ны үе нээлттэй байх ёстой (BR-FX-49).
+1201 as of 01-31 = 3 795 000 (= 1 100 × 3 450) ✔; as of 02-10 = 0 ✔. 02-10-ны үе нээлттэй байх ёстой (BR-FX-49). `fx.exch_rate_adjmt_register`: CUSTOMER/FOREIGN/USD-д **хоёр** мөр (01-31: `adjusted_amt_lcy +55 000`, `transaction_no` = FXA-00001; 02-10: `−55 000`, FXA-00002) — BR-FX-47; ledger entry CLE#1-д хоёр мөр (`currency_factor = 0.000289855072463768`). `last_date_adjusted = 01-31` (02-10 биш). Ашиг алдагдлын шалгалт: 01-р сар +55 000, 02-р сар −55 000 + 22 000 (хэрэгжсэн) — нийт +22 000 = 1 100 × (3 420 − 3 400) ✔.
 
 ### P15. USD нэхэмжлэхийг MNT-ээр төлөх — R2 (FR-FX-005/006, R-CURRENCY-FX §6.6)
 
-INV-2 01-15: 500.00 USD = 1 700 000 (1201 Дт / 5120 Кт); 01-31 дахин үнэлгээ +25 000 (1201 Дт / 8510 Кт). 02-10: харилцагч **MNT 1 712 500**-ийг BANK01 (LCY) руу шилжүүлэв. `POST /payments` `{BANK01, RECEIPT, amount: "1712500.00", currencyCode: USD, amountFcy: "500.00", partyType: CUSTOMER, applyTo: INV-2}` → `rate = 1 712 500 / 500 = 3 425` (override, BR-FX-25), `f = 0.000291970802919708`.
+INV-2 01-15: 500.00 USD = 1 700 000 (1201 Дт / 5120 Кт); 01-31 дахин үнэлгээ +25 000 (1201 Дт / 8510 Кт). 02-10: харилцагч **MNT 1 712 500**-ийг BANK01 (LCY) руу шилжүүлэв. `POST /payments` `{BANK01, RECEIPT, currencyCode: USD, amount: "500.00", amountLcy: "1712500.00", partyType: CUSTOMER, applyTo: INV-2}` (§5.2 "`amount`-ын утга" (ii)) → `rate = 1 712 500 / 500 = 3 425` (override, BR-FX-25), `f = 0.000291970802919708`.
+
+| Detailed мөр | Entry | Төрөл | FCY | LCY |
+|---|---|---|---:|---:|
+| 1 | Төлбөр N | INITIAL | −500.00 | −1,712,500.00 |
+| 2 | INV-2 O | UNREALIZED_GAIN (буцаалт, U = +25 000, a/rem = 1) | 0 | −25,000.00 |
+| 3 | N | REALIZED_GAIN: +1 × (1 712 500 − 1 700 000) | 0 | +12,500.00 |
+| 4 | O | APPLICATION | −500.00 | −1,700,000.00 |
+| 5 | N | APPLICATION | +500.00 | +1,700,000.00 |
+
+O: 0 / (1 700 000 + 25 000 − 25 000 − 1 700 000 = 0); N: 0 / (−1 712 500 + 12 500 + 1 700 000 = 0) → засваргүй. 1201 = Σ LCY = −1 725 000.
 
 | Данс | Дт | Кт |
 |---|---:|---:|
@@ -1886,7 +1940,7 @@ BLE: GOL-USD −1 000.00 USD / −3 420 000; BANK01 +3 410 000.
 
 ### P17. Тулгалтыг буцаах — R1 (GS-REC-004, FR-BNK-014)
 
-P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L бичилт үүсэхгүй** (Σ = 0). BLE #2, #3, #5, #6 → `open = true`, `remaining = amount`, `statement_status = OPEN`, `statement_no = NULL`, `closed_at_date = NULL`; `bank_account.last_statement_no = '5'`, `balance_last_statement = 10,000,000.00`; агшин зураг №6 `undone_at`; тулгалт №6 `OPEN` (бүлэг хэвээр, мөр 10000 ба 40000 нь BLE #5, #6-тай). `BR-2026-00001`, `BP-2026-00003` хэвээр (тусад нь буцаах бол BR-BNK-76).
+P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L бичилт үүсэхгүй** (Σ = 0). BLE #2, #3, #5, #6 → `open = true`, `remaining = amount`, `statement_status = OPEN`, `statement_no = NULL`, `closed_at_date = NULL`; `bank_account.last_statement_no = '5'`, `balance_last_statement = 10,000,000.00`; агшин зураг №6 `undone_at`; тулгалт №6 `OPEN` (бүлэг хэвээр, мөр 10000 ба 40000 нь BLE #5, #6-тай; тэдгээрийн санал/`account_type` батлах үед устгагдсан тул (§5.11 алхам 8) дахин батлахад `BR`/`BP` ваучер **дахин үүсэхгүй**, зөвхөн BLE-үүд дахин хаагдана). `BR-2026-00001`, `BP-2026-00003` хэвээр (тусад нь буцаах бол BR-BNK-76).
 
 ---
 ## 8. Validation ба алдааны кодууд
@@ -1911,17 +1965,19 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 | `bank.transfer_same_account` | 422 | Илгээх ба хүлээн авах данс ижил байна | BR-BNK-30 |
 | `bank.cash_count_date_invalid` | 422 | Тооллогын огноо ирээдүйд эсвэл тоолсон дүн сөрөг байна | BR-BNK-33 |
 | `bank.cash_count_stale` | 409 | Тооллогын үеэр кассын үлдэгдэл өөрчлөгдсөн. Дахин тоолно уу | §5.5 |
-| `bank.wallet_settlement_invalid` | 422 | Хэтэвчийн тооцоо буруу: шимтгэл сөрөг эсвэл сонгосон бичилт алга | BR-BNK-35, 36 |
+| `bank.wallet_settlement_invalid` | 422 | Хэтэвчийн тооцоо буруу: шимтгэл сөрөг, банкинд орсон дүн 0, эсвэл сонгосон бичилт алга | BR-BNK-35, 36 |
+| `bank.transfer_counter_amount_invalid` | 422 | Валют арилжаанд хүлээн авах дансны дүнг ({currency}) оруулна уу; ижил валютын шилжүүлэгт оруулахгүй | BR-BNK-32, 82 |
+| `bank.statement_inconsistent` | 409 | Хуулгын агшин зураг ба банкны бичилтүүд зөрж байна (хуулга {statementNo}). Системийн админд хандана уу | §5.12 |
 | `bank.import_format_invalid` | 422 | Импортын профайл буруу: {detail} (заавал багана дутуу, CSV тусгаарлагчгүй г.м.) | BR-BNK-41 |
-| `bank.statement_parse_failed` | 422 | Хуулгын файлыг уншиж чадсангүй: {n} мөрөнд алдаа (`errors[]`: мөр, багана, `date_invalid`/`amount_invalid`/`required_missing`/`amount_ambiguous`/`amount_precision`) | BR-BNK-41..43 |
+| `bank.statement_parse_failed` | 422 | Хуулгын файлыг уншиж чадсангүй: {n} мөрөнд алдаа (`errors[]`: мөр, багана, `date_invalid`/`amount_invalid`/`required_missing`/`amount_ambiguous`/`amount_precision`/`currency_mismatch`) | BR-BNK-41..43 |
 | `bank.statement_too_large` | 413 | Хуулга 10 000 мөрөөс их байна. Хугацааг хувааж импортолно уу | BR-BNK-40 |
 | `bank.statement_already_imported` | 409 | Энэ файлыг өмнө нь импортолсон байна (хуулга {statementNo}) | BR-BNK-44 |
-| `bank.statement_in_use` | 409 | Батлагдсан эсвэл тулгалттай мөртэй хуулгыг хаях боломжгүй | §10 `:discard` |
+| `bank.statement_in_use` | 409 | Батлагдсан эсвэл тулгалттай мөртэй хуулгыг хаях боломжгүй | BR-BNK-80 (`:discard`) |
 | `bank.statement_not_latest` | 409 | Зөвхөн хамгийн сүүлийн батлагдсан хуулгыг буцаана | BR-BNK-73 |
 | `bank.not_reconcilable` | 422 | Кассын дансанд хуулгын тулгалт хийхгүй (кассын тооллого ашиглана уу) | BR-BNK-63 |
 | `bank.reconciliation_already_open` | 409 | Энэ дансанд нээлттэй тулгалт байна ({statementNo}) | BR-BNK-63 |
 | `bank.reconciliation_not_open` | 409 | Тулгалт батлагдсан байна | §5.9–5.11 |
-| `bank.reconciliation_date_invalid` | 422 | Хуулгын огноо өмнөх батлагдсан хуулгын огнооноос ({date}) өмнө байна | BR-BNK-66 |
+| `bank.reconciliation_date_invalid` | 422 | Хуулгын огноо өмнөх батлагдсан хуулгын огнооноос ({date}) өмнө, эсвэл хуулгын огнооноос хойших гүйлгээтэй мөр байна ({lines}) | BR-BNK-66 |
 | `bank.reconciliation_balance_mismatch` | 422 | Мөрүүдийн нийлбэр эцсийн үлдэгдэлтэй таарахгүй (зөрүү {difference}) | BR-BNK-66, FR-BNK-013 AC2 |
 | `bank.reconciliation_unmatched_lines` | 422 | Тулгагдаагүй {n} мөр байна. Тулгах эсвэл данс руу бичнэ үү | BR-BNK-67 |
 | `bank.match_spec_invalid` | 422 | Тулгалтын бүлэг буруу (олон мөр ↔ олон бичилт зөвшөөрөхгүй) | BR-BNK-60 |
@@ -1975,6 +2031,7 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 | `W-FX-01` | {currency}-ийн хамгийн сүүлийн ханш {date}-ных (хуучирсан) | BR-FX-09 |
 | `W-FX-02` | Өнөөдрийн Монголбанкны ханш ороогүй, {date}-ны ханшаар бичигдэнэ | BR-FX-09 |
 | `W-FX-03` | Дахин үнэлгээний огноо сарын сүүлийн өдөр биш байна | BR-FX-40 |
+| `W-FX-04` | {currency} валютын {account} дансанд батлагдаагүй хуулгын тулгалт байна. Дахин үнэлгээний дараа тэр хугацааны мөрийг батлах боломжгүй болно | BR-FX-53, BR-BNK-81 |
 
 ---
 
@@ -2064,7 +2121,8 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 | `POST /bank-reconciliations/{id}/lines/{lineId}:split` | BR-BNK-62 |
 | `GET /bank-accounts/{id}/reconciliation-report?date=` | §6.8 (FR-BNK-016) |
 | `POST /exch-rate-adjustments:preview`, `POST /exch-rate-adjustments`, `GET /exch-rate-adjustments`, `POST /exch-rate-adjustments/{runNo}:reverse` | §5.16–5.17; эрх `ACTION fx.exch_rate_adjustment.post` (`PERIOD_CLOSE` set) |
-| `PaymentCreate`-д (R2): `currencyCode`, `amountFcy` (LCY дансаар валютын entry төлөх, P15), `amountLcy` (FCY дансны MNT override, BR-FX-25), `counterAmount` (валют арилжаа, P16) | BR-BNK-32, BR-FX-24/25 |
+| `PaymentCreate`-д (R2): `currencyCode` (гүйлгээний валют; `amount` нь энэ валютаар — §5.2), `amountLcy` (гараар MNT override, BR-FX-25; LCY дансаар валютын entry төлөх P15-д мөн), `counterAmount` (валют арилжаа, P16). `amountFcy` талбар **үүсгэхгүй** | BR-BNK-32, BR-FX-24/25 |
+| `PaymentCreate`-д (R1): `vat?` `{genPostingType, vatBusPostingGroup, vatProdPostingGroup, supplierEbarimtId?}` — зөвхөн `partyType = GL_ACCOUNT` (P3, 05 BR-PST-38); `WalletSettlementRequest`-д `feeVat?` ижил бүтэцтэй (BR-BNK-36) | 05 BR-PST-38, D-E4 |
 | `PaymentCreate`-д (R1): `applyToOldest` байгаа; `feeAmount`-ыг **нэмэхгүй** (шимтгэл = хэтэвчийн тооцоо эсвэл тулгалт) | — |
 
 ---
@@ -2079,7 +2137,7 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 - **AT-BNK-05 (FR-BNK-002 AC1, P1).** **Өгөгдсөн нь** `SI-2026-00001` 880; **Хэрэв** CASH01-д 880 орлого тулгаж батлавал; **Тэгэхэд** `KO-2026-00001`, 1100 Дт 880 / 1200 Кт 880, нэхэмжлэх хаагдсан, `posted_cash_voucher` RECEIPT, `amount_in_words` = "Найман зуун наян төгрөг 00 мөнгө". **Мөн** `GET /cash-vouchers/{id}/pdf` нь §5.3-ын бүх блоктой (SNAP-03).
 - **AT-BNK-06 (FR-BNK-003 AC1, BR-BNK-25).** **Өгөгдсөн нь** кассын үлдэгдэл 300 000; **Хэрэв** МХ-2 400 000 батлавал; **Тэгэхэд** 422 `bank.cash_negative_balance` (`available 300000.00`, `shortfall 100000.00`); `KZ` дугаар зарцуулагдахгүй; ledger өөрчлөгдөхгүй.
 - **AT-BNK-07 (FR-BNK-003 AC2, BR-BNK-23).** **Өгөгдсөн нь** `counterpartyIdDocument` хоосон, `partyType = GL_ACCOUNT`; **Хэрэв** МХ-2 батлавал; **Тэгэхэд** 422 `bank.cash_voucher_required`. **Мөн** `partyType = VENDOR` ТТД-тэй бол ID = ТТД-ээр батлагдана.
-- **AT-BNK-08 (BR-BNK-25, DBT-CASH-01).** **Өгөгдсөн нь** касс 03-01 +100 000, 03-10 −80 000; **Хэрэв** 03-05-ны огноогоор МХ-2 50 000; **Тэгэхэд** 422 `bank.cash_negative_balance` (`date = 03-10`, `shortfall 30000.00`) — апп шалгалт; апп шалгалтыг алгасвал DB COMMIT-д `ERC01`.
+- **AT-BNK-08 (BR-BNK-25, DBT-CASH-01).** **Өгөгдсөн нь** касс 03-01 +100 000, 03-10 −80 000; **Хэрэв** 03-05-ны огноогоор МХ-2 50 000; **Тэгэхэд** 422 `bank.cash_negative_balance` (`date = 03-10`, `available 20000.00`, `shortfall 30000.00`) — апп шалгалт; апп шалгалтыг алгасвал DB COMMIT-д `ERC01`.
 - **AT-BNK-09 (BR-BNK-26, GS-CASH-005).** **Өгөгдсөн нь** `KZ-2026-00001` 03-10; **Хэрэв** 03-05-ны МХ-2; **Тэгэхэд** 422 `platform.number_series_date_order`.
 - **AT-BNK-10 (BR-BNK-21).** **Өгөгдсөн нь** бэлэн борлуулалт (`SI-…`, төлбөрийн хэлбэр CASH); **Тэгэхэд** ваучер 2-ийн `document_no = SI-…`, `posted_cash_voucher.no` = `KO`-ийн дараагийн дугаар (тусдаа). **Мөн** `POST /payments` CASH бол `posted_cash_voucher.no = document_no`.
 - **AT-BNK-11 (FR-BNK-007 AC1, BR-BNK-30/31, P2).** **Өгөгдсөн нь** BANK01 → CASH01 1 000 000; **Тэгэхэд** нэг transaction, 1100 Дт / 1110 Кт, хоёр BLE, ваучер `KO-…`, МХ-1. CASH01 → BANK01 бол `KZ-…`, МХ-2 (ID заавал). BANK01 → BANK02 бол `BP-…`, МХ-гүй.
@@ -2105,6 +2163,13 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 - **AT-BNK-31 (FR-BNK-016 AC1, §6.8).** **Өгөгдсөн нь** P6-ийн төлөв; **Хэрэв** 03-31-ний тулгалтын тайлан; **Тэгэхэд** G/L 9 847 500, outstanding −400 000, тулгагдаагүй мөр 0, хуулга 10 247 500, шалгалт 0.
 - **AT-BNK-32 (BR-BNK-13).** **Өгөгдсөн нь** ерөнхий журналын мөр `GL_ACCOUNT 1110`; **Тэгэхэд** 422 `gl.direct_posting_not_allowed`.
 - **AT-BNK-33 (BR-BNK-63).** **Өгөгдсөн нь** BANK01-д `OPEN` тулгалт; **Хэрэв** шинэ хуулга импортолбол; **Тэгэхэд** мөрүүд нээлттэй тулгалтад нэмэгдэнэ. **Мөн** `POST /bank-reconciliations` гараар → 409 `bank.reconciliation_already_open`; CASH01-д → 422 `bank.not_reconcilable`.
+- **AT-BNK-34 (BR-BNK-80).** **Өгөгдсөн нь** импортолсон, тулгагдаагүй хуулга №7; **Хэрэв** `:discard`; **Тэгэхэд** хуулга `DISCARDED`, мөрүүд `IGNORED`, тулгалтын мөр устсан; **Мөн** ижил файлыг дахин импортлоход 201 (409 биш), бүх мөр орно (`skippedDuplicateCount = 0`). Нэг мөр нь санал батлагдсан бол 409 `bank.statement_in_use`.
+- **AT-BNK-35 (BR-BNK-60, 62, §5.11).** **Өгөгдсөн нь** мөр −552 000 ↔ BLE −550 000 (хүлцэлтэй, Б үе), `:split` 8300; **Тэгэхэд** батлахад эх мөр BLE-ээр хаагдаж, зөвхөн хүү мөр −2 000-ийн ваучер (8300 Дт 2 000 / 1110 Кт 2 000) үүснэ. **Мөн** нэг мөрийг BLE ба харилцагчийн саналд зэрэг тулгах → 422 `bank.match_spec_invalid`.
+- **AT-BNK-36 (§5.11 алхам 8, BR-BNK-74, P17).** **Өгөгдсөн нь** P6 батлагдаж, дараа нь P17-оор буцаагдсан; **Хэрэв** өөрчлөлтгүй дахин "Батлах ба тулгах"; **Тэгэхэд** шинэ G/L ваучер үүсэхгүй (`BR-2026-00001`, `BP-2026-00003` дахин үүсэхгүй), BLE #2, #3, #5, #6 дахин `CLOSED`, `balance_last_statement = 10 247 500`.
+- **AT-BNK-37 (BR-BNK-81).** **Өгөгдсөн нь** `BR`-ийн сүүлийн дугаар 03-20-ны огноотой, `date_order = true`; **Хэрэв** 03-05-ны орлогын мөртэй тулгалт батлавал; **Тэгэхэд** 422 `platform.number_series_date_order`. **Мөн** SCR-BNK-08 (`date_order = false`) хэрэгжсэн бол батлагдаж, нэг тулгалтын ваучерууд (огноо, мөрийн дугаар) өсөхөөр дугаарлагдана. **Мөн** мөрийн огнооны үе хаалттай бол 422 `gl.period_closed` (мөрийн жагсаалттай), юу ч бичигдэхгүй.
+- **AT-BNK-38 (BR-BNK-35).** **Өгөгдсөн нь** QPAY01-д хуулга №2 батлагдсан (`last_statement_no = '2'`, `balance_last_statement = 50 000`); **Хэрэв** `:settle-wallet` хийвэл; **Тэгэхэд** QPAY01-ийн `last_statement_no = '2'`, `balance_last_statement = 50 000` хэвээр.
+- **AT-BNK-39 (BR-BNK-11, R2).** **Өгөгдсөн нь** MNT касс CASH01; **Хэрэв** `currencyCode = USD` МХ-1; **Тэгэхэд** 422 `bank.account_currency_mismatch`. **Мөн** MNT BANK01 + `currencyCode = USD` (P15) зөвшөөрөгдөнө.
+- **AT-BNK-40 (BR-BNK-83, §5.9.5).** **Өгөгдсөн нь** V-DOM-ийн нээлттэй VLE −2 200 (нэхэмжлэх), хуулгын мөр −2 200 "PI-2026-00007"; **Тэгэхэд** VLE санал болгогдоно (тэмдэг ижил); мөр +2 200 бол санал болгогдохгүй.
 
 ### 11.2 Хүлээн авах тест — валют (R2)
 
@@ -2115,7 +2180,7 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 - **AT-FX-05 (BR-FX-07, 15).** **Өгөгдсөн нь** 10-06-ны `MANUAL` USD 3 600; **Хэрэв** job 3 595.40 татвал; **Тэгэхэд** компанийн мөр 3 600 (MANUAL) хэвээр.
 - **AT-FX-06 (BR-FX-13, 14).** **Өгөгдсөн нь** өмнөх өдрийн USD 3 595.40; **Хэрэв** 7 300 ирвэл; **Тэгэхэд** бичигдэхгүй, `fx.rate_anomaly`. **Мөн** өмнө татсан огнооны утга 3 595.40 → 3 596.10 болж ирвэл засварлагдаж `fx.official_rate_corrected`, батлагдсан баримтын ханш өөрчлөгдөхгүй.
 - **AT-FX-07 (FR-FX-004 AC1, BR-FX-21/22, GS-FX-001).** **Өгөгдсөн нь** ханш 3 450.50, 2 × 10.01 USD; **Тэгэхэд** 34 539.51 + 34 539.50 = 69 079.01. **Мөн** `amount / currency_factor` томьёогоор тооцоолсон тест 34 539.50 гаргаж **унах** ёстой (regression хамгаалалт).
-- **AT-FX-08 (FR-FX-005, BR-FX-25, P15).** **Өгөгдсөн нь** USD 500 нэхэмжлэх; **Хэрэв** LCY дансаар MNT 1 712 500 төлбөр (`amountFcy = 500`); **Тэгэхэд** ханш 3 425, хэрэгжсэн +12 500, `rate_overridden` аудитын логт.
+- **AT-FX-08 (FR-FX-005, BR-FX-25, P15).** **Өгөгдсөн нь** USD 500 нэхэмжлэх; **Хэрэв** LCY дансаар MNT 1 712 500 төлбөр (`currencyCode = USD`, `amount = 500.00`, `amountLcy = 1712500.00`); **Тэгэхэд** BLE BANK01 `amount = amount_lcy = 1 712 500`, ханш 3 425, хэрэгжсэн +12 500, `rate_overridden` аудитын логт.
 - **AT-FX-09 (FR-FX-006 AC1, BR-FX-30).** **Өгөгдсөн нь** USD нэхэмжлэх ба MNT төлбөр (`currencyCode` хоосон); **Хэрэв** тулгавал; **Тэгэхэд** 422 `party.application_currency_mismatch`.
 - **AT-FX-10 (FR-FX-007 AC1, P11).** **Өгөгдсөн нь** P8 + P10; **Хэрэв** 02-10-нд 3 420-аар USD 1 100 орж тулгагдвал; **Тэгэхэд** 1115 Дт 3 762 000; 8510 Дт 55 000; 1201 Кт 3 795 000; 8500 Кт 22 000; хоёр entry FCY ба LCY үлдэгдэл 0.
 - **AT-FX-11 (BR-FX-33..35, §6.4 засвар).** **Өгөгдсөн нь** §6.4-ийн 10.01 USD хувилбар; **Тэгэхэд** O-д `CORRECTION_OF_REMAINING_AMOUNT +0.01`, 8290 Кт 0.01, O-ийн LCY = r(9.00 × 3 451.25) = 31 061.25.
@@ -2126,6 +2191,9 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 - **AT-FX-16 (BR-FX-54).** **Өгөгдсөн нь** 01-31-ний run, дараа нь USD posting байхгүй; **Хэрэв** буцаавал; **Тэгэхэд** толин ваучер, `adjusted_currency_factor` = анхны, `last_date_adjusted = NULL`. **Мөн** run-ийн дараа USD төлбөр байвал 409 `fx.revaluation_has_later_postings`.
 - **AT-FX-17 (BR-FX-41).** **Өгөгдсөн нь** 01-31-ний run; **Хэрэв** 01-31-нд дахин run; **Тэгэхэд** 409 `fx.revaluation_date_invalid`.
 - **AT-FX-18 (BR-BNK-32, P16).** **Өгөгдсөн нь** GOL-USD-аас 1 000 USD зарж 3 410 000 MNT авсан, албан 3 420; **Тэгэхэд** 1110 Дт 3 410 000; 8500 Дт 10 000; 1115 Кт 3 420 000.
+- **AT-FX-20 (BR-FX-47, 54).** **Өгөгдсөн нь** 01-31-ний run (CLE#1 delta +55 000, CLE#9 delta 0) ба 02-28-ны run; **Хэрэв** 02-28-ны run-ийг буцаавал; **Тэгэхэд** CLE#1 ба CLE#9-ийн `adjusted_currency_factor` = 01-31-ний run-ийн `f` (CLE#9-д ч, учир нь delta = 0 ledger entry бичигдсэн), `last_date_adjusted = 01-31`, register-т `reverses_run_no` = 02-28-ны run.
+- **AT-FX-21 (BR-BNK-32, §5.4).** **Өгөгдсөн нь** BANK01-ээс 3 440 000 MNT-ээр GOL-USD-д 1 000 USD худалдаж авсан, албан 3 420; **Тэгэхэд** 1115 Дт 3 420 000; 8500 Дт 20 000; 1110 Кт 3 440 000. **Мөн** ижил валютын шилжүүлэгт `counterAmount` өгвөл 422 `bank.transfer_counter_amount_invalid`.
+- **AT-FX-22 (BR-BNK-33, R2).** **Өгөгдсөн нь** USD касс 1101: дэвтэр 500.00 USD, тоолсон 490.00 USD, ханш 3 430; **Тэгэхэд** BLE `amount = −10.00`, `amount_lcy = −34 300.00`; 8440 Дт 34 300 / 1101 Кт 34 300.
 - **AT-FX-19 (BR-FX-38).** **Өгөгдсөн нь** P11-ийн тулгалт; **Хэрэв** 02-20-нд unapply; **Тэгэхэд** бүх ханшийн мөрийн толин тусгал, дараа нь CLE#1-ийг `rate_adj = 3 450`-аар дахин тохируулна: delta = r(1 100 × 3 450) − 3 795 000 = 0 (мөргүй); CLE#2 (төлбөр, анхны 3 420, adj = анхны) delta 0.
 
 ### 11.3 Property ба DB тест
@@ -2161,6 +2229,9 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 | GS-FX-011 | **Шинэ** | P16 валют арилжаа |
 | GS-FX-012 | **Шинэ** | §6.4 засварын мөр (0.01) |
 | GS-FX-013 | **Шинэ** | Монголбанкны job (mock): таслалтай string, амралтын өдөр, anomaly, засвар, MANUAL давамгайлал |
+| GS-REC-009 | **Шинэ** (хяналт) | P6 → P17 буцаах → дахин батлах: давхар ваучергүй (AT-BNK-36); §6.8 тайлан батлахаас өмнө ба дараа 0 |
+| GS-REC-010 | **Шинэ** (хяналт) | Хуулга хаях ба дахин импорт (BR-BNK-80); `BR` цувралын огнооны дараалал (BR-BNK-81, SCR-BNK-08) |
+| GS-FX-014 | **Шинэ** (хяналт) | Валют худалдан авах MNT → USD (AT-FX-21), валютын кассын тооллого (AT-FX-22), run буцаалт delta = 0 item-тэй (AT-FX-20) |
 
 ### 11.5 Онцгой тохиолдол (edge cases)
 
@@ -2180,6 +2251,13 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 14. Дахин үнэлгээний D-ээс хойших огноо хаалттай үед хоцорсон run → `gl.period_closed`.
 15. Урьдчилгаа (нээлттэй USD төлбөр) дахин үнэлэгдэнэ (BR-FX-50, ⚠).
 16. LCY данс + USD entry тулгалт (P15) хуулгаас: тулгалт USD entry-г санал болгохгүй (BR-BNK-53 валют ижил) → хэрэглэгч `POST /payments`-аар.
+17. Хаясан (`DISCARDED`) хуулгыг дахин импортлох → мөрүүд `IGNORED` болсон тул dedupe-д саадгүй (BR-BNK-80).
+18. Батлагдсан хуулгын дараа ижил дугаартай хуулгыг буцааж дахин батлах → SCR-BNK-02 хэрэгжээгүй бол `UNIQUE (company_id, bank_account_id, statement_no)`-д унана (23505 → 409).
+19. Тулгалтын мөрийн огноо хаалттай үед / FCY дансанд дахин үнэлгээний огнооноос өмнө / `BR`-ийн сүүлийн дугаараас өмнө → BR-BNK-81.
+20. Хоцорсон огноотой кассын тооллого (GJ цуврал `date_order`) → `platform.number_series_date_order` боломжтой; тооллогыг тухайн өдөрт нь хийхийг UI санал болгоно.
+21. Хэтэвчийн тооцоо `fee = 0` (QPay шимтгэлгүй) → 8300 мөргүй, 2 мөрт ваучер.
+22. Тулгалтын авто-тулгалт: BLE-ийг булааж авсны дараа чөлөөлөгдсөн BLE өөр мөрт оногдох (§5.9.4 `changed`).
+23. Бүх item delta = 0 дахин үнэлгээ → ваучергүй, гэхдээ `last_date_adjusted` ба ledger entry (0) бичигдэнэ (§5.16).
 
 ---
 
@@ -2188,7 +2266,7 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 | ID | Өөрчлөлт | Шалтгаан | Эрэмбэ |
 |---|---|---|---|
 | SCR-BNK-01 | `bank.counterparty_account_map (id, tenant_id, company_id, account_no_norm text NOT NULL, party_type text CHECK IN ('CUSTOMER','VENDOR'), party_id uuid NOT NULL, source text CHECK IN ('LEARNED','MANUAL'), times_confirmed int NOT NULL DEFAULT 1, last_seen_at timestamptz, created_*, row_version, UNIQUE (company_id, account_no_norm, party_type, party_id))` + RLS + индекс `(company_id, account_no_norm)`. Батлахад сурна (BR-BNK-72); `party.vendor_bank_account`-тай хамт харьцагчийг таних эх | Харилцагчийн банкны данс хадгалах хүснэгт схемд байхгүй тул хуулгын `counterparty_account`-аар харилцагчийг `FULLY` таних боломжгүй; GS-REC-001 L1 (HIGH: данс + дугаар + дүн) үүнээс хамаарна; эс бөгөөс ихэнх орлого MEDIUM болж гараар батлах шаардлагатай | High (R1) |
-| SCR-BNK-02 | `bank.bank_account_statement`-д `undone_at timestamptz`, `undone_by uuid`, `undo_reason_code_id uuid` нэмж `platform.ledger_guard.mutable_columns`-д бүртгэх; `UNIQUE (company_id, bank_account_id, statement_no)`-ийг `CREATE UNIQUE INDEX … WHERE undone_at IS NULL` болгох | Append-only агшин зургийг буцаасныг тэмдэглэх арга байхгүй; буцаасан хуулгын дугаараар дахин батлах нь UNIQUE-д унана (FR-BNK-014) | Medium (R1 Should) |
+| SCR-BNK-02 | `bank.bank_account_statement`-д `undone_at timestamptz`, `undone_by uuid`, `undo_reason_code_id uuid` нэмэх; энэ хүснэгт `ledger_guard`-д `key_column = NULL` (bigint түлхүүргүй) тул `fn_ledger_update(p_key bigint)` ажиллахгүй → `bank.fn_mark_account_statement_undone(p_id uuid, p_reason uuid)` SECURITY DEFINER функц (зөвхөн `undone_*` баганыг, `undone_at IS NULL` үед) нэмж `fn_guard_immutable`-д тэр функцийн замыг зөвшөөрөх; `UNIQUE (company_id, bank_account_id, statement_no)`-ийг `CREATE UNIQUE INDEX … WHERE undone_at IS NULL` болгох | Append-only агшин зургийг буцаасныг тэмдэглэх арга байхгүй; буцаасан хуулгын дугаараар дахин батлах нь UNIQUE-д унана (FR-BNK-014) | Medium (R1 Should) |
 | SCR-BNK-03 | `CREATE UNIQUE INDEX ux_bank_account__posting_group ON bank.bank_account (company_id, bank_account_posting_group_id)`; `CREATE UNIQUE INDEX ux_bank_account_posting_group__gl ON bank.bank_account_posting_group (company_id, gl_account_id)` | "Нэг G/L данс = нэг мөнгөний данс" (FR-BNK-001 AC2, BR-BNK-02, BR-BNK-14 invariant)-ийг DB түвшинд хамгаалах | Medium (R1) |
 | SCR-BNK-04 | `bank.bank_reconciliation_line.parent_line_no integer` (+ CHECK `parent_line_no < statement_line_no`) | Зөрүүг хуваасан хүү мөрийг (BR-BNK-62, R-BANK-CASH-30) эх мөртэй тодорхой холбох; одоо `bank_statement_line_id` ижил гэдгээр л холбоно | Low |
 | SCR-BNK-05 | `bank.bank_ledger_entry`-ийн `CHECK (statement_status = 'OPEN' OR statement_no IS NOT NULL)`-ийг `… OR amount = 0` болгож сулруулах | 0 дүнтэй BLE (ханшийн тэгшитгэл)-ийг BC шиг `CLOSED` гэж бичих (R-BANK-CASH-04); одоо `OPEN` + `open = false` гэж бичнэ (BR-BNK-79) — семантик тодорхой бус | Low |
@@ -2196,7 +2274,9 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 | SCR-FX-01 | `exchange_rate platform.exch_rate` (1 нэгж FCY = MNT) баганыг `gl.journal_line`, `sales.sales_header`, `sales.sales_invoice_header`, `sales.sales_cr_memo_header`, `purchase.purchase_header`, `purchase.purch_inv_header`, `purchase.purch_cr_memo_header`-д; `original_exchange_rate`, `adjusted_exchange_rate` (whitelist)-ийг `party.cust_ledger_entry`, `party.vendor_ledger_entry`-д нэмэх; CHECK `(currency_code IS NULL) = (exchange_rate IS NULL)`, `currency_factor = round(1/exchange_rate, 18)` | `currency_factor`-оос хөрвүүлэхэд дунд цэгийн утга буруу бөөрөнхийлөгддөг (10.01 × 3 450.50 = 34 539.505 → 34 539.50 гарч FR-FX-004 AC1-ийн 34 539.51-тэй зөрнө, §6.2); `RateOf()` түр шийдэл нь гараар өгсөн (≥ 7 бутархай) ханшид яг биш | High (R2-ыг эхлүүлэхээс өмнө) |
 | SCR-FX-02 | `gl.general_ledger_setup.bank_reval_gain_loss_kind text NOT NULL DEFAULT 'REALIZED' CHECK IN ('REALIZED','UNREALIZED')` | Валютын мөнгөний дансны дахин үнэлгээний эсрэг данс (FR-FX-009 ⚠, Z-FX-01, OQ-FX-01) | Medium (R2) |
 | SCR-FX-03 | `fx.official_exchange_rate`-д `revision smallint NOT NULL DEFAULT 1`, `superseded_at timestamptz` нэмж UNIQUE-ийг `(source, currency_code, rate_date, revision)` болгох (эсвэл `audit.row_change`-ээр хангалттай гэж шийдэх) | 02 §9.5 "залруулга ирвэл шинэ мөр (append-only)" гэсэн ч схемийн UNIQUE нь UPDATE шаарддаг (BR-FX-14) | Low (R2) |
-| SCR-FX-04 | **Seed** (`mn_40_setup.sql`): цуврал `FXA` "Ханшийн тэгшитгэлийн ваучер" (`gapless`, `reset_yearly`, `FXA-YYYY-#####`); `integration.job_definition 'fx.mongolbank_rates'`-ийн cron-ийг ажлын өдөр `0 15 2 ? * MON-FRI` (10:15 UB) болгох | BR-FX-52 (D-C7), BR-FX-10; одоо бүх өдөр 02:15 UTC | Low (R2) |
+| SCR-FX-04 | **Seed** (`mn_40_setup.sql`): цуврал `FXA` "Ханшийн тэгшитгэлийн ваучер" (`gapless`, `reset_yearly`, `date_order = false`, `FXA-YYYY-#####`); `integration.job_definition 'fx.mongolbank_rates'`-ийн cron-ийг ажлын өдөр `0 15 2 ? * MON-FRI` (10:15 UB) болгох | BR-FX-52 (D-C7), BR-FX-10; хоцорсон run-ий d_k ваучер дараагийн run-ий D-ээс хойш огноотой байж болох тул `date_order` унтраах (§5.16); одоо бүх өдөр 02:15 UTC | Low (R2) |
+| SCR-FX-05 | `fx.exch_rate_adjmt_register`-д `reverses_run_no bigint` (NULL = энгийн run; буцаалтын register мөр буцаасан run-ийг заана) + индекс `(company_id, currency_code, run_no)`; CHECK `reverses_run_no IS NULL OR reverses_run_no < run_no` | Аль run буцаагдсаныг тодорхойлох багана байхгүй (append-only, `reversed` талбаргүй) → BR-FX-54-ийн "хамгийн сүүлийн буцаагдаагүй run", `adjusted_currency_factor`/`last_date_adjusted` сэргээлт, BR-FX-41 хоёрдмол | Medium (R2) |
+| SCR-BNK-08 | **Seed** (`mn_40_setup.sql` `fn_mn_ensure_number_series`): `BR`, `BP` цувралын `date_order = false` (эсвэл тулгалтад тусдаа `BR`/`BP` batch-ийн цуврал) | Тулгалтын ваучер `posting_date = transaction_date` (банкны гүйлгээний огноо, хуулга сар дуусахад ирдэг) тул `date_order = true` үед сарын дундах `POST /payments`-ийн дараа хуулгын эрт огноотой мөр бүр ERN02-д унана (BR-BNK-81) — R1-ийн гол урсгалыг хаана. D-C7 ⚠ (хуулийн баримтын дараалал) нягтлан зөвлөхөөр батлуулах | High (R1) |
 | SCR-BNK-07 | **Seed** (`mn_00_catalogs.sql`, 13 §6): эрхийн объект `ACTION fx.exch_rate_adjustment.post` (`PERIOD_CLOSE`), `ACTION bank.statement.import`, `bank.reconciliation.post` байгаа эсэхийг шалгах; `T_SETUP`-д `fx.currency_exchange_rate`, `bank.bank_statement_import_format`, `bank.text_to_account_mapping` | §10.3, 14 SCR-API-08 | Low |
 
 ---
@@ -2217,6 +2297,8 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 | OQ-FX-04 | Урьдчилгаа (мөнгөн бус зүйл, IAS 21 / IFRS for SMEs 30)-г дахин үнэлэхээс хасах уу? | BC шиг бүгдийг дахин үнэлнэ (BR-FX-50) | Нягтлан зөвлөх | bc-currency-fx §9 Q5 |
 | OQ-FX-05 | Монголбанкны endpoint албан ёсны бус (reCAPTCHA эрсдэл): өгөгдөл хуваалцах гэрээ эсвэл албан API бий юу? | Best-effort + MANUAL fallback (`IOfficialRateSource`) | Бизнес эзэн | mn-integrations §4, Q8 |
 | OQ-FX-06 | KRW/JPY мэт бага үнэтэй валютын ханш 2 оронтой нийтлэгддэг — 100 нэгжээр (`exchange_rate_amount = 100`) хадгалах хэрэгтэй юу? | 1 нэгжээр, Монголбанкны утгаар | Нягтлан зөвлөх | bc-currency-fx §9 Q7 |
+| OQ-BNK-07 | Банкны ваучер (`BR`/`BP`)-ын дугаар огнооны дарааллыг хуулиар шаарддаг уу (D-C7 ⚠)? Тулгалтаас үүсэх ваучерыг банкны гүйлгээний огноогоор (BC) эсвэл хуулгын огноогоор бичих үү? | Гүйлгээний огноогоор (BR-BNK-68), `BR`/`BP` `date_order = false` (SCR-BNK-08) | Нягтлан зөвлөх | **D-C7 ⚠**, BR-BNK-81 |
+| OQ-FX-07 | Валют арилжааны (USD ↔ MNT) албан ба бодит ханшийн зөрүүг хэрэгжсэн ханшийн зөрүү (8500) гэж үзэх үү, эсвэл банкны шимтгэл/бусад зардал гэж үү? | 8500 (BR-BNK-32) | Нягтлан ба татварын зөвлөх | **D-G3**, OQ-FX-01 |
 
 ---
 
@@ -2233,3 +2315,48 @@ P6-ийн дараа 04-02: `POST /bank-account-statements/{№6}:undo`. **G/L �
 | 7 | [14-api.md](./14-api.md) §15.4, `openapi.yaml` `PaymentCreate` | Валют, хэтэвчийн тооцоо, wizard танилт, хуваах, дахин үнэлгээний endpoint байхгүй | §10.3-ын санал |
 | 8 | [db/README.md](./db/README.md) §F6 | "FX: схем BC-ийн currency_factor-ийг хадгалсан" (нээлттэй) | SCR-FX-01 |
 | 9 | [15-ui-ux.md](./15-ui-ux.md) S-BNK-02 (SCR-UI-12) | CASH-ийн `prevent_negative_balance`-д CHECK алга | DB trigger `kind = 'CASH'`-ийг үргэлж шалгадаг тул CHECK шаардлагагүй; апп BR-BNK-07 |
+| 10 | [05-posting-engine.md](./05-posting-engine.md) BR-PST-38, seed `mn_10_coa.sql` | Энэ баримтын v1.0 P3/BR-BNK-68 нь дансны анхдагч VAT бүлгээс журналын НӨАТ-ыг далдуур тооцож байсан | v1.1: НӨАТ зөвхөн хүсэлтийн `vat`-аар (§5.2); 14-api `PaymentCreate`-д `vat` нэмэх (§10.3) |
+| 11 | [16-test-strategy.md](./16-test-strategy.md) §12.9 GS-REC-004 | Тулгалтын тайлангийн томьёо нь батлагдаагүй тулгалттай үед худал зөрүү гаргана | §6.8-ын засварласан томьёо (M(D), Unreconciled = BLE-тэй бүлэгт ороогүй мөр); GS-REC-009 нэмэх |
+
+---
+
+## Хяналтын тэмдэглэл (Review log)
+
+**Огноо:** 2026-10-08. **Хамрах хүрээ:** бүх хэсэг (§0–§13, Хавсралт А). **Арга:** (1) P1–P17, §6.2–6.4, §6.6, §6.7, §6.9, §6.11-ийн бүх тоог дахин тооцоолов (Python `decimal`, `ROUND_HALF_UP`; SHA-256 жишээ, `currency_factor` ба `RateOf()` сэргээлт орно); (2) хүснэгт/баганын нэр бүрийг `db/schema/*.sql`, `db/seed/*.sql`-ээс grep хийв (`bank.*`, `fx.*`, `general_ledger_setup` FX/касс данс, `appln_rounding_account_id` = 8290, `platform.source_code`, `ledger_guard` whitelist, `fn_check_non_negative_cash`, number series `date_order`); (3) DECISIONS (D-C2..C7, D-D3, D-E4, D-F4, D-G1..G3, §H), 01 FR-BNK-001..019 / FR-FX-001..010 AC, 05 BR-PST-38, 14 §11.2/§17, research R-BANK-CASH-01..42 ба R-CURRENCY-FX-01..35/30a-тай тулгав (BC-ийн `InsertDefaultMatchingRules`-ийг AL эхээс шалгав — §6.7.2-ын 24 дүрэм таарна).
+
+**Тоон шалгалтын дүн:** P1–P17-ийн бүх ваучер тэнцсэн, НӨАТ (88 000 × 10/110 = 8 000; 110 000 = 100 000 + 10 000), хэрэгжсэн/хэрэгжээгүй ханшийн зөрүү (P11 +22 000 / −55 000, P12 −20 000 / +50 000, P13 +20 000 / −99 000, P15 +12 500 / −25 000), §6.4-ийн засварын мөр (+0.01, Σ 3 485.77 = 3 485.77), §6.3 running total, §6.2 дунд цэгийн нотолгоо, dedupe hash жишээ, оноо (3996, 3990, 3009, 3019, 2994), хүлцлийн муж, үсгээр бичих жишээ бүгд **зөв**. Шинээр нэмсэн жишээ (MNT → USD арилжаа, P15-ийн detailed мөрүүд, §6.8 батлахаас өмнөх жишээ, AT-FX-21/22) тэнцсэн.
+
+**Засварууд (26):**
+
+| # | Ангилал | Олдсон асуудал | Засвар |
+|---|---|---|---|
+| 1 | Алгоритм (тэмдэг) | §5.9.5 `bankSigned = −e.RemainingAvailable` — CLE/VLE-ийн remaining банкны тэмдэгтэй ижил тул **бүх** авлага/өглөгийн санал тэмдгийн шүүлтээр хасагдах байсан | `bankSigned = e.RemainingAvailable`; BR-BNK-83 (тэмдгийн дүрэм); AT-BNK-40 |
+| 2 | Тооцоолол | §6.8/BR-BNK-78-ын тулгалтын тайлан нь нээлттэй тулгалтад BLE-тэй тулгагдсан мөр ба санал/данс руу тулгагдсан мөр байхад худал зөрүү гаргана (P6-ийн ажлын хуудсанд −247 500) | M(D)-ийг Outstanding-ээс хасч, Unreconciled = BLE-тэй бүлэгт ороогүй бүх мөр; нотолгоо, хүчинтэй огнооны муж, 2 тоон жишээ |
+| 3 | Зөв байдал | Тулгалтыг буцааж (BR-BNK-73) дахин батлахад батлагдсан санал/`account_type` хэвээр үлдэж **давхар төлбөр/ваучер** үүсэх байсан | §5.11 алхам 8: санал устгаж, `account_type := NULL`, мөр зөвхөн шинэ BLE-тэй; P17, AT-BNK-36, GS-REC-009 |
+| 4 | Тэнцэл | Нэг мөрөнд BLE ба BLE бус зорилт холих боломжтой байсан → §5.11-ийн ваучер бүтэн `statement_amount`-аар үүсч тэнцэхгүй | BR-BNK-60: холихыг хориглож split ашиглана; BR-BNK-62 ба §5.11 pseudo-code-ийг тодруулав; AT-BNK-35 |
+| 5 | Seed зөрчил | P3, BR-BNK-68, §5.2 нь дансны анхдагч VAT бүлгээр журналын НӨАТ тооцож байсан; seed бүх дансанд `gen_posting_type = NONE`, 05 BR-PST-38 зөвхөн мөрөнд тодорхой өгсөн үед | `POST /payments`-д `vat` талбар (§5.2, §10.3), P3 хүсэлт, P6-ийн тайлбар, BR-BNK-36 (шимтгэл НӨАТ-гүй) |
+| 6 | API зөрчил | §5.2 `amountLcy` ↔ §10.3/P15/AT-FX-08 `amountFcy`; pseudo-code нь LCY дансны BLE-д FCY дүн бичих байсан (BR-FX-24 зөрчил) | `amount` = `currencyCode`-оор, `amountLcy` override; `bleAmount` томьёо; P15, AT-FX-08, §10.3 |
+| 7 | Бизнес дүрэм | BR-BNK-11 (c) нь MNT кассыг USD мөр хүлээн авахыг зөвшөөрч байсан | CASH-д мөрийн валют = кассын валют; AT-BNK-39 |
+| 8 | Хамрах хүрээ | BR-BNK-32/§5.4 зөвхөн USD → MNT чиглэлийг тодорхойлсон | Ерөнхий `LcyOf` томьёо (MNT → USD, FCY → FCY), BR-BNK-82, `bank.transfer_counter_amount_invalid`, AT-FX-21 |
+| 9 | Валют | Валютын кассын тооллого FCY зөрүүг LCY дүн болгон G/L-д бичих байсан | BR-BNK-33, §5.5: `amount_lcy = r(diff × rate)`; нарийвчлалын шалгалт; AT-FX-22 |
+| 10 | Төлөвийн эвдрэл | Хэтэвчийн тооцоо `last_statement_no`-г `balance_last_statement`-гүйгээр дарж, WALLET-ийн хуулгын тулгалтыг (BR-BNK-09) эвдэх байсан | BR-BNK-35/§5.6: хөндөхгүй; `net > 0`, нээлттэй тулгалтын бүлэг, `reversed` шалгалт; AT-BNK-38 |
+| 11 | Алдааны мэдээлэл | §6.11 `available = running(P) − шинэ` нь хойших зарлагыг үл тоож төөрөгдүүлнэ (DBT-CASH-01-д 100 000) | `available = min_{d≥P}` (= 20 000); AT-BNK-08 |
+| 12 | Схемтэй нийцэл | Хоцорсон run нь нэг валютад олон огнооны ваучер үүсгэдэг ч register-д ганц `transaction_no` | BR-FX-47: register × `posting_date`; P14-т register 2 мөр |
+| 13 | Буцаалт | BR-FX-54: өмнөх run-д delta = 0 item-ийн ledger entry байхгүй тул `adjusted_currency_factor`-ийг буруу (`original`) сэргээх байсан; буцаагдсан run-ийг ялгах багана алга | delta = 0-д ч ledger entry; SCR-FX-05 `reverses_run_no`; AT-FX-20 |
+| 14 | Хэрэгжих боломж | Тулгалтын ваучер `posting_date = transaction_date` нь хаалттай үе, FX хориг, `BR`/`BP`-ийн `date_order = true`-д (сарын дундах төлбөрийн дараа) системтэйгээр унах байсан | BR-BNK-81 (A үед цуглуулах, засах арга, дугаарлах дараалал), SCR-BNK-08, OQ-BNK-07, AT-BNK-37 |
+| 15 | Дутуу алгоритм | `:discard` тодорхойлогдоогүй; хаясан хуулгын мөр dedupe index-д үлдэж дахин импортыг хаах байсан | BR-BNK-80, §5.18, AT-BNK-34, edge #17 |
+| 16 | Зөв байдал | §5.12 undo нь BLE-ийг зөвхөн `statement_no`-оор сонгож байсан (өөр дансны ижил дугаар) | `bank_account_id` + `statement_no` + `CLOSED`, `FOR UPDATE`, агшин зурагтай тулгах (`bank.statement_inconsistent`) |
+| 17 | Схемтэй нийцэл | SCR-BNK-02 `fn_ledger_update`-ээр хэрэгжих боломжгүй (`key_column = NULL`, bigint түлхүүргүй) | Тусгай SECURITY DEFINER функц (SCR-BNK-02, §5.12) |
+| 18 | Алгоритм | §5.9.4 А үеийн давталт: BLE чөлөөлөгдөхөд `changed` тавигдахгүй тул бусад мөр түүнийг авахгүй | Аливаа өөрчлөлтөд дахин давтах + давталтын хязгаар; edge #22 |
+| 19 | Validation | Мөрийн `transaction_date > statement_date` шалгалтгүй (`closed_at_date < posting_date`); нэмэлт импорт `statement_date`-ийг шинэчлэхгүй | BR-BNK-66, BR-BNK-49, §5.11 |
+| 20 | BC нийцэл | 0 дүнтэй BLE-ийн `closed_at_date` (R-BANK-CASH-04) тодорхойгүй | BR-BNK-79, BR-FX-46 |
+| 21 | Схемтэй нийцэл | IBAN-ийг зайтай (UI формат) хадгалбал схемийн CHECK-д унана | BR-BNK-03: зай хасаж нормчлох |
+| 22 | Импорт | `CURRENCY` баганын утга дансны валютаас өөр үед дүрэмгүй | BR-BNK-42 (`currency_mismatch`) |
+| 23 | Нэр/семантик | BLE `currency_code`-ийн утга (LCY данс + USD төлбөр) тодорхойгүй; §0.2 "бүх хүснэгтэд CHECK" гэсэн нь буруу (зөвхөн `gl.journal_line`) | §3.2, §0.2 |
+| 24 | Хэрэгжих боломж | Бүх delta = 0 run (ваучергүй) ба `FXA` цувралын огнооны дараалал тодорхойгүй | §5.16 bullet, SCR-FX-04 (`date_order = false`), edge #23 |
+| 25 | Процесс | Сарын хаалтад валютын дансны хуулгын тулгалт дахин үнэлгээнээс өмнө байх ёстойг (BR-FX-53-аас үүдэлтэй) заагаагүй | BR-FX-53 дүгнэлт, `W-FX-04` |
+| 26 | Нягтлан бодох | P7-д харилцагчийн илүү төлөлтийг шууд орлогод (8200) бичих нь анхдагч мэт харагдаж байсан (D-F4: урьдчилгаа) | BR-BNK-62: анхдагч санал = харилцагчийн урьдчилгаа; P7 тайлбар |
+
+**Шинэ schema/seed хүсэлт:** SCR-BNK-08 (High, R1), SCR-FX-05 (Medium, R2); SCR-BNK-02 ба SCR-FX-04-ийг өргөтгөв. **Шинэ нээлттэй асуулт:** OQ-BNK-07 (D-C7 ⚠), OQ-FX-07 (D-G3). **Шинэ дүрэм:** BR-BNK-80..83. **Шинэ тест:** AT-BNK-34..40, AT-FX-20..22, GS-REC-009/010, GS-FX-014, edge #17–23. **Шинэ алдааны код:** `bank.transfer_counter_amount_invalid`, `bank.statement_inconsistent`, `W-FX-04`.
+
+**Өөрчлөөгүй (шалгаад зөв гэж үзсэн):** §6.7.2-ын дүрмийн хүснэгт (BC AL эхтэй таарна), BR-FX-31..36-ийн дараалал ба тэмдэг (R-CURRENCY-FX-26..31), Монголбанкны endpoint/хариуны формат (mn-integrations §4), МХ-1/МХ-2-ийн хэвлэмэл талбар (mn-accounting §5.2), seed-ийн данс (1100–1121 `direct_posting = false`, 8240/8440/8500/8510/8290), source code-ууд (`platform.source_code`), FR ID бүр 01-д байгаа.

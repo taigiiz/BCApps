@@ -1,6 +1,6 @@
 # 07. Худалдан авалт ба өглөг (Purchases & Payables) — модулийн тодорхойлолт
 
-> **Төлөв:** Хөгжүүлэлтэд бэлэн ноорог v1.0. **Огноо:** 2026-10-07.
+> **Төлөв:** Хөгжүүлэлтэд бэлэн ноорог v1.1 (adversarial review хийсэн, төгсгөлийн "Хяналтын тэмдэглэл"-ийг үзнэ үү). **Огноо:** 2026-10-07, хянасан 2026-10-08.
 > **Модуль:** `purchase` (худалдан авалтын баримт) + `party` schema-ийн өглөгийн хэсэг (нийлүүлэгчийн дэд дэвтэр, тулгалт, урьдчилгаа, насжилт, хуулга; D-K2) + нийлүүлэгчийн eBarimt-ийн ДДТД ба орцын НӨАТ-ын баталгаажуулалтын худалдан авалтын тал (D-E4) + нийлүүлэгчид төлөх төлбөрийн санал ба төлбөрийн журналын өглөгийн тал.
 > **Нэг эх сурвалж:** [DECISIONS.md](./DECISIONS.md) (§K: нэршлийг [`db/schema/*.sql`](./db/schema/) тодорхойлно). Бусад баримттай зөрвөл DECISIONS → schema → энэ баримт гэсэн дарааллаар давамгайлна.
 > **Уншигч:** backend хөгжүүлэгч, QA, нягтлан ба татварын зөвлөх.
@@ -24,6 +24,7 @@
 - [12. Schema change requests](#12-schema-change-requests)
 - [13. Нээлттэй асуулт](#13-нээлттэй-асуулт)
 - [Хавсралт А. Бусад баримттай зөрүү](#хавсралт-а-бусад-баримттай-зөрүү)
+- [Хяналтын тэмдэглэл (Review log)](#хяналтын-тэмдэглэл-review-log)
 
 ---
 
@@ -109,12 +110,12 @@
 | FR-PUR-003 | Нийлүүлэгчийн eBarimt-ийн мэдээлэл, НӨАТ-ын зөрүү | R1 | BR-PUR-33..36, BR-PUR-42..48, §5.5, §5.10, P1, P2 |
 | FR-PUR-004 | Мөрийн төрөл | R1 | BR-PUR-15..22 |
 | FR-PUR-005 | Кредит нот | R1 | BR-PUR-77..85, §5.14, P6 |
-| FR-PUR-006 | Нэхэмжлэх цуцлах (+ засварлах) | R1 (Should) | BR-PUR-86..94, §5.15, P7 |
+| FR-PUR-006 | Нэхэмжлэх цуцлах (+ засварлах) | R1 (Should) | BR-PUR-86..94, 97, BR-AP-47, §5.15, P7 |
 | FR-PUR-007 | Бэлэн худалдан авалт | R1 (Should) | BR-PUR-71..76, §5.13, P2 |
 | FR-PUR-008 | Худалдан авалтын захиалга | **R3** | Хамрахгүй (D-A4) |
 | FR-PUR-009, 010 | eBarimt-тэй автомат тулгалт, баримтаас ноорог | **R2** | §5.11 (гэрээ), 12 §16.3 |
 | FR-TAX-004..008 | Баримтын НӨАТ, PIV, кредит нот, VAT entry, НӨАТ-ын огноо | R1 | BR-PUR-27..32, BR-PUR-59, §6.3–6.5 |
-| FR-TAX-009 | Орцын НӨАТ зөвхөн баталгаажсан ДДТД-тэй | R1 | BR-PUR-46..54, §5.10–5.12, P5 |
+| FR-TAX-009 | Орцын НӨАТ зөвхөн баталгаажсан ДДТД-тэй | R1 | BR-PUR-46..54, 97, §5.10–5.12, P5 |
 | FR-TAX-010 | Хасагдахгүй орцын НӨАТ | R1 | BR-PUR-37..40, §6.6, P3 |
 | FR-TAX-011 | НӨАТ төлөгч бус горим | R1 | BR-PUR-37, 41, P4 |
 | FR-TAX-020, 021 | Урвуу тооцоо, гаалийн НӨАТ | **R2** | BR-PUR-19, P13, P14 |
@@ -375,7 +376,7 @@ Posted мөр (`purch_inv_line`, `purch_cr_memo_line`) нь ноорогийн �
 | `entry_no` | Компани доторх завсаргүй дугаар (`fn_next_entry_no('VENDOR_LEDGER_ENTRY')`) |
 | `vendor_id`, `vendor_no` | Нийлүүлэгч (snapshot дугаар) |
 | `posting_date`, `document_date`, `due_date` | `due_date` нь нээлттэй үед засагдана (whitelist) |
-| `document_type`, `document_no` | `INVOICE` / `CREDIT_MEMO` / `PAYMENT` / `REFUND`; `document_no` = posted баримт эсвэл ваучерын дугаар (`PI-…`, `PC-…`, `BP-…`, `KZ-…`) |
+| `document_type`, `document_no` | `INVOICE` / `CREDIT_MEMO` / `PAYMENT` / `REFUND`; `document_no` = posted баримт эсвэл ваучерын дугаар (`PI-…`, `PC-…`, `BP-…`, `KZ-…`). Бэлэн худалдан авалтын `PAYMENT`/`REFUND` VLE нь баримтын дугаартай (`PI-…`/`PC-…`, BR-PUR-72) |
 | `external_document_no` | Нийлүүлэгчийн нэхэмжлэх/кредит нотын дугаар. `INVOICE`/`CREDIT_MEMO`-д заавал (`source_code = 'OPENING'`-оос бусад, CHECK) |
 | `supplier_ebarimt_id` | ДДТД; батласны дараа бүртгэвэл `fn_ledger_update`-ээр (whitelist) |
 | `description` | "Нэхэмжлэх {vendor_invoice_no}" г.м. (≤ 100 тэмдэгтээр таслана) |
@@ -457,7 +458,7 @@ Posted мөр (`purch_inv_line`, `purch_cr_memo_line`) нь ноорогийн �
 | BR-PUR-02 | Нийлүүлэгч сонгоход толгойд **snapshot**: `vendor_name`, `vendor_posting_group_id`, `gen_bus_posting_group_id`, `vat_bus_posting_group_id`, `payment_terms_id`, `payment_method_id` (+ түүний `bal_account_type/id`), `prices_including_vat`, `currency_code`. `vendor_posting_group_id` ноорог дээр засагдахгүй. Мастерыг дараа өөрчлөх нь ноорог/posted баримтад нөлөөлөхгүй. | R-SALES-DOCUMENTS-52; R-ACCOUNT-DETERMINATION-05, 07, 29 |
 | BR-PUR-03 | `vendor.blocked = 'ALL'` бол ямар ч баримт (нэхэмжлэх, кредит нот) үүсгэх, батлахгүй. `blocked = 'PAYMENT'` бол баримт зөвшөөрнө, харин **харьцсан дансаар шууд төлөх** (BR-PUR-71), төлбөр/буцаан авалт батлах (BR-AP-62), төлбөрийн санал (BR-AP-71) хориотой. Шалгалт: нийлүүлэгч сонгоход, release, posting (түгжээний дор дахин). | BC Vendor.Blocked; FR-PTY-002 |
 | BR-PUR-04 | `OPEN` ноорогт нийлүүлэгчийг солиход BR-PUR-02-ын талбар шинэчлэгдэж, бүх мөрийн `gen_bus_posting_group_id`, `vat_bus_posting_group_id` толгойноос дахин тавигдаж, баримт бүхэлдээ дахин тооцогдоно (§5.4); `vat_difference` бүгд 0 болно (BR-PUR-34). `vendor_invoice_no`, `supplier_ebarimt_id` хадгалагдах бөгөөд давхардал ба нийлүүлэгчийн ТТД-ийн шалгалт (BR-PUR-12, 44) дахин ажиллана. | R-SALES-DOCUMENTS-03 (толин тусгал) |
-| BR-PUR-05 | `due_date` = `CalcDate(payment_terms.due_date_calculation, document_date)` ([06](./06-sales-receivables.md) §5.3-ын нэг функц). Нөхцөлгүй бол `due_date = document_date`. **Кредит нотод** `due_date = document_date`. Хэрэглэгч гараар засвал хадгална, `document_date`-ээс өмнө байж болохгүй. | R-SALES-DOCUMENTS-47, 52; FR-PTY-006 AC1 |
+| BR-PUR-05 | `due_date` = `CalcDate(payment_terms.due_date_calculation, document_date)` ([06](./06-sales-receivables.md) §5.3-ын нэг функц). Нөхцөлгүй бол `due_date = document_date`. **Кредит нотод** `due_date = document_date`. `document_date` эсвэл `payment_terms_id` өөрчлөгдөх бүрд дахин тооцно (BC-тэй адил өмнөх гар засварыг дарна); бусад үед хэрэглэгчийн гараар оруулсан утгыг хадгална, `document_date`-ээс өмнө байж болохгүй (`purchase.due_date_before_document_date`). | R-SALES-DOCUMENTS-47, 52; FR-PTY-006 AC1; 06 BR-SAL-05 |
 | BR-PUR-06 | `posting_date` анхдагч нь хэрэглэгчийн ажлын огноо (байхгүй бол Asia/Ulaanbaatar-ын өнөөдөр) — `purchase_setup`-д `default_posting_date` багана байхгүй тул үргэлж `WORK_DATE` горим. `document_date` анхдагч = `posting_date`; `link_doc_date_to_posting_date = true` үед `posting_date` өөрчлөгдөхөд, хэрэглэгч `document_date`-ийг гараар өөрчлөөгүй бол дагана. | R-SALES-DOCUMENTS-02, 07 |
 | BR-PUR-07 | `RELEASED` ноорогийн толгой ба мөрийг засах, мөр нэмэх/устгахыг хориглоно (409 `api.document_released`), `COMMENT` мөрийн тайлбараас бусад. | R-SALES-DOCUMENTS-05 |
 | BR-PUR-08 | `OPEN` ноорогийг устгаж болно; мөрүүд CASCADE-аар устна; хуулийн цувралд завсар үүсэхгүй. Устгалт `audit.row_change`-д бичигдэнэ. Холбосон `purchase_receipt` (R2 импорт эсвэл цуцлалтаас шилжсэн) нь `IMPORTED` хэвээр үлдэнэ. | R-SALES-DOCUMENTS-32 |
@@ -497,7 +498,7 @@ Posted мөр (`purch_inv_line`, `purch_cr_memo_line`) нь ноорогийн �
 | BR-PUR-27 | НӨАТ-ыг баримтын түвшинд **бүлэг** бүрд нэг удаа бөөрөнхийлнө. Бүлгийн түлхүүр = (`vat_identifier`, `vat_calculation_type`, `sign`), `sign` = `line_amount ≥ 0`. Мөрүүдэд `line_no` дарааллаар running remainder-ээр хуваарилна; сөрөг бүлгийн бөөрөнхийллийн үлдэгдэл ижил identifier-ийн эерэг бүлэгт орно ([06](./06-sales-receivables.md) §6.3–6.5). | D-E3 ⚠; R-VAT-08, 13; R-SALES-DOCUMENTS-14; FR-TAX-004 |
 | BR-PUR-28 | Инвариант: бүлэг бүрд `Σ мөрийн НӨАТ = бүлгийн НӨАТ` (НӨАТ-ын зөрүүг оруулсан); баримтад `vat_amount = Σ (amount_including_vat − amount)`; `amount_including_vat = amount + vat_amount`; `Σ non_deductible_vat_amount ≤ vat_amount`. | FR-TAX-004 AC2 |
 | BR-PUR-29 | Нэг (`vat_bus`, `vat_prod`) хослолд `tax.vat_posting_setup` мөр заавал, `blocked = false` (`tax.vat_posting_setup_missing` / `_blocked`). Хасагдах НӨАТ ≠ 0 бүлэгт `purchase_vat_account_id` заавал (`tax.purchase_vat_account_missing`); R2 `REVERSE_CHARGE`-д мөн `reverse_chrg_vat_account_id`. | R-VAT-01, 05; R-ACCOUNT-DETERMINATION-08 |
-| BR-PUR-30 | НӨАТ-ын хувь = `vat_rate_param_code` байвал `tax.tax_parameter`-ийн `vat_date`-нд хүчинтэй (`status = 'verified'`) утга × 100, үгүй бол `vat_posting_setup.vat_percent`. Нэг бүлэгт хоёр хувь гарвал `tax.vat_identifier_rate_conflict`. **НӨАТ төлөгч бус компанид ч** нийлүүлэгчийн НӨАТ-ыг ердийнхөөр тооцно (тэр нь өртөгт шингэнэ, BR-PUR-37). | D-E7; R-VAT-03, 04 |
+| BR-PUR-30 | НӨАТ-ын хувь = `vat_rate_param_code` байвал `tax.tax_parameter`-ийн `vat_date`-нд хүчинтэй утга (`value_numeric`, нэгж `ratio`) × 100, үгүй бол `vat_posting_setup.vat_percent`. Хүчинтэй мөр байхгүй бол `tax.parameter_not_effective`; release/posting-д `status ≠ 'verified'` бол `tax.parameter_unverified` (ноорог хадгалахад анхааруулга; 08 BR-TAX-11, -12). Нэг бүлэгт хоёр хувь гарвал `tax.vat_identifier_rate_conflict`. **НӨАТ төлөгч бус компанид ч** нийлүүлэгчийн НӨАТ-ыг ердийнхөөр тооцно (тэр нь өртөгт шингэнэ, BR-PUR-37). | D-E7; R-VAT-03, 04 |
 | BR-PUR-31 | Үнэ НӨАТ-тэй баримтад: бүлгийн `VAT = rv(G × r/(100 + r)) + d_g`, `base = G − VAT`; мөрийн `amount = amount_including_vat − VAT_мөр`. | R-VAT-10; FR-TAX-005 |
 | BR-PUR-32 | `prices_including_vat`-ийг мөртэй ноорог дээр солиход хүсэлтэд `recalculatePrices` (true/false) заавал (`purchase.prices_including_vat_change_mode_required`); true бол `direct_unit_cost`-ийг `(100 + r)/100`-аар хөрвүүлнэ. | R-SALES-DOCUMENTS-17; R-VAT-10 |
 
@@ -532,10 +533,10 @@ Posted мөр (`purch_inv_line`, `purch_cr_memo_line`) нь ноорогийн �
 | BR-PUR-47 | **`deductible_confirmed` insert-ийн утга** (`NORMAL` PURCHASE VAT entry): `true` ⇔ `supplier_ebarimt_id` бөглөгдсөн **ба** хүсэлт `confirmInputVat = true` **ба** хэрэглэгч `ACTION tax.vat_entry.confirm_deductible X` эрхтэй **ба** хасагдах дүн ≠ 0. Эрхгүй хэрэглэгч `confirmInputVat = true` илгээвэл 403 биш, анхааруулга `purchase.confirm_input_vat_not_permitted` ба `false`. R2: `REVERSE_CHARGE` → `true` (ДДТД-гүй, өөрөө тооцсон); `FULL_VAT` → гаалийн мэдүүлгийн дугаартай бол `true` (SCR-PUR-07). Кредит нотын дүрэм BR-PUR-84. | D-E4; INV-16 (DB CHECK) |
 | BR-PUR-48 | **Баримтын бүртгэл posting-д:** ДДТД-тэй баримт батлагдахад нэг transaction дотор `IInputVatEvidenceService.RegisterAtPostingAsync` (Tax) → `ebarimt.purchase_receipt`: шинэ эсвэл `IMPORTED` мөрийг холбоно; `source = 'MANUAL'` (шинэ бол), `status = CONFIRMED` (BR-PUR-47 `true`) эсвэл `MATCHED`, `vendor_id`, `supplier_tin`, `supplier_name`, `receipt_date`, `total_amount = amount_including_vat`, `total_vat = vat_amount` (бүтэн), `total_city_tax`, `purch_inv_header_id`, `vat_entry_no` = эхний PURCHASE VAT entry, `confirmed_at/by`. | 12 PUR-03, PUR-04 |
 | BR-PUR-49 | **Батласны дараа ДДТД холбох** (`POST /purchase-invoices/{id}:link-ebarimt` эсвэл S-PUR-09-ийн `POST /purchase-receipts` + `:match`): нэхэмжлэх цуцлагдаагүй; BR-PUR-42..45 шалгагдана; receipt → `MATCHED` (эсвэл `confirm = true` бол `CONFIRMED`); тухайн нэхэмжлэхийн баримтын ваучерын (`purch_inv_header.transaction_no`) PURCHASE VAT entry-үүдийн `supplier_ebarimt_id` (NULL байгаа), VLE-ийн `supplier_ebarimt_id`-г `platform.fn_ledger_update`-ээр тавина. Posted header өөрчлөгдөхгүй. G/L бичилт үүсэхгүй. | 12 PUR-04; D-C4 |
-| BR-PUR-50 | **Баталгаажуулах** (`POST /purchase-receipts/{id}:confirm`, `ACTION tax.vat_entry.confirm_deductible`): receipt `MATCHED → CONFIRMED`; холбогдсон нэхэмжлэхийн PURCHASE `NORMAL` VAT entry бүр **ба** түүнийг засах (`corrected_invoice_id`) кредит нотуудын баталгаажаагүй VAT entry → `deductible_confirmed = true`, `deductible_confirmed_at = now()`, `deductible_confirmed_by` (`fn_ledger_update`). Entry бүр ДДТД-тэй байх (DB CHECK). `vat_date` нь `SUBMITTED` НӨАТ-ын үед байсан ч зөвшөөрнө: entry `vat_return_period_id`-аа өөрчлөхгүй, дараагийн нээлттэй үеийн хаалтад орно (`08`, 12 PUR-05). §5.12-оор зардалд шилжүүлсэн entry-г баталгаажуулахгүй (`purchase.input_vat_written_off`). | D-E4 ⚠; FR-TAX-009 AC2; 12 PUR-04, 05 |
+| BR-PUR-50 | **Баталгаажуулах** (`POST /purchase-receipts/{id}:confirm`, `ACTION tax.vat_entry.confirm_deductible`): receipt `MATCHED → CONFIRMED`; холбогдсон нэхэмжлэхийн PURCHASE `NORMAL` VAT entry бүр **ба** түүнийг засах (`corrected_invoice_id`) кредит нотуудын баталгаажаагүй VAT entry (зөвхөн `amount ≠ 0`, `closed = false`, `reversed = false` — 08 BR-TAX-49) → `deductible_confirmed = true`, `deductible_confirmed_at = now()`, `deductible_confirmed_by` (`fn_ledger_update`). Entry бүр ДДТД-тэй байх (DB CHECK); нэхэмжлэхийн entry аль хэдийн **өөр** ДДТД-тэй бол 409 `tax.supplier_receipt_id_mismatch`. Аль хэдийн баталгаажсан entry → no-op (идемпотент). `vat_date` нь `SUBMITTED` НӨАТ-ын үед байсан ч зөвшөөрнө: entry `vat_return_period_id`-аа өөрчлөхгүй, дараагийн нээлттэй үеийн хаалтад орно (`08`, 12 PUR-05). §5.12-оор зардалд шилжүүлсэн entry-г баталгаажуулахгүй (`purchase.input_vat_written_off`). | D-E4 ⚠; FR-TAX-009 AC2; 12 PUR-04, 05 |
 | BR-PUR-51 | **Баталгаажуулалтыг буцаах** (Should, `:unconfirm`): `CONFIRMED → MATCHED`; холбогдсон entry-ийн аль нь ч `closed = false` байх (`tax.vat_entry_closed`); `deductible_confirmed = false` болж `_at/_by`-г хадгална (аудит). | D-E4; INV-30-ийн чиглэлтэй туг биш |
 | BR-PUR-52 | **Баталгаажаагүй орцын НӨАТ-ын жагсаалт** (S-TAX-05, CUE-14): PURCHASE `NORMAL` VAT entry, `NOT deductible_confirmed`, баримтаар (`document_type`, `document_no`) бүлэглээд `Σ amount ≠ 0` (зардалд шилжүүлсэн баримт цэвэр 0 болж гарахгүй). Багана: нийлүүлэгч, ТТД, баримт, `vat_date`, хоног, Σ хасагдах НӨАТ, ДДТД (байвал), receipt-ийн төлөв. | FR-TAX-009 AC1; 15 CUE-14 |
-| BR-PUR-53 | **Баталгаажаагүй НӨАТ-ыг зардалд шилжүүлэх** (хасалтаас татгалзах, Should, §5.12; механик [08](./08-tax-vat-mn.md) BR-TAX-51): хэрэглэгч ДДТД ирэхгүй гэж шийдсэн баримтын BR-PUR-52-ын entry-үүдийг сонгож, огноо `D` (OPEN үе, OPEN НӨАТ-ын үе), шалтгаан `NO_EBARIMT` (эсвэл `REJECTED`)-оор батална: ваучер (source `VATADJ`, 08 CR-TAX-08; тэр хүртэл `PURCHASES`) — суурь entry-ийн данс Дт / `purchase_vat_account` Кт; эх entry бүрд эсрэг VAT entry (`base = −base`, `amount = −amount`, `non_deductible_base = +base`, `non_deductible_amount = +amount`), хоёулаа `closed = true`, `closed_by_entry_no`-оор бие биеэ заана. Нөхцөл: entry `NORMAL`, `amount ≠ 0`, `deductible_confirmed = false`, `closed = false`, `reversed = false`, `vat_return_period_id IS NULL` (эс бөгөөс `tax.deduction_reject_not_allowed`). Дараа нь тухайн нэхэмжлэхэд ДДТД холбох/баталгаажуулах хориотой (`purchase.input_vat_written_off`). | D-E4; 08 BR-TAX-50, 51; mn-tax §2.4 (хугацаа UNVERIFIED) |
+| BR-PUR-53 | **Баталгаажаагүй НӨАТ-ыг зардалд шилжүүлэх** (хасалтаас татгалзах, Should, §5.12; механик [08](./08-tax-vat-mn.md) BR-TAX-51): хэрэглэгч ДДТД ирэхгүй гэж шийдсэн баримтын BR-PUR-52-ын entry-үүдийг сонгож, огноо `D` (OPEN үе, OPEN НӨАТ-ын үе), шалтгаан `NO_EBARIMT` (эсвэл `REJECTED`)-оор батална: ваучер (source `VATADJ`, 08 CR-TAX-08; тэр хүртэл `PURCHASES`) — суурь entry-ийн данс Дт / `purchase_vat_account` Кт; эх entry бүрд эсрэг VAT entry (`base = −base`, `amount = −amount`, `non_deductible_base = +base`, `non_deductible_amount = +amount`), хоёулаа `closed = true`, `closed_by_entry_no`-оор бие биеэ заана. Нөхцөл: entry `NORMAL`, `amount ≠ 0`, `deductible_confirmed = false`, `closed = false`, `reversed = false`, `vat_return_period_id IS NULL` (эс бөгөөс `tax.deduction_reject_not_allowed`). `invoiceIds[]`-ээр сонгосон бол тухайн нэхэмжлэхийг засах (`corrected_invoice_id`) кредит нотуудын баталгаажаагүй entry (сөрөг `amount`) **хамт** сонгогдоно — эс бөгөөс кредит нотын сөрөг баталгаажаагүй НӨАТ 1300-д дангаараа үлдэж, хэзээ ч баталгаажихгүй. Дараа нь тухайн нэхэмжлэхэд ДДТД холбох/баталгаажуулах хориотой (`purchase.input_vat_written_off`); дараагийн кредит нот/цуцлалт BR-PUR-97-оор. | D-E4; 08 BR-TAX-50, 51; mn-tax §2.4 (хугацаа UNVERIFIED) |
 | BR-PUR-54 | Инвариант (тест, шөнийн шалгалт): `purchase_vat_account` (1300)-ийн G/L үлдэгдэл = Σ `amount` (`entry_type = 'PURCHASE'`, `closed = false`, `vat_calculation_type` ∈ {NORMAL, REVERSE_CHARGE, FULL_VAT}) — баталгаажаагүй орцын НӨАТ НӨАТ-ын хаалт хүртэл 1300-д үлдэнэ. | INV-11-ийн НӨАТ-ын хувилбар; 08 |
 
 ### 4.8 Батлах (posting)
@@ -547,7 +548,7 @@ Posted мөр (`purch_inv_line`, `purch_cr_memo_line`) нь ноорогийн �
 | BR-PUR-57 | Нэг ноорог нэг л удаа батлагдана (`ux_purch_inv_header__draft`). Ноорог устсаны дараа дахин батлах хүсэлт 409 `api.document_already_posted` (өөр Idempotency-Key) эсвэл хадгалсан хариу (ижил түлхүүр). | 14 API-ACT-04 |
 | BR-PUR-58 | Заавал: `posting_date` (`purchase.posting_date_required`), `document_date`, `vendor_id`, BR-PUR-11-ийн дугаар; нэхэмжлэхэд `due_date` (NULL бол BR-PUR-05). | R-SALES-DOCUMENTS-22, 25, 49 |
 | BR-PUR-59 | `vat_date` NULL бол `= posting_date`. Хоцорч ирсэн нэхэмжлэхэд `vat_date < posting_date` зөвшөөрнө; `vat_date > posting_date` бол `purchase.vat_date_after_posting_date`; `vat_date < document_date` бол анхааруулга `purchase.vat_date_before_document_date`. `vat_date` нь OPEN НӨАТ-ын үед (`tax.vat_period_closed`, ERV01). Кредит нотод мөн адил. | D-E9; FR-TAX-008 AC1, AC2 |
-| BR-PUR-60 | `posting_date` нь OPEN нягтлан бодох үе ба компанийн `allow_posting_from/to` дотор (`gl.period_closed` / `gl.posting_date_outside_window`; ERP01). | D-D3; R-GL-POSTING-18 |
+| BR-PUR-60 | `posting_date` нь OPEN нягтлан бодох үе ба компанийн `allow_posting_from/to` дотор (`gl.period_closed` / `gl.period_locked` / `gl.posting_date_outside_window`; ERP01). Цуцлалт, шууд төлбөрийн ваучер, тулгалт/unapply-ийн огноонд мөн хамаарна. | D-D3; R-GL-POSTING-18; 05 BR-PST-18 |
 | BR-PUR-61 | `line_type ≠ 'COMMENT'` ба `quantity ≠ 0` мөр ≥ 1 (`purchase.no_lines`). Нэхэмжлэхийн `amount_including_vat < 0` бол `purchase.negative_total` (кредит нот хэрэглэнэ); кредит нотын нийт мөн ≥ 0. | R-SALES-DOCUMENTS-19, 24 |
 | BR-PUR-62 | `amount_including_vat = 0` баримтыг **батлахгүй** (`purchase.document_total_zero`): өглөгийн G/L мөр 0 болж VLE-ийн `GlLineKeys` хоосон үлдэнэ (BR-PST-05, BR-PST-41). Үнэгүй дээж г.м.-ийг бүртгэх шаардлагагүй. ([06](./06-sales-receivables.md) BR-SAL-37-оос ялгаатай, Хавсралт А.) | BR-PST-05, 24, 41; R-SUBLEDGERS-APPLICATION-03 |
 | BR-PUR-63 | Posting бүр баримтыг **дахин тооцно** (BR-PUR-24); ялгааг preview-д харуулна. | R-SALES-DOCUMENTS-20 |
@@ -568,12 +569,12 @@ Posted мөр (`purch_inv_line`, `purch_cr_memo_line`) нь ноорогийн �
 
 | ID | Дүрэм | Эх |
 |---|---|---|
-| BR-PUR-71 | Толгойн `bal_account_type/id` бөглөгдсөн (төлбөрийн хэлбэрээс эсвэл гараар) баримт нь "шууд төлбөртэй". Батлахад баримтын ваучерын **дараа** ижил DB transaction-д хоёр дахь ваучер: `document_type = 'PAYMENT'` (нэхэмжлэх) / `'REFUND'` (кредит нот — мөнгө буцаж орно), огноо ижил. Нийлүүлэгч `blocked = 'PAYMENT'` бол `purchase.vendor_blocked` (харьцсан дансаа хасаж зээлээр батлах боломжтой). | D-F5; FR-PUR-007; R-SALES-DOCUMENTS-37; R-ACCOUNT-DETERMINATION-25 |
-| BR-PUR-72 | Хоёр дахь ваучерын дугаар ба source code-ийг Cash&Bank тодорхойлно ([05](./05-posting-engine.md) §3.7, E-E): касс (`kind = 'CASH'`) → МХ-2 `KZ` (кредит нотод МХ-1 `KO`), source `CASHVOUCHER`; банк/хэтэвч → `BP` (кредит нотод `BR`), source `PAYMENTREG`. `IBankAccountQuery.GetVoucherSeries(bankAccountId, direction)`. | 05 §3.7; D-C7 |
-| BR-PUR-73 | Харьцсан данс `BANK_ACCOUNT`: `blocked = false`, валют = баримтын валют (R1: NULL), G/L данс нь `bank_account_posting_group.gl_account_id`. `GL_ACCOUNT`: posting, блоклогдоогүй, `direct_posting = true`. | R-BANK-CASH-02, 03 |
-| BR-PUR-74 | Касс бол Cash&Bank writer МХ-2-ийг (`bank.posted_cash_voucher`, `voucher_type = 'PAYMENT'`) бичнэ: `counterparty_type = 'VENDOR'`, `counterparty_name = vendor_name`, `counterparty_id_doc` = хүсэлтийн `cashVoucher.counterpartyIdDocument ?? vendor.tin ?? vendor.registration_no` (бүгд хоосон ба `kind = 'INDIVIDUAL'` бол `bank.cash_voucher_required`), `purpose` = "Худалдан авалт {vendor_invoice_no}". Касс сөрөг болбол `bank.cash_negative_balance` (ERC01). | D-G1; FR-BNK-003 AC1, AC2; FR-PUR-007 AC1 |
-| BR-PUR-75 | Төлбөрийн дүн = шинэ VLE-ийн **applies-to тулгалтын дараах үлдэгдэл** (Z-PUR-07). 0 бол төлбөрийн ваучер үүсэхгүй (`purchase.balancing_payment_nothing_to_pay`). Шууд төлбөртэй баримтад `APPLY_TO_OLDEST` хийгдэхгүй. | Z-PUR-07; 06 BR-SAL-52 |
-| BR-PUR-76 | Төлбөрийн ваучер: өглөг Дт / харьцсан данс Кт (кредит нотод эсрэг). Төлбөрийн VLE (`PAYMENT` +, `REFUND` −) баримтын VLE-д тулгагдаж хоёулаа хаагдана; VLE `due_date = posting_date`, `payment_method_code`, `bal_account_type/id`. | R-SALES-DOCUMENTS-37 |
+| BR-PUR-71 | Толгойн `bal_account_type/id` бөглөгдсөн (төлбөрийн хэлбэрээс эсвэл гараар) баримт нь "шууд төлбөртэй". Батлахад баримтын ваучерын **дараа** ижил DB transaction-д хоёр дахь ваучер: `document_type = 'PAYMENT'` (нэхэмжлэх) / `'REFUND'` (кредит нот — мөнгө буцаж орно), огноо ижил. Нийлүүлэгч `blocked = 'PAYMENT'` бол `purchase.vendor_blocked` (харьцсан дансаа хасаж зээлээр батлах боломжтой). Seed-д зөвхөн `CASH` хэлбэр харьцсан данстай (`CASH01`); хэрэглэгч `BANK` г.м. хэлбэрт данс тохируулбал тэр хэлбэртэй **бүх** нэхэмжлэх (жишээ нь `DOMESTIC_VAT` загварын `NET30` + `BANK`) шууд төлбөртэй болно. Тиймээс `bal_account_id IS NOT NULL` ба `due_date > posting_date` бол ноорог хадгалах, release, posting-д анхааруулга `purchase.immediate_payment_with_credit_terms` (блоклохгүй). | D-F5; FR-PUR-007; R-SALES-DOCUMENTS-37; R-ACCOUNT-DETERMINATION-25; 06 BR-SAL-50 |
+| BR-PUR-72 | Хоёр дахь ваучерын **`document_no` = posted баримтын дугаар** (`PI-…`/`PC-…`, `VoucherNumbering.SameAsVoucher("V1")`; хуулийн цувралаас шинэ дугаар авахгүй), source касс (`kind = 'CASH'`) бол `CASHVOUCHER`, банк/хэтэвч бол `PAYMENTREG`. МХ-2 (нэхэмжлэх) / МХ-1 (кредит нот)-ийн дугаарыг (`bank.posted_cash_voucher.no`) Cash&Bank writer тухайн кассын `KZ` / `KO` цувралаас **тусдаа** завсаргүй олгоно (09 BR-BNK-21). Ижил `document_no`-той хоёр `gl_transaction` (INVOICE + PAYMENT) нь BC-тэй ижил. | 05 Z-PST-15, BR-PST-30; 09 BR-BNK-21; R-SALES-DOCUMENTS-37; D-C7 |
+| BR-PUR-73 | Харьцсан данс `BANK_ACCOUNT`: `blocked = false` (`bank.account_blocked`, 09 BR-BNK-10), валют = баримтын валют (R1: NULL), G/L данс нь `bank_account_posting_group.gl_account_id` (`SystemDerived`). `GL_ACCOUNT`: posting, блоклогдоогүй, `direct_posting = true` — мөрийг `LineOrigin.UserEntered`-ээр үүсгэж engine шалгана (`gl.direct_posting_not_allowed`, 05 BR-PST-15). | R-BANK-CASH-02, 03; 05 BR-PST-15 |
+| BR-PUR-74 | Касс бол Cash&Bank writer МХ-2-ийг (`bank.posted_cash_voucher`, `voucher_type = 'PAYMENT'`) бичнэ: `counterparty_type = 'VENDOR'`, `counterparty_name = vendor_name`, `counterparty_id_doc` = хүсэлтийн `cashVoucher.counterpartyIdDocument ?? vendor.tin ?? vendor.registration_no` (МХ-2-т **заавал**: бүгд хоосон бол нийлүүлэгчийн төрлөөс үл хамааран `bank.cash_voucher_required`, 09 BR-BNK-23; кредит нотын МХ-1-д сонголттой), `purpose` = "Худалдан авалт {vendor_invoice_no}". Касс сөрөг болбол `bank.cash_negative_balance` (ERC01). | D-G1; FR-BNK-003 AC1, AC2; FR-PUR-007 AC1; 09 BR-BNK-23 |
+| BR-PUR-75 | Төлбөрийн дүн = шинэ VLE-ийн **applies-to тулгалтын дараах үлдэгдэл** (Z-PUR-07). Ваучерын дүн A үед тогтдог (05: ваучер A үед угсрагдана) тул A үед target-ийн `remaining_amount`-ыг уншиж `ApplyInstruction`-д `ExpectedRemaining` болгон хадгална; B үед түгжээний дор (`ValidateLockedAsync`) өөр бол 409 `party.application_target_changed` (ROLLBACK, хуулийн дугаар зарцуулагдахгүй, касс хөдлөхгүй; клиент шинэ Idempotency-Key-ээр дахин илгээнэ). 0 бол төлбөрийн ваучер үүсэхгүй (`purchase.balancing_payment_nothing_to_pay`). Шууд төлбөртэй баримтад `APPLY_TO_OLDEST` хийгдэхгүй. | Z-PUR-07; 06 BR-SAL-52 |
+| BR-PUR-76 | Төлбөрийн ваучер: өглөг Дт / харьцсан данс Кт (кредит нотод эсрэг). Төлбөрийн VLE (`PAYMENT` +, `REFUND` −) баримтын VLE-д тулгагдаж хоёулаа хаагдана; VLE `document_no` = баримтын дугаар (BR-PUR-72), `due_date = posting_date`, `payment_method_code`, `bal_account_type/id`, `vendor_posting_group_id` = баримтын VLE-ийнх. | R-SALES-DOCUMENTS-37; 06 BR-SAL-56 |
 
 ### 4.11 Кредит нот
 
@@ -588,16 +589,17 @@ Posted мөр (`purch_inv_line`, `purch_cr_memo_line`) нь ноорогийн �
 | BR-PUR-83 | "Нэхэмжлэхээс кредит нот" нь posted мөрүүдийг (дүн, хөнгөлөлт, бүлэг, dimension, хасагдахгүй шалтгаан) хуулж `corrected_invoice_id`, `applies_to_*`-ийг тавина; хэрэглэгч тоо/дүнг багасгана. НӨАТ одоогийн хувиар дахин тооцогдоно (`vat_difference` хуулагдахгүй). | 06 BR-SAL-67 |
 | BR-PUR-84 | **Кредит нотын орцын НӨАТ:** VAT entry-ийн `supplier_ebarimt_id` = кредит нотын ДДТД (нийлүүлэгчийн буцаалт/засварын баримт) `??` засаж буй нэхэмжлэхийн үр дүнгийн ДДТД. `deductible_confirmed` (кредит нотын хасагдах дүн ≠ 0 `NORMAL` entry-д) = засаж буй нэхэмжлэхтэй бол **түүний** хасагдах дүн ≠ 0 бүх `NORMAL` PURCHASE VAT entry баталгаажсан эсэх (0 дүнтэй EXEMPT/0 %/бүрэн хасагдахгүй entry тооцогдохгүй); нэхэмжлэхгүй бол BR-PUR-47-ийн дүрэм (өөрийн ДДТД + `confirmInputVat`). Нэхэмжлэх дараа нь баталгаажвал холбогдох кредит нотын entry хамт баталгаажна (BR-PUR-50). Ингэснээр баталгаажсан ба баталгаажаагүй хэсэг тус бүрдээ цэвэрлэгдэнэ. | D-E4; 12 PUR-04; OQ-PUR-04 |
 | BR-PUR-85 | `require_supplier_ebarimt = true` үед нэхэмжлэхгүй (`corrected_invoice_id`/`applies_to` хоосон), хасагдах НӨАТ ≠ 0 кредит нот нь ДДТД-тэй байна (`purchase.credit_memo_evidence_required`) — орцын НӨАТ-ын бууралт тайланд орохгүй үлдэхээс сэргийлнэ. | D-E4 |
+| BR-PUR-97 | **Орцын НӨАТ нь зардалд шилжсэн (`WRITTEN_OFF`, BR-PUR-53) нэхэмжлэхийг засах кредит нот ба цуцлалт:** нэхэмжлэхийн НӨАТ аль хэдийн зардал/хөрөнгийн дансанд орсон тул кредит нотын хасагдах НӨАТ-тай (`NORMAL`, хувь > 0) бүх мөрөнд систем шалтгаан `REJECTED` (nd% = 100, SCR-PUR-01) тавьж, НӨАТ-ыг зардлын дансанд **кредитээр** буцаана (1300 хөдлөхгүй); анхааруулга `purchase.credit_memo_inherits_written_off`. Эс бөгөөс кредит нот 1300-г кредитлэж, баталгаажих боломжгүй (BR-PUR-50 хориотой) сөрөг НӨАТ үлдээнэ. Цуцлалтын BR-PUR-90-ийн тэнцлийн шалгалт энэ тохиолдолд `amount_including_vat` ба Σ (`amount` + `non_deductible_vat_amount`)-аар хийгдэнэ. | D-E4; 08 BR-TAX-51; BR-PUR-53 |
 
 ### 4.12 Цуцлах, засварлах, хуулах
 
 | ID | Дүрэм | Эх |
 |---|---|---|
-| BR-PUR-86 | Цуцлах боломжтой: posted нэхэмжлэх (`api.document_not_posted`), өмнө цуцлагдаагүй (`purchase.invoice_already_cancelled`, INV-21), VLE буцаагдаагүй. | R-SALES-DOCUMENTS-43; FR-PUR-006 |
+| BR-PUR-86 | Цуцлах боломжтой: posted нэхэмжлэх (`api.document_not_posted`), өмнө цуцлагдаагүй (`purchase.invoice_already_cancelled`, INV-21), VLE буцаагдаагүй (`party.entry_reversed`), нийлүүлэгч `blocked ≠ 'ALL'` (`purchase.vendor_blocked`; цуцлалт нь кредит нот батлах тул BR-PUR-03 хамаарна). | R-SALES-DOCUMENTS-43; FR-PUR-006; BR-PUR-03 |
 | BR-PUR-87 | Нэхэмжлэхийн VLE-д **unapplied биш APPLICATION мөр байхгүй**, `remaining_amount = amount` (`purchase.invoice_has_applications`: "Эхлээд төлбөр/кредит нотын тулгалтыг буцаана уу"). Бэлэн худалдан авалт ч ялгаагүй. | R-SALES-DOCUMENTS-43; FR-PUR-006 AC1 |
 | BR-PUR-88 | Цуцлалтын кредит нотын огноо = хүсэлтийн `postingDate ?? өнөөдөр`; `document_date = posting_date`; ≥ нэхэмжлэхийн огноо; OPEN үе/цонх, OPEN НӨАТ-ын үе. | D-F6; Z-PUR-03 |
 | BR-PUR-89 | Кредит нот нэхэмжлэхийн мөрүүдийг **1:1** хуулна: `line_no`, төрөл, данс/бараа, тайлбар, нэгж, тоо, өртөг, хөнгөлөлт, бүлэг (код → id), `vat_percent` (snapshot), `vat_difference`, хасагдахгүй шалтгаан ба дүн, `dimension_set_id`. Толгой: нийлүүлэгч, PIV, dimension, `corrected_invoice_id`, `applies_to_doc_type = 'INVOICE'`, `applies_to_doc_no`, `supplier_ebarimt_id` (нэхэмжлэхийн үр дүнгийн ДДТД), `vendor_cr_memo_no = vendorCrMemoNo ?? 'CXL-' + нэхэмжлэхийн дугаар` (Z-PUR-04). Харьцсан данс хуулахгүй. | R-SALES-DOCUMENTS-44 |
-| BR-PUR-90 | Цуцлалтын кредит нотын `amount`, `vat_amount`, `amount_including_vat`, Σ `non_deductible_vat_amount` нь нэхэмжлэхийнхтэй **яг** тэнцүү; зөрвөл `purchase.cancel_amount_mismatch` (500, алгоритмын алдаа). | bc-vat pitfall 3 |
+| BR-PUR-90 | Цуцлалтын кредит нотын `amount`, `vat_amount`, `amount_including_vat`, Σ `non_deductible_vat_amount` нь нэхэмжлэхийнхтэй **яг** тэнцүү (BR-PUR-97-ийн тохиолдолд Σ `non_deductible_vat_amount` нь нэхэмжлэхийн Σ `non_deductible_vat_amount` + зардалд шилжүүлсэн НӨАТ); зөрвөл `purchase.cancel_amount_mismatch` (500, алгоритмын алдаа). | bc-vat pitfall 3 |
 | BR-PUR-91 | Цуцлалт нэг transaction-д: кредит нот угсрах (ноорог хадгалахгүй, `draft_id = NULL`), батлах, бүтэн тулгах, `purchase.cancelled_document`, нийлүүлэгчийн баримтын төлөв (BR-PUR-92). VAT entry-ийн баталгаажуулалт BR-PUR-84-өөр (нэхэмжлэхийнхийг өвлөнө). | D-F6; FR-PUR-006 AC1 |
 | BR-PUR-92 | Цуцлалтын үеийн `ebarimt.purchase_receipt`: `createCorrectiveDraft = true` бол мөрийг шинэ ноороглуу шилжүүлнэ (`purch_inv_header_id = NULL`, `vat_entry_no = NULL`, `status = 'IMPORTED'`, `confirmed_at/by = NULL`; ноорогт `purchase_receipt_id`, `supplier_ebarimt_id`) — засварласан нэхэмжлэхийг батлахад дахин холбогдоно. `false` бол `CONFIRMED → RETURNED`, `MATCHED → REJECTED` (`rejection_reason` = "Нэхэмжлэх цуцлагдсан"). | 12 §16.1 (шилжилт нэмэх санал, Хавсралт А) |
 | BR-PUR-93 | Засварлах (`createCorrectiveDraft = true`) = цуцлах + эх мөрүүдийг хуулсан шинэ нэхэмжлэхийн **ноорог** (`OPEN`, шинэ `DPI-…`) нэг transaction-д; `vendor_invoice_no = NULL` (BR-PUR-14), ДДТД ба receipt холбоос шилжинэ. | R-SALES-DOCUMENTS-45 |
@@ -625,7 +627,7 @@ Posted мөр (`purch_inv_line`, `purch_cr_memo_line`) нь ноорогийн �
 | BR-AP-09 | INV-11 (AP): `party.v_payables_reconciliation.difference = 0` (өглөгийн данс `direct_posting = false`). Шөнийн шалгалт зөрүүг P1 alert болгоно. | INV-11 |
 | BR-AP-10 | (`document_type`, `document_no`) нь нийлүүлэгчийн ledger-т давтагдахгүй (хамгаалалт; `purchase.document_no_already_in_ledger`). | R-SALES-DOCUMENTS-38 (толин тусгал) |
 | BR-AP-11 | Detailed мөр хэзээ ч засагдахгүй, устахгүй; зөвхөн `unapplied`, `unapplied_by_entry_no` (false → true). VLE-ийн whitelist: `closed_by_*`, `due_date`, `on_hold`, `supplier_ebarimt_id`, `reversed*` (+ R2 `adjusted_currency_factor`). | D-C4; INV-30; 910 `ledger_guard` |
-| BR-AP-12 | Нээлттэй VLE-ийн `due_date`-ийг ба аль ч VLE-ийн `on_hold`-ийг `ACTION party.ledger_entry.edit`-тэй хэрэглэгч засна (`fn_ledger_update`; хаалттай entry-ийн due date → `party.entry_closed`). Засвар бүр аудитад (SCR-SAL-04). | FR-PTY-014; R-SUBLEDGERS-APPLICATION-10 |
+| BR-AP-12 | Нээлттэй VLE-ийн `due_date`-ийг ба аль ч VLE-ийн `on_hold`-ийг `ACTION party.ledger_entry.edit`-тэй хэрэглэгч засна (`fn_ledger_update`; хаалттай entry-ийн due date → `party.entry_closed`). `on_hold` нь 1..3 тэмдэгт (DB CHECK `char_length ≤ 3`; урт бол V0-д 400 `api.request_invalid`), хоосон мөр → NULL. Засвар бүр аудитад (SCR-SAL-04). | FR-PTY-014; R-SUBLEDGERS-APPLICATION-10 |
 | BR-AP-13 | Due date-ийн бүх логик (насжилт, төлбөрийн санал, Apply to Oldest) `vendor_ledger_entry.due_date`-ийг уншина. | R-SUBLEDGERS-APPLICATION-09; SCR-SAL-05 |
 
 ### 4.15 Тулгалт
@@ -660,7 +662,8 @@ Posted мөр (`purch_inv_line`, `purch_cr_memo_line`) нь ноорогийн �
 | BR-AP-43 | Буцаагдсан entry оролцсон бол хориотой (`party.entry_reversed`). | R-SUBLEDGERS-APPLICATION-30 |
 | BR-AP-44 | Толин тусгал мөр: ижил VLE, `entry_type`, `applied_vend_ledger_entry_no`, `amount = −эх`, `posting_date` = unapply огноо, **шинэ** `application_no`, `unapplied = true`, `unapplied_by_entry_no` = эх, `source_code = 'UNAPPPURCH'`; эх мөрийг `unapplied = true`, `unapplied_by_entry_no` = толин тусгал. | R-SUBLEDGERS-APPLICATION-31 |
 | BR-AP-45 | MNT-д unapply G/L үүсгэхгүй (`transaction_no = NULL`). | R-SUBLEDGERS-APPLICATION-31; FR-PTY-011 |
-| BR-AP-46 | Дахин нээгдсэн entry-ийн `closed_by_*`-г NULL болгоно. Төлбөрийн журналын ваучерыг буцаах (reverse, D-D5) бол эхлээд unapply (R-SUBLEDGERS-APPLICATION-32). | R-SUBLEDGERS-APPLICATION-31, 32 |
+| BR-AP-46 | Дахин нээгдсэн entry-ийн `closed_by_*`-г NULL болгоно. Толин тусгал мөр эх мөрийн `vendor_posting_group_id`, `initial_entry_due_date`, `initial_document_type`-ийг хуулна (`v_payables_reconciliation` бүлгээр JOIN хийдэг). Төлбөрийн журналын ваучерыг буцаах (reverse, D-D5) бол эхлээд unapply (R-SUBLEDGERS-APPLICATION-32). | R-SUBLEDGERS-APPLICATION-31, 32; 06 §5.14 |
+| BR-AP-47 | **Цуцлалтын тулгалт** (нэхэмжлэх ↔ `purchase.cancelled_document`-ийн кредит нот) буцаагдахгүй: 409 `party.unapply_cancellation_not_allowed` — эс бөгөөс цуцлагдсан нэхэмжлэх дахин нээгдэж төлбөрийн саналд орно. Parties нь Purchases-ийг мэдэхгүй тул Parties.Contracts-ийн `IUnapplyGuard`-ийг Purchases хэрэгжүүлнэ (06 BR-AR-48-тэй нэг механизм). Алдаатай цуцалсан бол засварласан шинэ нэхэмжлэх (`:copy`) гаргана. | D-F6; 06 BR-AR-48 |
 
 ### 4.17 Урьдчилгаа ба буцаан авалт
 
@@ -698,7 +701,7 @@ Posted мөр (`purch_inv_line`, `purch_cr_memo_line`) нь ноорогийн �
 | BR-AP-73 | Нийлүүлэгчийн хязгаар: сонгогдсон entry-үүдийн дүн (`a_e = −remaining`) нь `N_v`-ээс хэтрэхгүй — нийлүүлэгчийн нээлттэй кредит/урьдчилгаа (эерэг entry) нь саналыг бууруулна; хязгаарт хүрсэн entry хэсэгчлэн (`amount_to_apply`) орно. Нээлттэй кредит байвал анхааруулга `purchase.vendor_has_open_credits` ("Кредит нот/урьдчилгааг нэхэмжлэхэд эхлээд тулгана уу"). | R-BANK-CASH-41 (net) |
 | BR-AP-74 | Нийт хязгаар `maxAmount`: бүх entry-г (`due_date`, `vendor_no`, `entry_no`) дарааллаар цуглуулж нийт ≤ `maxAmount`; хязгаарт хүрсэн entry-г **хэсэгчлэн** оруулж хязгаарыг яг дүүргэнэ, дараагийнх нь орохгүй (Z-PUR-10). | FR-BNK-018 AC1 |
 | BR-AP-75 | Гаралт: `summarizePerVendor = true` → нийлүүлэгч бүрд нэг мөр (`amount = Σ a_e`, `applies_to_id = 'JNL:' + line.id`, `application_draft` мөрүүд `sequence_no` = дараалал, `amount_to_apply = −a_e`); `false` → entry бүрд нэг мөр (`applies_to_doc_type/no`, `amount = a_e`; хэсэгчилсэн entry-д мөрийн дүн нь хэсэгчилсэн дүн). Мөр: `account_type = 'VENDOR'`, `document_type = 'PAYMENT'`, `bal_account_type = 'BANK_ACCOUNT'`, `bal_account_id`, `posting_date`, `document_no` = нийлүүлэгч бүрд `JNL_DRAFT`-ийн дараагийн дугаар, `external_document_no` = нийлүүлэгчийн нэхэмжлэхийн дугаар (нэг бол) эсвэл хоосон, `description` = "Төлбөр — {vendor_invoice_no, …}" (≤ 100), `system_created = true`, `dimension_set_id` = 0. | R-BANK-CASH-41; F3 |
-| BR-AP-76 | Санал нь **ledger-т бичихгүй**: зөвхөн журналын мөр ба `application_draft` (нэг богино transaction, posting түгжээгүй). Хэрэглэгч хянаж засаад журналыг батална (05 §5.4). | bc-bank-cash F3 (4) |
+| BR-AP-76 | Санал нь **ledger-т бичихгүй**: зөвхөн журналын мөр ба `application_draft` (нэг богино transaction, posting түгжээгүй). Зэрэг хоёр санал (өөр batch) ижил entry-г сонгохоос сэргийлж transaction-ийн эхэнд компанийн **саналын** advisory түгжээ `pg_advisory_xact_lock(hashtext('suggest_vendor_payments:' \|\| company_id))` авна (posting түгжээнээс тусдаа); нэгтгэсэн горимд `ux_application_draft__vend` (23505 → тухайн entry-г `IN_OTHER_JOURNAL` гэж алгасна) нэмэлт хамгаалалт. Хэрэглэгч хянаж засаад журналыг батална (05 §5.4). | bc-bank-cash F3 (4); D-C6 |
 | BR-AP-77 | Хариу: үүссэн мөрүүд, нийт дүн, алгассан entry ба шалтгаан (`BLOCKED`, `ON_HOLD`, `NOT_DUE`, `POSTED_AFTER_PAYMENT_DATE`, `IN_OTHER_JOURNAL`, `CAP_REACHED`, `VENDOR_NET_DEBIT`, `PARTIAL_BY_CAP`, `PARTIAL_BY_CREDITS`). | R-BANK-CASH-41 ("skipped and reported") |
 | BR-AP-78 | Журналын мөр (эсвэл batch) устахад түүний `application_draft` мөрүүд устна (SCR-PUR-04 FK CASCADE; тэр хүртэл апп-ын устгалт). Батлахад `application_draft` устна (06 BR-AR-36). | BR-AP-34 |
 | BR-AP-79 | Нэгтгэсэн мөрийн дүнг хэрэглэгч өөрчилбөл draft-ыг засахгүй; **posting үед** хуваарилалт `sequence_no` дарааллаар мөрийн дүн хүртэл хийгдэнэ (дутуу бол сүүлийн entry хэсэгчлэн эсвэл алгасагдана; илүү бол үлдэгдэл нь урьдчилгаа болж анхааруулна `purchase.payment_exceeds_allocation`). | BR-AP-32 |
@@ -851,11 +854,13 @@ void Recalculate(PurchaseHeader h, RateSource rates = RateSource.Current) {
         l.LineDiscountAmount = R(g * l.LineDiscountPercent / 100m, ctx.P);           // BR-PUR-23
         l.LineAmount = g - l.LineDiscountAmount;
         l.InvDiscountAmount = 0m;                                                     // R1 (BR-PUR-26)
+        if (ctx.Rates == RateSource.Snapshot) continue;                               // цуцлалт (BR-PUR-89): posted мөрийн
+                                                                                      // vat_identifier, calc type, vat_percent хэвээр —
+                                                                                      // setup дараа өөрчлөгдсөн ч BR-PUR-90 зөрөхгүй
         var s = vatSetup.Get(l.VatBusPostingGroupId, l.VatProdPostingGroupId);        // BR-PUR-29
         l.VatCalculationType = s.VatCalculationType;                                  // R1: NORMAL (BR-PUR-19)
         l.VatIdentifier = s.VatIdentifier;
-        l.VatPercent = ctx.Rates == RateSource.Snapshot ? l.VatPercent                // цуцлалт (BR-PUR-89)
-                     : taxParams.EffectiveRatePercent(s, ctx.VatDate);                // BR-PUR-30 (НӨАТ төлөгч бус компанид ч)
+        l.VatPercent = taxParams.EffectiveRatePercent(s, ctx.VatDate);                // BR-PUR-30 (НӨАТ төлөгч бус компанид ч)
     }
     // 2) НӨАТ: бүлэг, бөөрөнхийлөлт, зөрүү, хуваарилалт (§6.3–6.5, §6.7)
     var active = lines.Where(x => x.Quantity != 0).ToList();
@@ -868,8 +873,9 @@ void Recalculate(PurchaseHeader h, RateSource rates = RateSource.Current) {
         l.Amount = t.Amount; l.AmountIncludingVat = t.AmountIncludingVat;
         l.VatBaseAmount = l.VatCalculationType == "FULL_VAT" ? 0m : t.Amount;
         l.VatDifference = t.VatDifference;                                            // alloc(VAT_g) − alloc(VAT_g_calc), §6.7
-        // 3) Хасагдахгүй НӨАТ (§6.6, BR-PUR-37, 38)
-        var pct = NonDeductiblePercent(l, ctx);
+        // 3) Хасагдахгүй НӨАТ (§6.6, BR-PUR-37, 38). Snapshot горимд хувийг posted мөрийн шалтгаанаас
+        //    (SCR-PUR-01) эсвэл ND/V харьцаанаас авна — одоогийн vat_posting_setup-ийг уншихгүй (BR-PUR-90)
+        var pct = ctx.Rates == RateSource.Snapshot ? SnapshotNonDeductiblePercent(l) : NonDeductiblePercent(l, ctx);
         l.NonDeductibleVatAmount = R((l.AmountIncludingVat - l.Amount) * pct / 100m, ctx.P);
     }
     // 4) Толгойн нийлбэр (§6.8)
@@ -884,6 +890,10 @@ decimal NonDeductiblePercent(PurchaseLine l, PurchCalcContext c) =>
     : !c.CompanyVatRegisteredOnVatDate ? 100m                                         // NON_VAT_COMPANY (D-E5)
     : l.NonDeductibleReason is not null ? 100m                                        // SCR-PUR-01
     : vatSetup.Get(l.VatBusPostingGroupId, l.VatProdPostingGroupId).NonDeductibleVatPercent;
+
+decimal SnapshotNonDeductiblePercent(PurchaseLine l) =>                               // цуцлалт (BR-PUR-89, 90, 97)
+    l.NonDeductibleReason is not null ? 100m                                          // REJECTED (BR-PUR-97), NO_EBARIMT, PASSENGER_CAR …
+    : l.CopiedVatAmount == 0 ? 0m : l.CopiedNonDeductibleVatAmount * 100m / l.CopiedVatAmount;   // posted мөрийн ND/V (яг)
 
 (string, string, bool) GroupKey(PurchaseLine l) => (l.VatIdentifier, l.VatCalculationType, l.LineAmount >= 0);
 ```
@@ -951,7 +961,7 @@ async Task<VatAmountLines> SetVatAmountsAsync(Guid id, string ifMatch, IReadOnly
 | 3 | `platform.fn_lock_company_posting(tenant, company)` | Engine | D-C6 |
 | 4 | `IPostedDocumentWriter.LockSourceAsync`: `SELECT … FROM purchase.purchase_header WHERE id = $1 FOR UPDATE`; `row_version = If-Match` | Purchases | 412 / 409 |
 | 5 | Түгжээний дор дахин шалгах: нийлүүлэгчийн `blocked`, үе ба цонх, НӨАТ-ын үе, нийлүүлэгчийн дугаар (VLE), ДДТД (`purchase_receipt` `FOR UPDATE` by `ddtd`), тулгах target (VLE `FOR UPDATE`) | Purchases, Parties, Tax | Алдаа → ROLLBACK, 409/422 |
-| 6 | Хуулийн дугаар `fn_next_document_no('PI'\|'PC', posting_date)`; бэлэн бол хоёр дахь ваучерын дугаар (`KZ`/`BP`, Cash&Bank) | Engine | Counter row lock |
+| 6 | Хуулийн дугаар `fn_next_document_no('PI'\|'PC', posting_date)`; бэлэн бол хоёр дахь ваучер ижил дугаартай (`SameAsVoucher("V1")`, counter өөрчлөгдөхгүй), МХ-2/МХ-1-ийн дугаарыг (`KZ`/`KO`) Cash&Bank writer 8-р алхамд олгоно (BR-PUR-72) | Engine, Cash&Bank | Counter row lock |
 | 7 | `GL_REGISTER`, `GL_TRANSACTION`, `GL_ENTRY` дугаар; `gl.gl_transaction`, `gl.gl_entry` | Engine | ERP01, ERG01 |
 | 8 | Writer-ууд (BR-PST-40 дараалал): `tax.vat_entry` + link (10) → `party.vendor_ledger_entry` + detailed (INITIAL, APPLICATION) (30) → `bank.bank_ledger_entry` + `posted_cash_voucher` (40) | Tax, Parties, Cash&Bank | ERB02, ERL01, ERV01, ERC01, 23505, 23514 |
 | 9 | `IPostedDocumentWriter.WriteAsync`: posted header + мөр (`draft_id`, `pre_assigned_no`, `vendor_ledger_entry_no`, `transaction_no`, `gl_register_no`), `DELETE purchase.purchase_header`; `IInputVatEvidenceService.RegisterAtPostingAsync` (§5.10); `IItemCostUpdater` (BR-PUR-64); цуцлалтад `purchase.cancelled_document` | Purchases → Tax → EBarimt, Inventory | `ux_*__draft`, `purchase_receipt` UNIQUE (ddtd) |
@@ -1004,10 +1014,12 @@ PostingVoucher BuildDocumentVoucher(PurchaseHeader h, PurchPostingContext c, Evi
         var nd  = l.NonDeductibleVatAmount;                                                    // §6.6
         var main = (Amount: l.Amount, Vat: vat, Base: l.VatBaseAmount, Nd: nd);
         if (c.SeparateLineDiscount && l.LineDiscountAmount != 0 && l.ItemType != "INVENTORY") { // BR-PUR-25
-            var dsc = DiscountRow(l, c);                                                       // §6.9 (Amount: dB, Vat: dV)
+            var dsc = DiscountRow(l, c);                                                       // §6.9 (Amount: dB, Vat: dV, Nd: dND = r(dV × nd%/100))
             buf.Add(Key(BufferLineKind.Discount, l, gps.PurchLineDiscAccountId), sgn * -dsc.Amount, sgn * -dsc.Vat,
-                    sgn * -dsc.Amount, vatDifference: 0, nonDeductibleVat: 0, quantity: 0, systemCreated: true, l.Description, l.LineNo);
-            main = (main.Amount + dsc.Amount, main.Vat + dsc.Vat, main.Base + dsc.Amount, main.Nd); // бохир
+                    sgn * -dsc.Amount, vatDifference: 0, nonDeductibleVat: sgn * -dsc.Nd, quantity: 0, systemCreated: true, l.Description, l.LineNo);
+            main = (main.Amount + dsc.Amount, main.Vat + dsc.Vat, main.Base + dsc.Amount, main.Nd + dsc.Nd); // бохир (ND мөн бохир)
+            // Цэвэр: суурь (Amount+dB)+(ND+dND) − dB − dND = Amount + ND; хасагдах НӨАТ (V+dV)−(ND+dND) − dV + dND = V − ND.
+            // nd% = 100 үед хоёр мөрийн хасагдах НӨАТ 0 → 1300-д мөр үүсэхгүй (BR-PST-24).
         }
         buf.Add(Key(l.LineType == "ITEM" ? BufferLineKind.Item : BufferLineKind.GlAccount, l, acc),
                 sgn * main.Amount, sgn * main.Vat, sgn * main.Base, sgn * l.VatDifference, sgn * main.Nd,
@@ -1044,7 +1056,7 @@ PostingVoucher BuildDocumentVoucher(PurchaseHeader h, PurchPostingContext c, Evi
 - `gl_entry.vat_amount` (суурь entry) = **хасагдах** НӨАТ (= НӨАТ-ын G/L мөр); хасагдахгүй НӨАТ нь суурь `amount`-д орсон.
 - VAT entry: buffer мөр бүрд нэг (0 % ба бүрэн хасагдахгүй мөрт ч); НӨАТ-ын G/L entry зөвхөн хасагдах НӨАТ ≠ 0 үед (BR-PST-24).
 - `tax.vat_entry.gl_entry_no` = суурь G/L entry; `tax.gl_entry_vat_entry_link` (суурь ↔ VAT entry).
-- `ApplyInstructionFor(h)`: `applies_to_doc_*` эсвэл `corrected_invoice_id` → `ToDocument`; шууд төлбөргүй ба `APPLY_TO_OLDEST` → `Oldest`; бусад → `None`.
+- `ApplyInstructionFor(h)`: `applies_to_doc_*` эсвэл `corrected_invoice_id` → `ToDocument` (шууд төлбөртэй баримтад A үеийн target-ийн үлдэгдлийг `ExpectedRemaining` болгон хавсаргана, BR-PUR-75); шууд төлбөргүй ба `APPLY_TO_OLDEST` → `Oldest`; бусад → `None`.
 
 ### 5.9 Өглөгийн ledger writer (`ILedgerWriter<VendorLedgerLine>`, Parties)
 
@@ -1058,15 +1070,16 @@ async ValueTask<IReadOnlyList<PostingError>> ValidateLockedAsync(IPostingContext
         var v = await vendors.GetForShareAsync(x.VendorId);                                   // FOR SHARE
         if (v.Blocked == "ALL" || (v.Blocked == "PAYMENT" && x.DocumentType is "PAYMENT" or "REFUND"))
             errors.Add(Err("purchase.vendor_blocked", x));                                      // BR-PUR-03, BR-AP-62
-        if (x.DocumentType is "INVOICE" or "CREDIT_MEMO") {
-            if (await ledger.DocumentExistsAsync(x.DocumentType, ctx.Voucher(x.VoucherKey).DocumentNo))
-                errors.Add(Err("purchase.document_no_already_in_ledger", x));                  // BR-AP-10
-            if (x.ExternalDocumentNo is not null &&
-                await ledger.VendorDocNoExistsAsync(x.VendorId, x.DocumentType, x.ExternalDocumentNo))   // NOT reversed
-                errors.Add(Err("purchase.vendor_invoice_no_duplicate", x));                     // BR-PUR-12 (V4)
+        if (x.DocumentType is "INVOICE" or "CREDIT_MEMO" && x.ExternalDocumentNo is not null &&
+            await ledger.VendorDocNoExistsAsync(x.VendorId, x.DocumentType, x.ExternalDocumentNo))   // NOT reversed
+            errors.Add(Err("purchase.vendor_invoice_no_duplicate", x));                         // BR-PUR-12 (V4)
+        // BR-AP-10 энд БИШ: хуулийн дугаар ValidateLocked-ийн дараа олгогдоно (05 §8.1 алхам 7 → 9) — WriteAsync-д шалгана
+        foreach (var t in x.Apply.ExplicitTargets) {
+            var (st, lockErrors) = await ledger.LockOpenAsync(t.EntryNo, x.VendorId, x.VendorPostingGroupId); // BR-AP-20, 30
+            errors.AddRange(lockErrors);
+            if (t.ExpectedRemaining is { } exp && st is not null && st.RemainingAmount != exp)
+                errors.Add(Err("party.application_target_changed", t));                        // BR-PUR-75 (бэлэн төлбөрийн дүн)
         }
-        foreach (var t in x.Apply.ExplicitTargets)
-            errors.AddRange(await ledger.LockOpenAsync(t.EntryNo, x.VendorId, x.VendorPostingGroupId));  // BR-AP-20, 30
     }
     return errors;
 }
@@ -1076,6 +1089,9 @@ async ValueTask WriteAsync(IPostingContext ctx, IReadOnlyList<VendorLedgerLine> 
     foreach (var (x, i) in lines.Select((x, i) => (x, i))) {
         var tx = ctx.Voucher(x.VoucherKey);
         var vleNo = first + i;
+        if (x.DocumentType is "INVOICE" or "CREDIT_MEMO" &&
+            await ledger.DocumentExistsAsync(x.DocumentType, tx.DocumentNo))                  // дугаар олгогдсоны дараа
+            throw Conflict("purchase.document_no_already_in_ledger");                         // BR-AP-10 (ROLLBACK)
         await ledger.InsertEntryAsync(new VendorLedgerEntry {
             EntryNo = vleNo, VendorId = x.VendorId, VendorNo = x.VendorNo, PostingDate = tx.PostingDate,
             DocumentDate = x.DocumentDate, DueDate = x.DueDate, DocumentType = x.DocumentType, DocumentNo = tx.DocumentNo,
@@ -1165,8 +1181,11 @@ async ValueTask ConfirmAsync(Guid receiptId, CancellationToken ct) =>
 async Task ConfirmEntriesAsync(PostedInvoice inv, string ddtd) {
     var txNos = new[] { inv.TransactionNo }.Concat(await purchases.CreditMemoTransactionsOfAsync(inv.Id));  // BR-PUR-84
     foreach (var v in await vatEntries.ForTransactionsAsync(txNos, "PURCHASE", forUpdate: true)) {
-        if (v.DeductibleConfirmed || v.VatCalculationType != "NORMAL") continue;
-        Guard(v.IsRejected, "purchase.input_vat_written_off");
+        Guard(v.IsRejected, "purchase.input_vat_written_off");                                // §5.12
+        // 08 BR-TAX-49-тэй ижил шүүлт: 0 дүнтэй (EXEMPT/0 %/бүрэн хасагдахгүй), хаагдсан, буцаагдсан entry-г алгасна
+        if (v.DeductibleConfirmed || v.VatCalculationType != "NORMAL" || v.Amount == 0 || v.Closed || v.Reversed) continue;
+        Guard(v.TransactionNo == inv.TransactionNo && v.SupplierEbarimtId is not null && v.SupplierEbarimtId != ddtd,
+              "tax.supplier_receipt_id_mismatch");                                            // нэхэмжлэхийн entry өөр ДДТД-тэй
         ledgerUpdate.Exec("tax.vat_entry", v.EntryNo, new {
             supplier_ebarimt_id = v.SupplierEbarimtId ?? ddtd, deductible_confirmed = true,
             deductible_confirmed_at = clock.Now, deductible_confirmed_by = user.Id });          // DB CHECK (INV-16)
@@ -1185,6 +1204,8 @@ async Task ConfirmEntriesAsync(PostedInvoice inv, string ddtd) {
 Механикийг Tax эзэмшинэ ([08](./08-tax-vat-mn.md) BR-TAX-51 "хасалтаас татгалзах"): `POST /input-vat:write-off` { `vatEntryNos[]` эсвэл `invoiceIds[]`, `postingDate`, `reason` (`NO_EBARIMT` / `REJECTED`) } — `ACTION tax.vat_entry.confirm_deductible`. Энд худалдан авалтын талын шаардлага ба posting-ийн хэлбэр:
 
 ```csharp
+// entries: vatEntryNos[] эсвэл invoiceIds[]-ээс; invoiceIds бол нэхэмжлэхийн ваучерын + түүнийг засах (corrected_invoice_id)
+// кредит нотуудын баталгаажаагүй PURCHASE NORMAL entry (BR-PUR-53). Сөрөг (кредит нотын) entry-д томьёо тэгш хэмтэй.
 PostingDocument BuildWriteOff(IReadOnlyList<VatEntryView> entries, DateOnly d, string reason) {
     foreach (var e in entries)                                                          // 08 BR-TAX-50-ийн entry л
         Guard(e.EntryType != "PURCHASE" || e.VatCalculationType != "NORMAL" || e.Amount == 0 || e.DeductibleConfirmed
@@ -1218,21 +1239,26 @@ PostingVoucher? BuildBalancingVoucher(PurchaseHeader h, PurchPostingContext c, P
     if (h.BalAccountType is null) return null;                                             // BR-PUR-71
     Guard(c.Vendor.Blocked == "PAYMENT", "purchase.vendor_blocked");
     var vle = doc.SubledgerLines.OfType<VendorLedgerLine>().Single();                      // нэхэмжлэх: −T, кредит нот: +T
+    // A үеийн target-ийн үлдэгдлээр; vle.Apply-д ExpectedRemaining болгон хадгалж B үед түгжээний дор тулгана
+    // (өөр бол 409 party.application_target_changed, BR-PUR-75; §5.9 ValidateLockedAsync)
     decimal applied = PreviewExplicitApplication(vle, c);                                   // урьдчилгаа г.м. (≥ 0)
     decimal pay = vle.Amount - Math.Sign(vle.Amount) * applied;                            // үлдэгдэл (тэмдэгтэй)
     if (pay == 0) { c.Warnings.Add("purchase.balancing_payment_nothing_to_pay"); return null; }   // BR-PUR-75
     var docType = h.DocumentType == INVOICE ? "PAYMENT" : "REFUND";
     var balGl = h.BalAccountType == "BANK_ACCOUNT" ? c.BankGlAccount(h.BalAccountId) : h.BalAccountId;  // BR-PUR-73
     var apLine  = Gl(c.PayablesAccountId, -pay, LineOrigin.SystemDerived, source: Vendor(h)); // нэхэмжлэх: +T (Дт)
-    var balLine = Gl(balGl, +pay, LineOrigin.SystemDerived);                                 // нэхэмжлэх: −T (Кт)
-    var series = c.Bank.GetVoucherSeries(h.BalAccountId, docType == "PAYMENT" ? "PAYMENT" : "RECEIPT");  // BR-PUR-72
-    return new PostingVoucher {
-        Key = "V2", Numbering = new VoucherNumbering.FromSeries(series.Code), SourceCode = series.SourceCode,
+    var balLine = Gl(balGl, +pay, h.BalAccountType == "GL_ACCOUNT" ? LineOrigin.UserEntered       // BR-PUR-73: direct_posting шалгана
+                                                                     : LineOrigin.SystemDerived);   // нэхэмжлэх: −T (Кт)
+    var isCash = h.BalAccountType == "BANK_ACCOUNT" && c.IsCash(h.BalAccountId);
+    return new PostingVoucher {                                                              // BR-PUR-72, 05 Z-PST-15
+        Key = "V2", Numbering = new VoucherNumbering.SameAsVoucher("V1"),                    // document_no = PI-…/PC-…
+        SourceCode = isCash ? "CASHVOUCHER" : "PAYMENTREG",                                   // МХ-2/МХ-1 дугаар: Cash&Bank writer, KZ/KO (09 BR-BNK-21)
         DocumentType = docType, PostingDate = h.PostingDate!.Value, GlLines = [apLine, balLine],
         SubledgerLines = [
             new VendorLedgerLine(docType, Amount: -pay, PurchaseLcy: 0, DueDate: h.PostingDate!.Value,
                 Apply: ApplyInstruction.ToLineKey(vle.GlLineKeys[0]), PaymentMethodCode: c.PaymentMethodCode,
-                BalAccountType: h.BalAccountType, BalAccountId: h.BalAccountId, GlLineKeys: [apLine.Key], …),
+                BalAccountType: h.BalAccountType, BalAccountId: h.BalAccountId,
+                VendorPostingGroupId: h.VendorPostingGroupId, GlLineKeys: [apLine.Key], …),          // BR-PUR-76 (Z-PUR-09)
             h.BalAccountType == "BANK_ACCOUNT"
               ? new BankLedgerLine(h.BalAccountId, Amount: +pay, DocumentType: docType, CounterpartyName: h.VendorName,
                     CashVoucher: c.IsCash(h.BalAccountId) ? new CashVoucherInfo(
@@ -1247,12 +1273,14 @@ PostingVoucher? BuildBalancingVoucher(PurchaseHeader h, PurchPostingContext c, P
 
 - `pay`-ийн тэмдэг: нэхэмжлэхэд VLE −T тул `pay = −T` → өглөг `+T` (Дт), мөнгө `−T` (Кт), төлбөрийн VLE `+T`.
 - Касс сөрөг болбол COMMIT-д ERC01 → 422 `bank.cash_negative_balance` (FR-PUR-007 AC1); posting бүхэлдээ rollback.
+- V2-ийн `gl_transaction.document_no` = V1-ийн (`PI-…`), `document_type = PAYMENT`; `gl_register.source_code = 'PURCHASES'`; V2-ийн G/L, VLE, detailed, BLE нь `source_code` = `CASHVOUCHER`/`PAYMENTREG` (05 W3, Z-PST-15).
+- `bal_account_id IS NOT NULL` ба `due_date > posting_date` → анхааруулга `purchase.immediate_payment_with_credit_terms` (BR-PUR-71).
 
 ### 5.14 Кредит нот батлах
 
 1. §5.7-ийн урсгал, `sgn = −1` (зардал/НӨАТ кредит, өглөг дебит).
 2. Нэхэмжлэхийг заасан бол `ApplyInstruction.ToDocument("INVOICE", no, AllowClosed: true)` (BR-PUR-80): хаагдсан нэхэмжлэх → тулгалтгүй, алдаагүй.
-3. Орцын НӨАТ: `Evidence` = BR-PUR-84 (нэхэмжлэхийн баталгаажуулалтыг өвлөнө; ДДТД = кредит нотын ?? нэхэмжлэхийн).
+3. Орцын НӨАТ: `Evidence` = BR-PUR-84 (нэхэмжлэхийн баталгаажуулалтыг өвлөнө; ДДТД = кредит нотын ?? нэхэмжлэхийн). Засаж буй нэхэмжлэх `WRITTEN_OFF` бол A үед (Recalculate-аас өмнө) хасагдах НӨАТ-тай мөрүүдэд `REJECTED` тавина (BR-PUR-97).
 4. Нийлүүлэгчийн буцаалт/засварын ДДТД-тэй бол `RegisterCreditMemoReceiptAsync` (SCR-PUR-02 хүртэл зөвхөн `purch_cr_memo_header.supplier_ebarimt_id` ба VAT entry-д, давхардлыг апп шалгана).
 5. Харьцсан данс байвал үлдсэн кредитийг `REFUND` ваучераар буцаан авна (мөнгө орно; касс бол МХ-1).
 6. Outbox `event.purchase_credit_memo.posted`.
@@ -1267,6 +1295,7 @@ async Task<CancelResult> CancelAsync(Guid invoiceId, CancelCommand cmd, Cancella
     Guard(await posted.IsCancelledAsync(inv.Id), "purchase.invoice_already_cancelled");          // BR-PUR-86
     var vle = await partyQuery.GetVendorEntryAsync(inv.VendorLedgerEntryNo);
     Guard(vle.Reversed, "party.entry_reversed");
+    Guard((await parties.GetVendorAsync(inv.VendorId)).Blocked == "ALL", "purchase.vendor_blocked");   // BR-PUR-86 (B үед дахин)
     Guard(vle.RemainingAmount != vle.Amount || await partyQuery.HasLiveApplicationsAsync(vle.EntryNo),
           "purchase.invoice_has_applications");                                                  // BR-PUR-87
     Guard(cmd.ReasonCodeId is null, "purchase.reason_code_required");
@@ -1281,9 +1310,13 @@ async Task<CancelResult> CancelAsync(Guid invoiceId, CancelCommand cmd, Cancella
     cm.CorrectedInvoiceId = inv.Id; cm.AppliesToDocType = "INVOICE"; cm.AppliesToDocNo = inv.No;
     cm.CopyPostingGroupsFromSnapshot(inv);                                                         // устсан → purchase.posting_group_missing
     foreach (var pl in inv.Lines.OrderBy(x => x.LineNo)) cm.Lines.Add(PurchaseLine.CopyFromPosted(pl)); // BR-PUR-89
+    if (await inputVat.IsWrittenOffAsync(inv.Id))                                                 // BR-PUR-97
+        foreach (var l in cm.Lines.Where(l => l.VatCalculationType == "NORMAL" && l.VatPercent > 0 && l.NonDeductibleReason is null))
+            l.NonDeductibleReason = "REJECTED";                                                    // НӨАТ зардалд буцна, 1300 хөдлөхгүй
     calculator.Recalculate(cm, RateSource.Snapshot);                                               // vat_difference, ND хуулагдсан
+    var expectedNd = inv.Lines.Sum(l => l.NonDeductibleVatAmount) + await inputVat.WrittenOffAmountAsync(inv.Id); // BR-PUR-97 (эс бөгөөс 0)
     Guard(cm.Amount != inv.Amount || cm.VatAmount != inv.VatAmount || cm.AmountIncludingVat != inv.AmountIncludingVat
-          || cm.Lines.Sum(l => l.NonDeductibleVatAmount) != inv.Lines.Sum(l => l.NonDeductibleVatAmount),
+          || cm.Lines.Sum(l => l.NonDeductibleVatAmount) != expectedNd,
           "purchase.cancel_amount_mismatch");                                                      // BR-PUR-90 (500)
     // ---------- B үе: нэг transaction ----------
     var doc = BuildCreditMemoDocument(cm, apply: ApplyInstruction.ToEntry(vle.EntryNo, exact: vle.Amount),
@@ -1321,7 +1354,7 @@ PairResult ApplyPair(LedgerEntryState newE, LedgerEntryState oldE, decimal? oldA
 
 #### 5.16.2 Posting доторх тулгалт
 
-[06](./06-sales-receivables.md) §5.13.2-ын `ApplyInPostingAsync` (`PartyKind.Vendor`): `ToLineKey` (бэлэн худалдан авалт), `ToDocument` (кредит нот → нэхэмжлэх, нэхэмжлэх → урьдчилгаа), `ToEntry` (цуцлалт), `Entries` (журналын `applies_to_id`, `POST /payments`-ийн `applyTo`), `Oldest` (BR-AP-35). `OldestCandidatesAsync`-д нэмэлт нөхцөл: `vendor_posting_group_id = new.vendor_posting_group_id`. Outbox: нэхэмжлэх хаагдвал `event.purchase_invoice.paid`, бүх тулгалтад `event.vendor_entries.applied`.
+[06](./06-sales-receivables.md) §5.13.2-ын `ApplyInPostingAsync` (`PartyKind.Vendor`): `ToLineKey` (бэлэн худалдан авалт), `ToDocument` (кредит нот → нэхэмжлэх, нэхэмжлэх → урьдчилгаа), `ToEntry` (цуцлалт), `Entries` (журналын `applies_to_id`, `POST /payments`-ийн `applyTo`), `Oldest` (BR-AP-35). `OldestCandidatesAsync`-д нэмэлт нөхцөл: `vendor_posting_group_id = new.vendor_posting_group_id`. Outbox: `INVOICE` VLE тулгалтаар хаагдвал (Old эсвэл **New** тал — урьдчилгаанд тулгагдсан шинэ нэхэмжлэх, P10) `event.purchase_invoice.paid` (`closedByDocumentType` = хосын нөгөөгийн төрөл), гэхдээ **цуцлалтын** тулгалтад (BR-PUR-91) гаргахгүй; бүх тулгалтад `event.vendor_entries.applied`. `:apply`-аар (§5.16.3) хаагдсан нэхэмжлэхэд мөн адил (06 review №11).
 
 #### 5.16.3 Батлагдсан entry хооронд (`POST /vendor-ledger-entries:apply`)
 
@@ -1347,7 +1380,7 @@ async Task ReserveForJournalLineAsync(Guid journalLineId, Guid vendorId, IReadOn
 
 ### 5.17 Unapply (`POST /vendor-ledger-entries/{id}:unapply`)
 
-[06](./06-sales-receivables.md) §5.14-ийн алгоритм `RunSubledgerOnlyAsync("UNAPPPURCH", …)`, хүснэгт `party.detailed_vendor_ledger_entry`, `party.vendor_ledger_entry`; хатуу LIFO (BR-AP-41), толин тусгал мөр (BR-AP-44), G/L-гүй (BR-AP-45), `closed_by_*` цэвэрлэх (BR-AP-46). Outbox `event.vendor_entries.unapplied`.
+[06](./06-sales-receivables.md) §5.14-ийн алгоритм `RunSubledgerOnlyAsync("UNAPPPURCH", …)`, хүснэгт `party.detailed_vendor_ledger_entry`, `party.vendor_ledger_entry`; хатуу LIFO (BR-AP-41), толин тусгал мөр (BR-AP-44), G/L-гүй (BR-AP-45), `closed_by_*` цэвэрлэх (BR-AP-46), толин тусгал мөрөнд эх мөрийн `vendor_posting_group_id` (BR-AP-46). Цуцлалтын тулгалт бол `IUnapplyGuard` (Purchases хэрэгжүүлнэ: хосын аль нэг VLE нь `purchase.cancelled_document`-ийн нэхэмжлэх/кредит нотынх) → 409 `party.unapply_cancellation_not_allowed` (BR-AP-47). Outbox `event.vendor_entries.unapplied`.
 
 ### 5.18 Урьдчилгаа, буцаан авалт, Apply to Oldest
 
@@ -1379,9 +1412,12 @@ async ValueTask<SideExpansion> ExpandAsync(JournalSide side, VoucherInfo voucher
     var ctrl = Gl(postingGroups.Vendor(group).PayablesAccountId, side.AmountLcy, LineOrigin.SystemDerived,
                   source: new SourceParty("VENDOR", v.Id, v.No), dims: l.DimensionSetId);
     var vle = new VendorLedgerLine(docType, Amount: side.AmountLcy,
-                  PurchaseLcy: 0, DueDate: docType is "PAYMENT" or "REFUND" ? voucher.PostingDate : l.DueDate ?? voucher.PostingDate,
+                  PurchaseLcy: docType is "INVOICE" or "CREDIT_MEMO"                              // BR-AP-04: НӨАТ-гүй дүн
+                               ? side.AmountLcy + voucher.BalancingVatAmountLcy(l) : 0m,          // эсрэг талын НӨАТ-ыг хасна (05 E-B); OPENING-д = AmountLcy
+                  DueDate: docType is "PAYMENT" or "REFUND" ? voucher.PostingDate : l.DueDate ?? voucher.PostingDate,
                   ExternalDocumentNo: Normalize(l.ExternalDocumentNo), Apply: apply, VendorPostingGroupId: group,
-                  PaymentMethodCode: l.PaymentMethodCode, BalAccountType: l.BalAccountType, BalAccountId: l.BalAccountId,
+                  PaymentMethodCode: await paymentMethods.CodeOfAsync(l.PaymentMethodId),       // journal_line.payment_method_id → code snapshot
+                  BalAccountType: l.BalAccountType, BalAccountId: l.BalAccountId,
                   DimensionSetId: l.DimensionSetId, GlLineKeys: [ctrl.Key], …);
     return new SideExpansion([ctrl], [vle], errors);
 }
@@ -1395,8 +1431,10 @@ async ValueTask<SideExpansion> ExpandAsync(JournalSide side, VoucherInfo voucher
 ```csharp
 // Erp.CashBank.Application.Payments.SuggestVendorPaymentsHandler — нэг богино transaction (posting түгжээгүй), ledger-т бичихгүй
 async Task<SuggestResult> Handle(SuggestVendorPayments cmd) {
+    await db.AdvisoryXactLockAsync("suggest_vendor_payments", companyId);                         // BR-AP-76: зэрэг санал дараалалд
     var batch = await journals.GetBatchAsync(cmd.JournalBatchId);                                // template PAYMENT
     var bank = await banks.GetAsync(cmd.BankAccountId ?? batch.BalAccountId);
+    Guard(bank.Blocked, "bank.account_blocked");                                                  // 09 BR-BNK-10
     var date = cmd.PostingDate ?? calendar.Today;
     var reserved = await journals.FindVendorAppliesToAsync();                                     // бүх batch (Z-PUR-08), SCR-PUR-05
     var inDrafts = await payables.EntriesInApplicationDraftsAsync();
@@ -1461,14 +1499,16 @@ WITH d AS (
     FROM party.detailed_vendor_ledger_entry d
     JOIN party.vendor_ledger_entry e ON e.company_id = d.company_id AND e.entry_no = d.vendor_ledger_entry_no
    WHERE d.company_id = platform.current_company_id() AND d.vendor_id = :vendor_id)
-SELECT 'OPENING' AS kind, :from AS posting_date, NULL AS document_no, NULL AS external_document_no, -sum(amount_lcy) AS balance_change
+SELECT 0 AS sort_key, 'OPENING' AS kind, :from AS posting_date, NULL AS document_no, NULL AS external_document_no,
+       -coalesce(sum(amount_lcy), 0) AS balance_change, 0 AS entry_no                -- мөргүй бол 0 (NULL биш)
   FROM d WHERE posting_date < :from
 UNION ALL
-SELECT 'MOVE', posting_date, document_no, external_document_no, -amount_lcy
+SELECT 1, 'MOVE', posting_date, document_no, external_document_no, -amount_lcy, entry_no   -- INITIAL (R2: FX мөр ч)
   FROM d WHERE posting_date BETWEEN :from AND :to AND entry_type <> 'APPLICATION'
 UNION ALL
-SELECT 'CLOSING', :to, NULL, NULL, -sum(amount_lcy) FROM d WHERE posting_date <= :to
-ORDER BY 1 DESC, 2, 3;   -- апп running balance; нэхэмжлэх "Нэмэгдсэн", төлбөр/кредит нот "Хасагдсан" баганад
+SELECT 2, 'CLOSING', :to, NULL, NULL, -coalesce(sum(amount_lcy), 0), 0 FROM d WHERE posting_date <= :to
+ORDER BY sort_key, posting_date, entry_no;   -- UNION-ий ORDER BY нь зөвхөн гаралтын баганыг хүлээн авна (илэрхийлэл биш);
+                                             -- апп running balance; нэхэмжлэх "Нэмэгдсэн", төлбөр/кредит нот "Хасагдсан" баганад
 ```
 
 #### 5.22.2 Өглөгийн насжилт (S-RPT-06, FR-RPT-005)
@@ -1499,12 +1539,12 @@ Posted нэхэмжлэх (+) ба кредит нот (−) баримт бүр
 |---|---|---|---|---|
 | Ноорог үүсгэх/засах/устгах, НӨАТ-ын зөрүү | Богино | Ноорог (`row_version`, `If-Match`) | `Idempotency-Key` (POST) | `UNIQUE (company_id, document_type, no)` |
 | Release / reopen | Богино | Ноорог `FOR UPDATE` | ✔ | Идемпотент төлөв |
-| Post / preview | Нэг (B үе) | `fn_lock_company_posting` → ноорог `FOR UPDATE` → `purchase_receipt` (ddtd) `FOR UPDATE` → тулгах VLE `FOR UPDATE` → цувралын counter → `ledger_counter` | ✔ (post) | `ux_purch_inv_header__draft`, `ux_vendor_ledger_entry__vendor_doc_no`, `purchase_receipt UNIQUE (company_id, ddtd)` |
-| Cancel | Нэг | Ижил + нэхэмжлэхийн VLE `FOR UPDATE` | ✔ | `cancelled_document UNIQUE` |
+| Post / preview | Нэг (B үе) | `fn_lock_company_posting` → ноорог `FOR UPDATE` → `purchase_receipt` (ddtd) `FOR UPDATE` → тулгах VLE `FOR UPDATE` (`ExpectedRemaining` шалгалт, BR-PUR-75) → цувралын counter (`PI`/`PC`; бэлэн бол `KZ`/`KO`) → `ledger_counter` | ✔ (post) | `ux_purch_inv_header__draft`, `ux_vendor_ledger_entry__vendor_doc_no`, `purchase_receipt UNIQUE (company_id, ddtd)` |
+| Cancel | Нэг | Ижил + нэхэмжлэхийн VLE `FOR UPDATE`, нийлүүлэгч `FOR SHARE` (`blocked`) | ✔ | `cancelled_document UNIQUE`; цуцлалтын тулгалтыг unapply хориотой (BR-AP-47) |
 | `:link-ebarimt`, `:confirm`, `:unconfirm` | Нэг (G/L-гүй) | `fn_lock_company_posting` → receipt `FOR UPDATE` → VAT entry `FOR UPDATE` | ✔ | `purchase_receipt UNIQUE (ddtd)`; төлөвийн машин |
 | Орцын НӨАТ зардалд шилжүүлэх | Нэг (G/L-тэй) | Posting-той ижил | ✔ | Татгалзлын хос (`closed`, 08 BR-TAX-51) |
 | `:apply` / `:unapply` | Нэг (G/L-гүй) | `fn_lock_company_posting` → VLE-үүд `FOR UPDATE` (`entry_no` өсөхөөр) | ✔ | `remaining` CHECK (23514), LIFO |
-| Төлбөрийн санал | Богино (ledger-гүй) | `application_draft` UNIQUE | ✔ | Өөр журнал/draft-д орсон entry алгасна |
+| Төлбөрийн санал | Богино (ledger-гүй) | Саналын advisory түгжээ (компани бүрд, BR-AP-76) → `application_draft` UNIQUE | ✔ | Өөр журнал/draft-д орсон entry алгасна; зэрэг санал дараалалд |
 | Журнал батлах | Нэг (05 §5.4) | Batch `FOR UPDATE` → posting түгжээ | ✔ | `gl.journal_changed` |
 | Насжилт, хуулга, журнал | Унших (REPEATABLE READ) | — | — | — |
 
@@ -1678,7 +1718,7 @@ D  = line_discount_amount (> 0)
 Үндсэн мөр:  суурь Amount_i + dB, НӨАТ V_i + dV                     (бохир зардал, Дт)
 ```
 
-Цэвэр нь яг мөрийн дүн (`Amount_i`, `V_i`) хэвээр. Хасагдахгүй НӨАТ-тай мөрөнд хөнгөлөлтийн мөр мөн хасагдахгүй хэсгээ авна: `dND = r(dV × nd% / 100)` (R1-д `nd% ∈ {0,100}` → `dND ∈ {0, dV}`); үндсэн мөрийн ND = `ND_i + dND`. Seed: `DOMESTIC × SERVICES` хөнгөлөлтийн данс = 7200 (худалдан авалтын данстай ижил), `GOODS` = 6190.
+Цэвэр нь яг мөрийн дүн (`Amount_i`, `V_i`) хэвээр. Хасагдахгүй НӨАТ-тай мөрөнд хөнгөлөлтийн мөр мөн хасагдахгүй хэсгээ авна: `dND = r(dV × nd% / 100)` (R1-д `nd% ∈ {0,100}` → `dND ∈ {0, dV}`); үндсэн мөрийн ND = `ND_i + dND`, хөнгөлөлтийн мөрийн ND = `−dND` (суурь G/L: `−dB − dND`; хасагдах НӨАТ: `−dV + dND`) — §5.8-ын код. Seed: `DOMESTIC × SERVICES` хөнгөлөлтийн данс = 7200 (худалдан авалтын данстай ижил), `GOODS` = 6190.
 
 **Жишээ** (P1 мөр 10000, `LINE_DISCOUNTS`, GL_ACCOUNT мөр): `GL_ACCOUNT` мөрөнд хөнгөлөлтийн данс General Posting Setup-аас (мөрийн `gen_bus × gen_prod`, 7213-ийн `gen_prod` = `MISC` → `purch_line_disc_account_id` NULL) → `purchase.discount_account_missing`. Тиймээс `LINE_DISCOUNTS` горимд хөнгөлөлттэй `GL_ACCOUNT` мөр тохиргоо шаардана (seed-ийн `MISC`-д хөнгөлөлтийн данс алга — анхдагч `NO_DISCOUNTS` горимд асуудалгүй).
 
@@ -1711,7 +1751,7 @@ cap_v    = N_v;  нийлүүлэгчийн candidate e (due_date, entry_no да
 
 ## 7. Posting-ийн жишээнүүд
 
-**Нийтлэг таамаг:** компани "Жишээ ХХК" НӨАТ төлөгч (P4-өөс бусад), MNT, `P = 0.01`, `vat_rounding_type = NEAREST`, НӨАТ 10 % (`DOMESTIC × VAT10`, identifier `VAT10`, `purchase_vat_account` **1300**). Данс нь MN seed-ийнх ([db/seed/README.md](./db/seed/README.md) §3): 1100 Касс (төгрөг), 1110 Харилцах данс, 1300 Орцын НӨАТ, 2100 Дансны өглөг, 2101 Дансны өглөг (гадаад), 2305 Урвуу тооцооны НӨАТ, 2365 Гаалийн татвар, импортын НӨАТ-ын өглөг, 7200 Ерөнхий ба удирдлагын бусад зардал, 7211 Ашиглалтын зардал, 7213 Бичиг хэрэг, хэвлэлийн зардал, 7214 Засвар үйлчилгээний зардал, 7220 Шатахууны зардал, 7221 Тээврийн хэрэгслийн зардал, 7230 Мэргэжлийн үйлчилгээний зардал, 7231 Программ хангамж, лицензийн зардал, 7232 Сургалтын зардал, 7262 Бага үнэтэй ажмын хэрэгслийн зардал. General Posting Setup: `DOMESTIC × SERVICES` → худалдан авалт 7200; G/L дансны мөр → өөрийн данс (7213-ийн `gen_prod` = `MISC`). Vendor posting group `DOMESTIC` → 2100, `FOREIGN` → 2101, `CUSTOMS` → 2365. Нийлүүлэгчийн загвар `DOMESTIC_VAT` (нөхцөл `NET30`, хэлбэр `BANK`). Төлбөрийн хэлбэр `CASH` → касс `CASH01` (1100, МХ-1 `KO`, МХ-2 `KZ`), `BANK` → `BANK01` (1110, `BP`/`BR`). `max_vat_difference_allowed` = 1.00 (SCR-PUR-09; seed 0). Entry, transaction, application дугаар нь жишээний (тасралтгүй биш). **Жишээ бүр тэнцсэн**: Σ Дт = Σ Кт ваучер бүрд; өглөгийн G/L мөр = тухайн ваучерын detailed мөрийн нийлбэр (BR-AP-08).
+**Нийтлэг таамаг:** компани "Жишээ ХХК" НӨАТ төлөгч (P4-өөс бусад), MNT, `P = 0.01`, `vat_rounding_type = NEAREST`, НӨАТ 10 % (`DOMESTIC × VAT10`, identifier `VAT10`, `purchase_vat_account` **1300**). Данс нь MN seed-ийнх ([db/seed/README.md](./db/seed/README.md) §3): 1100 Касс (төгрөг), 1110 Харилцах данс, 1300 Орцын НӨАТ, 2100 Дансны өглөг, 2101 Дансны өглөг (гадаад), 2305 Урвуу тооцооны НӨАТ, 2365 Гаалийн татвар, импортын НӨАТ-ын өглөг, 7200 Ерөнхий ба удирдлагын бусад зардал, 7211 Ашиглалтын зардал, 7213 Бичиг хэрэг, хэвлэлийн зардал, 7214 Засвар үйлчилгээний зардал, 7220 Шатахууны зардал, 7221 Тээврийн хэрэгслийн зардал, 7230 Мэргэжлийн үйлчилгээний зардал, 7231 Программ хангамж, лицензийн зардал, 7232 Сургалтын зардал, 7262 Бага үнэтэй ажмын хэрэгслийн зардал. General Posting Setup: `DOMESTIC × SERVICES` → худалдан авалт 7200; G/L дансны мөр → өөрийн данс (7213-ийн `gen_prod` = `MISC`). Vendor posting group `DOMESTIC` → 2100, `FOREIGN` → 2101, `CUSTOMS` → 2365. Нийлүүлэгчийн загвар `DOMESTIC_VAT` (нөхцөл `NET30`, хэлбэр `BANK`). Мөнгөн данс: `CASH01` (seed, `kind = CASH`, 1100, МХ-1 `KO`, МХ-2 `KZ`), `BANK01` (компани бүртгэсэн, 1110, `BP`/`BR`). Төлбөрийн хэлбэр: `CASH` → харьцсан данс `CASH01` (seed); `BANK` нь seed-д **харьцсан дансгүй** тул `DOMESTIC_VAT` (`NET30` + `BANK`) нийлүүлэгчийн нэхэмжлэх зээлийн (шууд төлбөргүй) байна (P1; BR-PUR-71-ийн анхааруулга). Бэлэн худалдан авалтын төлбөрийн ваучер нэхэмжлэхийн дугаартай (`PI-…`), МХ-2-ийн дугаар `KZ`-оос тусдаа (BR-PUR-72). `max_vat_difference_allowed` = 1.00 (SCR-PUR-09; seed 0). Entry, transaction, application дугаар нь жишээний (тасралтгүй биш). **Жишээ бүр тэнцсэн**: Σ Дт = Σ Кт ваучер бүрд; өглөгийн G/L мөр = тухайн ваучерын detailed мөрийн нийлбэр (BR-AP-08).
 
 ### P1. Зээлийн нэхэмжлэх, үнэ НӨАТ-гүй, мөрийн хөнгөлөлт, хоёр НӨАТ-ын бүлэг, ДДТД батлахад баталгаажсан
 
@@ -1786,7 +1826,7 @@ AP G/L (7006) = −159 006.23 = Σ detailed (T2001) ✔. **Баримтын бү
 | 7015 | 2100 Дансны өглөг | | 77 777.77 | |
 | **Σ** | | **77 777.77** | **77 777.77** | |
 
-**Ваучер T2003** (`PAYMENT KZ-2027-00044`, source `CASHVOUCHER`, BR-PUR-71..76):
+**Ваучер T2003** (`PAYMENT PI-2027-00031` — `SameAsVoucher("V1")`, source `CASHVOUCHER`, BR-PUR-71..76; МХ-2-ийн дугаар `KZ-2027-00044` тусдаа):
 
 | entry_no | Данс | Дт | Кт |
 |---|---|---:|---:|
@@ -1799,11 +1839,11 @@ VAT entry 904: `base` 50 505.05, `amount` 5 050.50, `vat_difference` −0.01, co
 | detailed | VLE | type | баримт | amount | tx | appl | applied |
 |---|---|---|---|---:|---|---|---|
 | 1502 | 502 (INVOICE PI-2027-00031) | INITIAL | INVOICE PI-2027-00031 | −77 777.77 | 2002 | — | — |
-| 1503 | 503 (PAYMENT KZ-2027-00044) | INITIAL | PAYMENT KZ-2027-00044 | +77 777.77 | 2003 | — | — |
-| 1504 | 502 | APPLICATION | PAYMENT KZ-2027-00044 | +77 777.77 | 2003 | 3002 | 503 |
-| 1505 | 503 | APPLICATION | PAYMENT KZ-2027-00044 | −77 777.77 | 2003 | 3002 | 502 |
+| 1503 | 503 (PAYMENT PI-2027-00031) | INITIAL | PAYMENT PI-2027-00031 | +77 777.77 | 2003 | — | — |
+| 1504 | 502 | APPLICATION | PAYMENT PI-2027-00031 | +77 777.77 | 2003 | 3002 | 503 |
+| 1505 | 503 | APPLICATION | PAYMENT PI-2027-00031 | −77 777.77 | 2003 | 3002 | 502 |
 
-VLE 502, 503 хаагдсан (`remaining = 0`, `closed_by_entry_no` = хосын нөгөө). AP G/L: T2002 = −77 777.77 (1502); T2003 = +77 777.77 (1503 + 1504 + 1505) ✔. МХ-2: `bank.posted_cash_voucher` (`voucher_type = PAYMENT`, `KZ-2027-00044`, `counterparty_type = VENDOR`, `counterparty_name = 'Түлш Шатахуун ХХК'`, `counterparty_id_doc = '6011223'`, `purpose = 'Худалдан авалт ТШ-778812'`). Кассын үлдэгдэл < 77 777.77 бол COMMIT-д ERC01 → 422 `bank.cash_negative_balance`, хоёр ваучер хоёулаа rollback, `PI`/`KZ` дугаар зарцуулагдахгүй.
+VLE 502, 503 хаагдсан (`remaining = 0`, `closed_by_entry_no` = хосын нөгөө). AP G/L: T2002 = −77 777.77 (1502); T2003 = +77 777.77 (1503 + 1504 + 1505) ✔. МХ-2: `bank.posted_cash_voucher` (`voucher_type = PAYMENT`, `no = KZ-2027-00044` (`KZ` цувралаас тусдаа, 09 BR-BNK-21), `transaction_no = 2003`, `counterparty_type = VENDOR`, `counterparty_name = 'Түлш Шатахуун ХХК'`, `counterparty_id_doc = '6011223'`, `purpose = 'Худалдан авалт ТШ-778812'`). Кассын үлдэгдэл < 77 777.77 бол COMMIT-д ERC01 → 422 `bank.cash_negative_balance`, хоёр ваучер хоёулаа rollback, `PI`/`KZ` counter өөрчлөгдөхгүй.
 
 ### P3. Хасагдахгүй НӨАТ (суудлын автомашин) ба хасагдах НӨАТ нэг баримтад
 
@@ -1909,7 +1949,7 @@ VLE 501 үлдэгдэл −148 006.23; VLE 507 хаагдсан; `purchase_lcy`
 
 VLE 509 (CREDIT_MEMO) +1 100 000.00; APPLICATION: 508 +1 100 000.00, 509 −1 100 000.00 (хоёулаа хаагдана, `application_no` 3003, tx 2009). `purchase.cancelled_document` (PI-2027-00035 → PC-2027-00006, `CANCEL`). Receipt (BR-PUR-92): `purch_inv_header_id = NULL`, `vat_entry_no = NULL`, `status = IMPORTED`, `confirmed_at/by = NULL`, шинэ ноорог `DPI-000131`-д `purchase_receipt_id`, `supplier_ebarimt_id` шилжинэ. Ноорогийн `vendor_invoice_no = NULL` + анхааруулга `purchase.vendor_invoice_no_consumed_by_cancelled`.
 
-Засварласан ноорог (7232 мөр, `vendor_invoice_no = 'АП-2027-015/1'`) 2027-03-26 → `PI-2027-00037`: 7232 Дт 1 000 000.00; 1300 Дт 100 000.00; 2100 Кт 1 100 000.00; receipt дахин `CONFIRMED` (`purch_inv_header_id` = PI-2027-00037). Нийлүүлэгчийн хэвлэмэл, акт-д PI-2027-00035 ба PC-2027-00006 хоёул харагдана.
+Засварласан ноорог (7232 мөр, `vendor_invoice_no = 'АП-2027-015/1'`; 7232-ийн seed-ийн анхдагч `vat_prod` = `EXEMPT` тул мөрт `vat_prod_posting_group_id` = `VAT10`-ийг **гараар** тавина — нийлүүлэгчийн баримт НӨАТ-тай; эс бөгөөс НӨАТ 0 болж нийлүүлэгчийн баримттай зөрнө) 2027-03-26 → `PI-2027-00037`: 7232 Дт 1 000 000.00; 1300 Дт 100 000.00; 2100 Кт 1 100 000.00; receipt дахин `CONFIRMED` (`purch_inv_header_id` = PI-2027-00037). Нийлүүлэгчийн хэвлэмэл, акт-д PI-2027-00035 ба PC-2027-00006 хоёул харагдана.
 
 ### P8. Нэхэмжлэхийн хэсэгчилсэн төлбөр банкаар (`POST /payments`)
 
@@ -1996,7 +2036,7 @@ AP G/L T2021 = −1 650 000.00 (1530; тулгалтын мөр цэвэр 0) �
 | V00007 | 501 | PI-2027-00030 | −70 006.23 | 2027-04-14 | P9-ийн дараа |
 | V00007 | 541 | PI-2027-00041 (2027-04-28) | −250 000.00 | 2027-05-28 | |
 | V00015 "Цэвэрлэгээ Сервис ХХК" | 520 | PI-2027-00034 | −120 000.00 | 2027-04-10 | |
-| V00015 | 521 | PI-2027-00038 | −330 000.00 | 2027-04-20 | `on_hold = 'МАРГААН'` |
+| V00015 | 521 | PI-2027-00038 | −330 000.00 | 2027-04-20 | `on_hold = 'МРГ'` (маргаантай; багана ≤ 3 тэмдэгт) |
 | V00015 | 522 | PC-2027-00007 | +20 000.00 | — | Нээлттэй кредит |
 | V00020 "Хэвлэх Үйлдвэр ХХК" | 530 | PI-2027-00039 | −400 000.00 | 2027-04-25 | |
 | V00020 | 531 | BP-2027-00014 | +100 000.00 | — | Урьдчилгаа |
@@ -2094,12 +2134,12 @@ P2-ын нэхэмжлэх (VLE 502) хаагдсан. 2027-03-19 нийлүүл
 | 1300 Орцын НӨАТ | | 200.00 |
 | **Σ** | **2 200.00** | **2 200.00** |
 
-Нэхэмжлэх хаагдсан тул автомат тулгалт хийгдэхгүй, алдаагүй (BR-PUR-80, `AllowClosed`). Харьцсан данс → **T2051** (`REFUND KO-2027-00051`, МХ-1, source `CASHVOUCHER`): 1100 Дт 2 200.00 / 2100 Кт 2 200.00 (Σ тэнцүү).
+Нэхэмжлэх хаагдсан тул автомат тулгалт хийгдэхгүй, алдаагүй (BR-PUR-80, `AllowClosed`). Харьцсан данс → **T2051** (`REFUND PC-2027-00005` — `SameAsVoucher("V1")`, source `CASHVOUCHER`; МХ-1 `no = KO-2027-00051` тусдаа): 1100 Дт 2 200.00 / 2100 Кт 2 200.00 (Σ тэнцүү).
 
 | detailed | VLE | type | amount | tx | appl | applied |
 |---|---|---|---:|---|---|---|
 | 1550 | 550 (CREDIT_MEMO) | INITIAL | +2 200.00 | 2050 | — | — |
-| 1551 | 551 (REFUND KO-2027-00051) | INITIAL | −2 200.00 | 2051 | — | — |
+| 1551 | 551 (REFUND PC-2027-00005) | INITIAL | −2 200.00 | 2051 | — | — |
 | 1552 | 550 (Old) | APPLICATION | −2 200.00 | 2051 | 3009 | 551 |
 | 1553 | 551 (New) | APPLICATION | +2 200.00 | 2051 | 3009 | 550 |
 
@@ -2153,6 +2193,7 @@ VAT entry 960: `base` −2 000.00, `amount` −200.00, `deductible_confirmed = t
 | `purchase.credit_memo_evidence_required` | 422 | Нэхэмжлэхгүй кредит нотод нийлүүлэгчийн буцаалтын баримтын ДДТД заавал. | V3 | BR-PUR-85 |
 | `purchase.input_vat_written_off` | 409 | Энэ баримтын орцын НӨАТ зардалд шилжсэн (хасалтаас татгалзсан) тул ДДТД холбох/баталгаажуулах боломжгүй. | — | §5.11, BR-PUR-53 |
 | `purchase.posting_date_required` | 422 | Батлах огноог оруулна уу. | V3 | BR-PUR-58 |
+| `purchase.due_date_before_document_date` | 422 | Төлөх огноо баримтын огнооноос өмнө байж болохгүй. | V1, V3 | BR-PUR-05 |
 | `purchase.vat_date_after_posting_date` | 422 | НӨАТ-ын огноо батлах огнооноос хойш байж болохгүй. | V1, V3 | BR-PUR-59 |
 | `purchase.no_lines` | 422 | Баримтад дүнтэй мөр алга. | V2–V3 | BR-PUR-61 |
 | `purchase.negative_total` | 422 | Нэхэмжлэхийн нийт дүн сөрөг байна; кредит нот ашиглана уу. | V2–V3 | BR-PUR-61 |
@@ -2188,6 +2229,8 @@ VAT entry 960: `base` −2 000.00, `amount` −200.00, `deductible_confirmed = t
 | `purchase.vat_difference_reset` | Мөр өөрчлөгдсөн тул {vatIdentifier} бүлгийн НӨАТ-ын зөрүү тэглэгдлээ. | BR-PUR-34 |
 | `purchase.prefer_purchase_invoice` | НӨАТ-тай худалдан авалтыг журналаар бүртгэж байна; ДДТД ба баталгаажуулалтыг худалдан авалтын нэхэмжлэхээр хийхийг зөвлөж байна. | BR-AP-64 |
 | `purchase.vendor_has_open_credits` | {vendorName}-д нээлттэй кредит/урьдчилгаа {amount} байна. | BR-AP-73 |
+| `purchase.immediate_payment_with_credit_terms` | Төлбөрийн хэлбэр харьцсан данстай ({balAccount}) тул төлөх огноо {dueDate} байсан ч батлахад шууд төлбөр үүснэ. | BR-PUR-71 |
+| `purchase.credit_memo_inherits_written_off` | Засаж буй нэхэмжлэхийн орцын НӨАТ зардалд шилжсэн тул кредит нотын НӨАТ зардлаас хасагдана (1300 хөдлөхгүй). | BR-PUR-97 |
 | `inv.item_purchasing_blocked` (кредит нот) | Бараа худалдан авалтад блоклогдсон. | BR-PUR-17 |
 
 ### 8.3 Өглөг, тулгалтын код (`party.*`, нийлүүлэгчийн тал)
@@ -2209,23 +2252,27 @@ VAT entry 960: `base` −2 000.00, `amount` −200.00, `deductible_confirmed = t
 | `party.entry_in_other_application_draft` | 409 | Энэ бичилтийг {owner} (хэрэглэгч эсвэл журналын мөр {journalLine}) тулгаж байна. | BR-AP-34 |
 | `party.unapply_not_latest` | 409 | Энэ бичилтэд хийгдсэн хожуу тулгалтыг эхлээд буцаана уу. | BR-AP-41 |
 | `party.unapply_date_before_application` | 422 | Буцаах огноо тулгалтын огнооноос ({applicationDate}) өмнө байж болохгүй. | BR-AP-42 |
+| `party.application_target_changed` | 409 | Тулгах бичилт {docNo}-ийн үлдэгдэл өөрчлөгдсөн байна. Баримтыг дахин нээж батлана уу. | BR-PUR-75 |
+| `party.unapply_cancellation_not_allowed` | 409 | Нэхэмжлэхийн цуцлалтын тулгалтыг буцаах боломжгүй. | BR-AP-47 |
 
 ### 8.4 Бусад модулийн код (энэ модульд гарна)
 
 | Код | HTTP | Эх (SQLSTATE) | Эзэмшигч |
 |---|---|---|---|
-| `gl.period_closed`, `gl.posting_date_outside_window` | 422 | ERP01 | 05 / 13 §18 |
+| `gl.period_closed`, `gl.period_locked`, `gl.posting_date_outside_window` | 422 | ERP01 | 05 / 13 §18 |
 | `gl.direct_posting_not_allowed` | 422 | — | 05 (BR-PUR-16) |
 | `gl.reversal_entries_applied` | 409 | — | 05 (BR-AP-68) |
-| `tax.vat_period_closed` | 422 | ERV01 | 08 |
+| `tax.vat_period_closed`, `tax.vat_period_missing` | 422 | ERV01 | 08 BR-TAX-40 |
+| `tax.parameter_not_effective`, `tax.parameter_unverified` | 422 | — | 08 BR-TAX-11, -12 (BR-PUR-30) |
 | `tax.vat_entry_closed` | 409 | — | 08 (BR-PUR-51) |
 | `tax.deduction_reject_not_allowed` | 422 | — | 08 BR-TAX-51 (BR-PUR-53) |
-| `tax.supplier_receipt_id_mismatch` | 409 | — | 08 BR-TAX-49 (BR-PUR-50) |
+| `tax.supplier_receipt_id_mismatch` | 409 | — | 08 BR-TAX-49 (BR-PUR-50, §5.11) |
 | `tax.vat_posting_setup_missing`, `tax.vat_posting_setup_blocked`, `tax.purchase_vat_account_missing`, `tax.vat_identifier_rate_conflict` | 422 | — | 08 (`ITaxCalculator`) |
 | `ebarimt.invalid_state_transition` | 409 | — | 12 (receipt-ийн төлөв) |
 | `platform.number_series_missing_line`, `platform.number_series_date_order` | 422 | ERN01–02 | 13 §18 |
 | `bank.cash_negative_balance` | 422 | ERC01 | Банк/кассын spec |
-| `bank.cash_voucher_required` | 422 | — | Банк/кассын spec (BR-PUR-74, BR-AP-66) |
+| `bank.cash_voucher_required` | 422 | — | 09 BR-BNK-23 (BR-PUR-74, BR-AP-66) |
+| `bank.account_blocked` | 422 | — | 09 BR-BNK-10 (BR-PUR-73, §5.20) |
 | `inv.inventory_not_enabled`, `inv.item_blocked`, `inv.item_purchasing_blocked` | 422 | — | 11 |
 | `api.document_released`, `api.document_already_posted`, `api.document_not_posted`, `api.too_many_lines` | 409/422 | — | 14 |
 | `api.lock_timeout` | 503 | 55P03, 57014 | 14 |
@@ -2247,7 +2294,8 @@ VAT entry 960: `base` −2 000.00, `amount` −200.00, `deductible_confirmed = t
 | `IPostingService` (`PostAsync`, `RunSubledgerOnlyAsync`) | GL | Posting, preview, тулгалт, unapply |
 | `ILedgerWriter<VatLedgerLine>` | Tax | VAT entry + link (Order 10) |
 | `ILedgerWriter<VendorLedgerLine>`, `IApplicationService` | Parties | VLE, detailed, тулгалт, unapply (Order 30) |
-| `ILedgerWriter<BankLedgerLine>`, `IBankAccountQuery.GetVoucherSeries` | Cash&Bank | Бэлэн худалдан авалт/буцаалтын мөнгө, МХ-1/МХ-2 (Order 40) |
+| `ILedgerWriter<BankLedgerLine>`, `IBankAccountQuery` (`IsCash`, G/L данс) | Cash&Bank | Бэлэн худалдан авалт/буцаалтын мөнгө, МХ-1/МХ-2 — дугаарыг writer `KZ`/`KO`-оос олгоно (Order 40, BR-PUR-72, 09 BR-BNK-21) |
+| `IUnapplyGuard` (Purchases хэрэгжүүлнэ) | Parties.Contracts | Цуцлалтын тулгалтыг unapply-аас хамгаалах (BR-AP-47) |
 | `IPostedDocumentWriter` (Purchases хэрэгжүүлнэ) | GL.Contracts | Ноорог түгжих, posted баримт, ноорог устгах, цуцлалтын бүртгэл |
 | `IInputVatEvidenceService` → `IPurchaseReceiptRegistry` | Tax → EBarimt | `ebarimt.purchase_receipt` бүртгэх, холбох, баталгаажуулах (§5.10–5.11) |
 | `IItemCostUpdater` | Inventory | `last_direct_cost` (BR-PUR-64, Should) |
@@ -2263,7 +2311,7 @@ VAT entry 960: `base` −2 000.00, `amount` −200.00, `deductible_confirmed = t
 | `event.purchase_invoice.posted` | Нэхэмжлэхийн posting | `{documentId, postedId, documentNo, vendorId, postingDate, amountIncludingVat, inputVatStatus}` | Webhook (R2), мэдэгдэл | `event.*` |
 | `event.purchase_credit_memo.posted` | Кредит нотын posting | `{documentId, postedId, documentNo, correctedInvoiceId?}` | Webhook (R2) | `event.*` |
 | `event.purchase_invoice.cancelled` | Цуцлалт | `{invoiceId, creditMemoId, correctiveDraftId?}` | Webhook (R2) | `event.*` |
-| `event.purchase_invoice.paid` | Тулгалтаар нэхэмжлэхийн VLE `remaining = 0` | `{vendorLedgerEntryNo, documentNo, closedAt}` | Мэдэгдэл, CUE-13 кэш | `event.*` |
+| `event.purchase_invoice.paid` | Тулгалтаар (posting доторх эсвэл `:apply`, Old ба New аль ч тал) нэхэмжлэхийн VLE `remaining = 0`; **цуцлалтын тулгалтад гаргахгүй** | `{vendorLedgerEntryNo, documentNo, closedAt, closedByDocumentType}` | Мэдэгдэл, CUE-13 кэш | `event.*` |
 | `event.vendor_entries.applied` | Тулгалт (posting доторх эсвэл `:apply`) | `{applicationNo, entryNos[]}` | Мэдэгдэл, кэш | `event.*` |
 | `event.vendor_entries.unapplied` | Unapply | `{applicationNo, unapplyApplicationNo, entryNos[]}` | Мэдэгдэл | `event.*` |
 | `event.input_vat.evidence_linked` | `:link-ebarimt`, `:match` | `{invoiceId, receiptId}` | CUE-14 кэш | `event.*` |
@@ -2372,7 +2420,7 @@ VAT entry 960: `base` −2 000.00, `amount` −200.00, `deductible_confirmed = t
 - **AT-PUR-25 (BR-PUR-53, Should; 08 BR-TAX-51).** P5c: 7211 Дт 30 000.00 / 1300 Кт 30 000.00, VAT entry 950 эсрэг тэмдэгтэй, 909 ба 950 хоёулаа `closed = true` (бие биеэ заасан), `inputVatStatus = WRITTEN_OFF`; дахин `:link-ebarimt` → 409 `purchase.input_vat_written_off`.
 - **AT-PUR-26 (BR-PUR-37..40, FR-TAX-010 AC1).** P3: 7221 Дт 880 000.00, 1300 Дт 20 000.00 зөвхөн; VAT entry 906 `non_deductible_amount = 80 000.00`. 0 %-ийн мөрөнд шалтгаан → `purchase.non_deductible_reason_invalid`.
 - **AT-PUR-27 (BR-PUR-37а, 41; FR-TAX-011).** P4: 7230 Дт 550 000.00 / 2100 Кт 550 000.00, `missingEbarimt` шаардахгүй. `vat_registered_from = 2027-04-01` болоход 2027-04-05-ны нэхэмжлэх ердийн (хасагдах) горимоор.
-- **AT-PUR-28 (BR-PUR-71..76, FR-PUR-007 AC1).** P2: хоёр ваучер (`PI`, `KZ`), VLE 2 хаагдсан, МХ-2 олгогдсон. Кассын үлдэгдэл 50 000.00 бол 422 `bank.cash_negative_balance`, `PI` ба `KZ` дугаар зарцуулагдаагүй.
+- **AT-PUR-28 (BR-PUR-71..76, FR-PUR-007 AC1).** P2: хоёр ваучер (`INVOICE PI-2027-00031`, `PAYMENT PI-2027-00031`), VLE 2 хаагдсан, МХ-2 `KZ-2027-00044` олгогдсон. Кассын үлдэгдэл 50 000.00 бол 422 `bank.cash_negative_balance`, `PI` ба `KZ` дугаар зарцуулагдаагүй.
 - **AT-PUR-29 (BR-PUR-75).** Урьдчилгаа 100 000.00 (applies-to) ба шууд төлбөртэй 77 777.77 нэхэмжлэх → төлбөрийн ваучер үүсэхгүй, анхааруулга `purchase.balancing_payment_nothing_to_pay`.
 - **AT-PUR-30 (BR-PUR-77..82, FR-PUR-005 AC1).** P6: 2100 Дт 11 000.00, VLE 501 үлдэгдэл −148 006.23. Нийт кредит нот > нэхэмжлэх → 422 `purchase.credit_exceeds_invoice` (`available`). Кредит нотын огноо < нэхэмжлэхийнх → `party.application_target_after_posting_date`.
 - **AT-PUR-31 (BR-PUR-85).** Нэхэмжлэхгүй, хасагдах НӨАТ-тай кредит нот ДДТД-гүй → 422 `purchase.credit_memo_evidence_required`.
@@ -2381,6 +2429,12 @@ VAT entry 960: `base` −2 000.00, `amount` −200.00, `deductible_confirmed = t
 - **AT-PUR-34 (§5.23, FR-GL-011).** P1-ийн preview-ийн G/L, VAT, VLE, receipt = post-ийнх (дугаараас бусад); preview-ийн дараа `PI` counter, `purchase_receipt` өөрчлөгдөөгүй.
 - **AT-PUR-35 (BR-PUR-64, Should).** `ITEM` мөр 10 × 1 234.50 → `inv.item.last_direct_cost = 1 234.50`; кредит нот өөрчлөхгүй.
 - **AT-PUR-36 (BR-PUR-15, 19).** R1-д `INVENTORY` бараа → `inv.inventory_not_enabled`; `IMPORT × IMPORT_SERVICE` мөр → `purchase.vat_calculation_type_not_available`.
+- **AT-PUR-37 (BR-PUR-75).** *Өгөгдсөн нь* урьдчилгаа +100 000.00-д `applies_to`-тэй, `CASH` хэлбэртэй 330 000.00-ийн нэхэмжлэхийн A үе дууссан (төлбөр 230 000.00 тооцогдсон); *Хэрэв* B үеэс өмнө өөр хэрэглэгч тэр урьдчилгааг `:apply`-аар өөр нэхэмжлэхэд тулгавал; *Тэгэхэд* posting 409 `party.application_target_changed`, ROLLBACK, `PI`/`KZ` counter өөрчлөгдөөгүй, касс хөдлөөгүй.
+- **AT-PUR-38 (BR-PUR-71).** *Өгөгдсөн нь* `BANK` хэлбэрт `BANK01` харьцсан данс тохируулсан, `NET30` нийлүүлэгч; *Хэрэв* ноорог хадгалбал; *Тэгэхэд* `warnings[]`-д `purchase.immediate_payment_with_credit_terms`; батлахад `PAYMENT PI-…` ваучер үүснэ (анхааруулга блоклохгүй).
+- **AT-PUR-39 (BR-PUR-72, 05 Z-PST-15).** P2: V2-ийн `gl_transaction.document_no = PI-2027-00031`, `document_type = PAYMENT`, `source_code = CASHVOUCHER`; `PI` counter +1 (V2 дугаар авахгүй); `posted_cash_voucher.no = KZ-2027-00044`, `KZ` counter +1.
+- **AT-PUR-40 (BR-PUR-97, BR-PUR-53).** P5c-ийн дараа PI-2027-00033-ийг цуцлахад кредит нотын мөр `REJECTED`, VAT entry `base` 0 / `amount` 0 / `non_deductible_amount` −30 000.00, 7211 Кт 330 000.00, 1300 хөдлөхгүй, анхааруулга `purchase.credit_memo_inherits_written_off`; `purchase.cancel_amount_mismatch` гарахгүй.
+- **AT-PUR-41 (BR-PUR-74).** НӨАТ төлөгч, `kind = LEGAL` нийлүүлэгч ТТД ба регистргүй, `cashVoucher.counterpartyIdDocument` хоосон бэлэн худалдан авалт → 422 `bank.cash_voucher_required`.
+- **AT-PUR-42 (BR-PUR-86).** `blocked = ALL` нийлүүлэгчийн нэхэмжлэхийг цуцлах → 422 `purchase.vendor_blocked`.
 
 **Өглөг, тулгалт, төлбөр**
 
@@ -2402,6 +2456,9 @@ VAT entry 960: `base` −2 000.00, `amount` −200.00, `deductible_confirmed = t
 - **AT-AP-16 (BR-AP-12).** Хаагдсан VLE-ийн `due_date` засах → 409 `party.entry_closed`; `on_hold` тавихад төлбөрийн саналаас алгасагдана; өөрчлөлт аудитад.
 - **AT-AP-17 (BR-AP-68).** P8-ийн төлбөрийн ваучерыг `:reverse` → 409 `gl.reversal_entries_applied`; unapply хийсний дараа амжилттай.
 - **AT-AP-18 (BR-AP-09).** Шөнийн шалгалт: `party.v_payables_reconciliation.difference = 0` бүх golden-ийн дараа.
+- **AT-AP-19 (BR-AP-47).** P7-ийн дараа PI-2027-00035 ↔ PC-2027-00006 тулгалтыг (3003) `:unapply` хийвэл 409 `party.unapply_cancellation_not_allowed`.
+- **AT-AP-20 (BR-AP-76).** Хоёр batch-д зэрэг санал → нэг entry зөвхөн нэг журналын мөрөнд; нөгөө хариунд `IN_OTHER_JOURNAL`.
+- **AT-AP-21 (BR-AP-80, §5.22.1).** Хугацаанаас өмнө хөдөлгөөнгүй нийлүүлэгчийн хуулга → `OPENING = 0.00` (NULL биш), мөрүүд `sort_key, posting_date, entry_no`-оор.
 
 ### 11.2 Golden scenario (хэрэгжүүлэх ID)
 
@@ -2419,6 +2476,8 @@ VAT entry 960: `base` −2 000.00, `amount` −200.00, `deductible_confirmed = t
 | GS-PUR-010 | Цуцлах + засварлах, receipt дахин холбох | P7 |
 | GS-PUR-011 | Бэлэн буцаалт (кредит нот + МХ-1), хаагдсан нэхэмжлэх | P15 |
 | GS-PUR-012 | (R2) Урвуу тооцоо ба гаалийн НӨАТ | P13, P14 |
+| GS-PUR-013 | Зардалд шилжсэн орцын НӨАТ-тай нэхэмжлэхийг цуцлах (`REJECTED` өвлөх) | P5 → P5c → цуцлалт (§11.3 #25, AT-PUR-40) |
+| GS-PUR-014 | Бэлэн худалдан авалтын target-ийн зэрэг өөрчлөлт (409, ROLLBACK) | AT-PUR-37 |
 | GS-AP-001 | Банкны хэсэгчилсэн төлбөр (`POST /payments`) | P8 |
 | GS-AP-002 | LIFO unapply + DUE_DATE хуваарилалт (G/L-гүй) | P9 |
 | GS-AP-003 | Урьдчилгаа → нэхэмжлэх → буцаан авалт | P10 |
@@ -2442,7 +2501,7 @@ Golden бүр: `expect` нь G/L, VAT entry (`deductible_confirmed`, `supplier_e
 9. Батласны дараа ДДТД холбоход НӨАТ-ын үе `SUBMITTED`: entry баталгаажна, хаагдаагүй тул дараагийн хаалтад орно (08).
 10. Нэхэмжлэх `MATCHED`, кредит нот `CONFIRMED` нэхэмжлэхгүйгээр (өөрийн ДДТД): баталгаажсан бууралт нь баталгаажаагүй нэмэгдлээс их — НӨАТ-ын тайланд сөрөг цэвэр орцын НӨАТ (зөв: нийлүүлэгчийн буцаалтын баримт баталгаатай).
 11. Бэлэн худалдан авалт, касс хоосон → ERC01; банкаар (BP) батлах сонголт.
-12. **Нийлүүлэгч бэлэн мөнгөний бүхэлчлэл хийсэн** (баримт 12 345.67, кассаар 12 346.00 өгсөн): худалдан авалтын нэхэмжлэх 12 345.67-оор; шууд төлбөргүй батлаад `POST /payments` 12 346.00 → 0.33 урьдчилгаа үлдэнэ; хэрэглэгч журналаар 8290-д хаана (invoice rounding худалдан авалтад байхгүй, §2.4).
+12. **Нийлүүлэгч бэлэн мөнгөний бүхэлчлэл хийсэн** (баримт 12 345.67, кассаар 12 346.00 өгсөн): худалдан авалтын нэхэмжлэх 12 345.67-оор; шууд төлбөргүй батлаад `POST /payments` 12 346.00 → 0.33 урьдчилгаа (нээлттэй `PAYMENT` +0.33) үлдэнэ. Хаах: ерөнхий журналын `VENDOR` мөр `document_type = REFUND`, `amount = −0.33`, `applies_to` = тэр төлбөр, харьцсан тал `GL_ACCOUNT` 7200 (Дт 0.33, `direct_posting = true` зардал). **8290 ашиглахгүй** — хяналтын данс (`direct_posting = false`, seed README §3), гараар бичвэл `gl.direct_posting_not_allowed` (05 BR-PST-15). Invoice rounding худалдан авалтад байхгүй (§2.4).
 13. `APPLY_TO_OLDEST` + шууд төлбөртэй нэхэмжлэх: автомат тулгалт хийгдэхгүй (BR-PUR-75).
 14. Кредит нотын нэхэмжлэх бүрэн төлөгдсөн: тулгалтгүй, кредит нээлттэй → буцаан авалт эсвэл дараагийн нэхэмжлэх (P15-ийн харьцсан дансгүй хувилбар).
 15. Нэг төлбөр 3 нэхэмжлэхийг хаасан (нэг `application_no`), дараа нь нэг нэхэмжлэхийг цуцлах: эхлээд тулгалтыг буцаана (3 нэхэмжлэх бүгд нээгдэнэ), цуцлаад дахин тулгана.
@@ -2450,9 +2509,14 @@ Golden бүр: `expect` нь G/L, VAT entry (`deductible_confirmed`, `supplier_e
 17. Тулгалтын огноо D-ээс хойш, баримтууд D-ээс өмнө: насжилтад хоёулаа нээлттэй.
 18. Санал ба гараар төлбөр зэрэг: санал үүссэний дараа хэрэглэгч `POST /payments`-аар 501-ийг төлбөл журнал батлахад 501 хаагдсан → тухайн мөр урьдчилгаа болж анхааруулна (BR-AP-79).
 19. Он солигдох: 2027-12-31 `PI-2027-…`, 2028-01-01 `PI-2028-00001`; 2028 оны мөр байхгүй бол ERN01.
-20. `P = 1` компани: нийлүүлэгчийн баримт 2 оронтой → НӨАТ-ын зөрүү ≤ 0.50 хэрэгтэй болж болно (`max_vat_difference_allowed ≥ 1.00`).
+20. `P = 1` компани: мөрийн дүн ба НӨАТ бүхэл төгрөг тул нийлүүлэгчийн 2 оронтой баримтыг (жишээ нь НӨАТ 7 070.70) **яг** хуулах боломжгүй; НӨАТ-ын зөрүү бүхэл утгатай (`d_g ∈ {…, −1, 0, +1, …}`), баримтын бүртгэлийн `total_amount`/`total_vat` нь манай бөөрөнхийлсөн дүн (≤ 0.50-ийн зөрүү нийлүүлэгчийн баримттай үлдэнэ; OQ-PUR-11).
 21. Нийлүүлэгчийн дугаар кирилл/латин холимог ("OX" ба "ОХ"): normalize нь үсгийг хөрвүүлэхгүй тул өөр дугаар — UI-д анхааруулга (OQ-PUR-07-ын хүрээнд).
 22. Журналаар НӨАТ-тай худалдан авалт (05 E-B, `journal_line.supplier_ebarimt_id`): `purchase.prefer_purchase_invoice` анхааруулга, VAT entry-д ДДТД, `deductible_confirmed` BR-PUR-47-ийн дүрмээр.
+23. Бэлэн худалдан авалт + урьдчилгаанд applies-to: A үеэс B үеийн хооронд өөр хэрэглэгч тэр урьдчилгааг `:apply`-аар өөр нэхэмжлэхэд тулгавал → 409 `party.application_target_changed`, ROLLBACK, касс хөдлөхгүй (BR-PUR-75).
+24. Хоёр хэрэглэгч өөр batch-д зэрэг төлбөрийн санал гаргах: саналын advisory түгжээгээр дараалалд орж, хоёр дахь нь эхнийхийн `application_draft`/`applies_to_doc_*`-д орсон entry-г `IN_OTHER_JOURNAL` гэж алгасна (BR-AP-76).
+25. Орцын НӨАТ нь зардалд шилжсэн (P5c) нэхэмжлэхийг цуцлах: кредит нот 7211 Кт 330 000.00 / 2100 Дт 330 000.00, 1300 хөдлөхгүй (`REJECTED`, BR-PUR-97); P5 + P5c + цуцлалтын дараа 7211, 1300, 2100 бүгд 0.
+26. `LINE_DISCOUNTS` горимд хасагдахгүй (PASSENGER_CAR) мөрийн хөнгөлөлт: хөнгөлөлтийн мөр ND-ээ авна (§6.9), 1300-д хоёр талдаа 0 — 1300-д +dV/−dV хос мөр үүсэхгүй.
+27. `vat_posting_setup`-ийн хувь эсвэл identifier нэхэмжлэх батласны дараа өөрчлөгдсөн: цуцлалтын кредит нот posted мөрийн snapshot-оор (§5.4 `RateSource.Snapshot`) тул BR-PUR-90 зөрөхгүй.
 
 ### 11.4 Property тест (FsCheck)
 
@@ -2484,8 +2548,9 @@ Golden бүр: `expect` нь G/L, VAT entry (`deductible_confirmed`, `supplier_e
 | SCR-PUR-11 | `audit.posting_log.posting_type` CHECK-д `'INPUT_VAT_WRITE_OFF'` нэмэх | §5.12-ын posting log (тэр хүртэл `GENERAL_JOURNAL`) | Бага |
 | SCR-PUR-12 | `party.vendor_ledger_entry.cancelled boolean NOT NULL DEFAULT false` (whitelist) ба `ux_vendor_ledger_entry__vendor_doc_no`-ийн нөхцөлд `AND NOT cancelled` | Цуцлагдсан нэхэмжлэхийн нийлүүлэгчийн дугаарыг засварласан нэхэмжлэхэд дахин ашиглах (BR-PUR-14) — OQ-PUR-07 "тийм" бол | Бага (OQ-ээс хамаарна) |
 | SCR-PUR-13 | `rpt` REPORT объект `rpt.vendor_statement` (seed каталог, `ERP_FIN_REPORTS`, `ERP_PAYABLES`) ба `party.fn_vendor_statement(p_vendor_id uuid, p_from date, p_to date)` (06 SCR-SAL-03-ийн толин тусгал) | Нийлүүлэгчийн хуулга/акт (FR-RPT-003, S-RPT-04) нь одоо `rpt.customer_statement` эрхээр л; Reporting нь published функцээр уншина (02 §4.3) | Дунд (R1) |
+| SCR-PUR-14 | `party.vendor_ledger_entry`: `CREATE UNIQUE INDEX ux_vendor_ledger_entry__doc_no ON party.vendor_ledger_entry (company_id, document_type, document_no) WHERE document_type IN ('INVOICE','CREDIT_MEMO') AND source_code <> 'OPENING'` (06 SCR-SAL-08-ийн толин тусгал) | BR-AP-10 / R-SALES-DOCUMENTS-38 одоо зөвхөн апп-ын шалгалт (`WriteAsync`-д, дугаар олгогдсоны дараа); бэлэн худалдан авалтын `PAYMENT`/`REFUND` VLE нь баримтын дугаартай ижил боловч төрөл өөр тул зөрчихгүй. `OPENING`-ийг хассан: эхний үлдэгдлийн нэг журналын ваучерт олон нэхэмжлэх ижил `document_no`-той байж болох ба тэдгээрийн давхардлыг `ux_vendor_ledger_entry__vendor_doc_no` (нийлүүлэгчийн дугаар) барина | Дунд (R1) |
 
-Мөн 06 **SCR-SAL-02** (`fn_vendor_aging`-ийн `p_aging_bucket_set_id`, `p_vendor_id`), **SCR-SAL-04** (`fn_ledger_update`-ийн аудит — BR-AP-12, BR-PUR-49..51) ба 13 **CR-23** (`purchase.invoice.cancel`, `purchase.document.preview`, `party.ledger_entry.edit`)-д тулгуурлана; энд давхардуулаагүй.
+Мөн 06 **SCR-SAL-02** (`fn_vendor_aging`-ийн `p_aging_bucket_set_id`, `p_vendor_id`), **SCR-SAL-04** (`fn_ledger_update`-ийн аудит — BR-AP-12, BR-PUR-49..51), **SCR-SAL-09** (`application_draft.updated_at DEFAULT now()` — BR-AP-34-ийн 30 минутын дүрэм) ба 13 **CR-23** (`purchase.invoice.cancel`, `purchase.document.preview`, `party.ledger_entry.edit`)-д тулгуурлана; энд давхардуулаагүй.
 
 ---
 
@@ -2508,6 +2573,8 @@ Golden бүр: `expect` нь G/L, VAT entry (`deductible_confirmed`, `supplier_e
 | OQ-PUR-11 | Нийлүүлэгчийн eBarimt мөр бүрээр бөөрөнхийлсөн НӨАТ ба манай баримтын түвшний НӨАТ (D-E3)-ын зөрүүг НӨАТ-ын зөрүүгээр (≤ 1.00) тааруулах нь хүлээн зөвшөөрөгдөх үү; анхдагч хязгаар хэд байх вэ? | `max_vat_difference_allowed = 1.00` (SCR-PUR-09), бүлэг бүрд | D-E3 ⚠ | СМТТ, нягтлан зөвлөх |
 | OQ-PUR-12 | Нийлүүлэгчид төлсөн урьдчилгааг (өглөгийн дансны дебит үлдэгдэл) санхүүгийн тайланд 1510-д ангилах нь R1-д шаардлагатай юу? | R2 (BR-AP-52; seed README §12 #7) | D-F4 | Нягтлан зөвлөх |
 | OQ-PUR-13 | Кредит нот ба цуцлалт эсрэг тэмдгээр, эсрэг баганад (сторногүй) бичигдэх нь аудитад хүлээн зөвшөөрөгдөх үү? (06 OQ-SAL-09-тэй нэг асуулт) | Тийм (BR-PUR-70, 77) | D-C3 ⚠ | Аудитор |
+| OQ-PUR-14 | 2027 оны НӨАТ-ын хуулийн өөрчлөлтөөр суудлын автомашин (ба сэлбэг)-ийн орцын НӨАТ хасагдах болсон уу (mn-tax §2.4 UNVERIFIED, CMP-019)? Тийм бол `PASSENGER_CAR` шалтгааныг огноогоор хязгаарлах | `PASSENGER_CAR` нь хэрэглэгчийн сонголт (BR-PUR-37б) хэвээр; систем автоматаар тавихгүй, тиймээс параметргүйгээр ажиллана. P3 нь 2027-03 огноотой жишээ — хууль өөрчлөгдсөн бол зөвхөн хэрэглэгчийн сонголт өөрчлөгдөнө | CMP-019 ⚠ | Татварын зөвлөх |
+| OQ-PUR-15 | R1-д ҮХ-ийг `GL_ACCOUNT` мөрөөр (16xx/17xx) капиталжуулахад 2027-01-01-ээс өмнөх олж авалтын орцын НӨАТ-ыг 60/120 сараар хувааж хасах шаардлагатай юу (mn-tax R6, CMP-020)? | Хүрээнээс гадуур: НӨАТ-ыг нэг дор хасна (08 OQ-TAX-11, 11 OQ-FA-06) | CMP-020 ⚠ | Татварын зөвлөх |
 
 ---
 
@@ -2526,7 +2593,7 @@ Golden бүр: `expect` нь G/L, VAT entry (`deductible_confirmed`, `supplier_e
 | 7 | 14-api Q17 | НӨАТ-ын зөрүүг мөрөөр уу, identifier-ээр уу | VAT identifier бүлгээр (`PUT …/vat-amount-lines`, BR-PUR-34) |
 | 8 | 12-ebarimt §16 (өмнөх хувилбар) | `tax.vat.confirm_input` | Seed-ийн `tax.vat_entry.confirm_deductible` |
 | 9 | 12-ebarimt PUR-01 | ДДТД-г худалдан авалтын нэхэмжлэхэд **заавал** | FR-TAX-009 AC1-тэй уялдуулж `missingEbarimt` (PENDING/NON_DEDUCTIBLE)-ийн ил сонголт (BR-PUR-46, Z-PUR-01) |
-| 10 | 05-posting-engine §3.7 ба 06 BR-SAL-50 | Бэлэн борлуулалтын төлбөрийн ваучерын дугаар: 05 нь кассын/банкны цуврал (`KO`/`BR`, source `CASHVOUCHER`/`PAYMENTREG`), 06 нь нэхэмжлэхийн дугаар (`document_no = SI-…`) | Энэ баримт 05-ыг дагав (BR-PUR-72); 06-г 05-тай тааруулах |
+| 10 | 05-posting-engine Z-PST-15, 09 BR-BNK-21 | **Шийдэгдсэн (2026-10-08):** 05 Z-PST-15 нь 2 дахь ваучерын `document_no` = posted баримтын дугаар (`SameAsVoucher`), МХ-ийн дугаар кассын цувралаас тусдаа гэж тогтоож 07 BR-PUR-72-ыг тааруулахыг хүссэн | BR-PUR-72, §5.13, P2, P15 05/06/09-тэй нийцүүлсэн |
 | 11 | 06 BR-SAL-37 | Нийт 0 баримтыг батлахыг зөвшөөрдөг | Худалдан авалтад хориглов (BR-PUR-62: BR-PST-05/41-тэй зөрчилдөх) — 06/05-ийн эзэмшигч нэгтгэх |
 | 12 | 03-domain-model §5 INV-11 | `purchases.v_payables_reconciliation` | `party.v_payables_reconciliation` |
 | 13 | 15-ui-ux S-RPT-04 | Хуулгын эрх зөвхөн `rpt.customer_statement` | Нийлүүлэгчийн хуулгад `rpt.vendor_statement` (SCR-PUR-13) |
@@ -2536,3 +2603,46 @@ Golden бүр: `expect` нь G/L, VAT entry (`deductible_confirmed`, `supplier_e
 | 17 | 05-posting-engine E-B (журналаар НӨАТ-тай худалдан авалт) | Журналын замд ДДТД, `deductible_confirmed`-ийн дүрэм тодорхойгүй | BR-AP-64: `journal_line.supplier_ebarimt_id` + BR-PUR-47-ийн дүрэм, анхааруулга `purchase.prefer_purchase_invoice` |
 | 18 | 08-tax-vat-mn BR-TAX-48 | ДДТД-гүй үед `tax.supplier_receipt_id_required` зөвхөн нийлүүлэгч `vat_registered = true` үед; `require_supplier_ebarimt = true` бол PENDING (баталгаажаагүйгээр батлах) сонголтгүй | BR-PUR-46: НӨАТ тооцогдсон л бол (нийлүүлэгчийн тугаас үл хамаарна), `missingEbarimt` (PENDING / NON_DEDUCTIBLE) ил сонголт — FR-TAX-009 AC1 (ДДТД-гүй батлагдаж баталгаажаагүй жагсаалтад орно)-тэй нийцүүлэх. Нэг кодыг сонгох: `purchase.supplier_ebarimt_required` (Purchases-ийн урьдчилсан шалгалт) |
 | 19 | 08-tax-vat-mn BR-TAX-36 | Кредит нот: засаж буй нэхэмжлэхийн PURCHASE entry **бүгд** баталгаажсан бол `true` | BR-PUR-84: зөвхөн хасагдах дүн ≠ 0 `NORMAL` entry-ийг тооцно (EXEMPT/0 % entry үргэлж `false` тул эс бөгөөс кредит нот хэзээ ч баталгаажихгүй) |
+| 20 | 06-sales-receivables §5.18.1 | Хуулгын SQL `ORDER BY CASE kind …` — PostgreSQL-д UNION-ий ORDER BY илэрхийлэл хүлээн авахгүй (зөвхөн гаралтын баганын нэр/байрлал) | 07 §5.22.1 шиг `sort_key` багана нэмэх |
+| 21 | 08-tax-vat-mn BR-TAX-51, BR-TAX-36 | Зардалд шилжүүлсэн (татгалзсан) нэхэмжлэхийн дараагийн кредит нот/цуцлалт 1300-г кредитлэж баталгаажих боломжгүй сөрөг НӨАТ үлдээнэ; `invoiceIds`-ээр write-off хийхэд кредит нотын entry хамрагдах эсэх тодорхойгүй | BR-PUR-97, BR-PUR-53-ийн нэмэлтийг 08-д тусгах |
+
+---
+
+## Хяналтын тэмдэглэл (Review log)
+
+**2026-10-08 — adversarial review (нягтлан бодох зөв байдал, schema/DECISIONS нийцэл, хэрэгжүүлэх боломж, судалгааны MUST дүрэм).**
+
+Шалгасан зүйл: §6 ба §7-ийн бүх тоон жишээг дахин тооцсон (P1–P15, P1a, P4b, P5-link, P5b, P5c; жишээ 6-A..6-E-ийн running remainder-ийг `decimal`-аар скриптээр) — ваучер бүр Σ Дт = Σ Кт, НӨАТ 10 % ба бөөрөнхийлөлт, НӨАТ-ын зөрүүний хуваарилалт (+0.01/−0.01/+0.01; −0.01/0), detailed-ийн тэмдэг, үлдэгдэл (501: −159 006.23 → −148 006.23 → −48 006.23 → −148 006.23 → −70 006.23), төлбөрийн саналын хязгаар (450 000.00 = 120 000.00 + 70 006.23 + 259 993.77), хуулга (0 + 431 006.23 − 111 000.00 = 320 006.23), насжилтын хоног — **бүгд зөв, тэнцсэн**. Данс бүрийг seed-тэй (`mn_10_coa`, `mn_30_posting`, `mn_40_setup`, `mn_20_tax`, `mn_50_reports`) тулгасан. Хүснэгт/баганын нэрийг `db/schema/*.sql`-тэй (010, 020, 040, 060, 080, 090, 110, 120, 130, 140, 910, 920) grep-ээр тулгасан; FR ID бүр 01-д байгаа; алдааны кодыг 02/05/06/08/09-тэй тулгасан. Хуулгын SQL-ийг PostgreSQL 16 дээр ажиллуулж шалгасан.
+
+| # | Олдсон асуудал | Засвар | Хэсэг |
+|---|---|---|---|
+| 1 | **Бэлэн худалдан авалтын 2 дахь ваучерын дугаар 05/09-тэй зөрчилдсөн:** `KZ`/`BP` цувралаас шинэ дугаар авдаг байсан; 05 Z-PST-15 (07-г тааруулахыг тодорхой хүссэн) ба 09 BR-BNK-21 нь `document_no` = posted баримтын дугаар (`SameAsVoucher("V1")`), МХ-ийн дугаар кассын цувралаас тусдаа | BR-PUR-72, 76, §5.7 B.6, §5.13 код, P2, P15, AT-PUR-28, AT-PUR-39, Хавсралт А №10 | §4.10, §5.7, §5.13, §7 |
+| 2 | **Бэлэн төлбөрийн дүн A үед тогтдог ч target-ийн үлдэгдэл B үед өөрчлөгдөж болно** (applies-to урьдчилгаа + харьцсан данс): касс буруу дүнгээр хөдөлж нэхэмжлэх нээлттэй үлдэнэ | `ExpectedRemaining` + 409 `party.application_target_changed` (06 BR-SAL-52-той ижил) | BR-PUR-75, §5.8, §5.9, §5.13, §8.3, AT-PUR-37, GS-PUR-014, §11.3 #23 |
+| 3 | **§7 таамаг seed-тэй зөрүүтэй:** "`BANK` → `BANK01`" гэсэн ч seed-д зөвхөн `CASH` харьцсан данстай; `BANK`-д данс тохируулбал `DOMESTIC_VAT` (`NET30` + `BANK`) нэхэмжлэх бүр шууд төлбөртэй болж P1/P8-тай зөрчилдөнө | Таамгийг засав; `purchase.immediate_payment_with_credit_terms` анхааруулга | BR-PUR-71, §5.13, §7, §8.2, AT-PUR-38 |
+| 4 | МХ-2-ийн `counterparty_id_doc` зөвхөн `INDIVIDUAL`-д заавал гэсэн нь FR-BNK-003 AC2, 09 BR-BNK-23-тай зөрчилдсөн | Нийлүүлэгчийн төрлөөс үл хамааран заавал | BR-PUR-74, AT-PUR-41 |
+| 5 | **Тусдаа хөнгөлөлтийн мөрийн хасагдахгүй НӨАТ §5.8 ба §6.9-ийн хооронд зөрсөн:** код хөнгөлөлтийн мөрт ND = 0, үндсэн мөрт цэвэр ND тавьдаг байсан → nd% = 100 үед 1300-д +dV/−dV хос мөр, суурь/хасагдах хуваарилалт буруу | Хөнгөлөлтийн мөр `−dND`, үндсэн мөр `ND + dND`; цэвэр шалгалтын тайлбар | §5.8, §6.9, §11.3 #26 |
+| 6 | BR-AP-10 (`document_type`, `document_no`) шалгалт `ValidateLockedAsync`-д байсан — хуулийн дугаар тэр үед олгогдоогүй (05 §8.1 алхам 7 → 9) | `WriteAsync`-д дугаар олгогдсоны дараа; DB түвшний UNIQUE-г SCR-PUR-14 | §5.9, §12 |
+| 7 | `ConfirmEntriesAsync` 0 дүнтэй (EXEMPT/0 %), хаагдсан, буцаагдсан entry-г ч баталгаажуулдаг, өөр ДДТД-ийн зөрчлийг шалгадаггүй байсан (BR-PUR-47/84, 08 BR-TAX-49-тэй зөрүү) | Шүүлт ба `tax.supplier_receipt_id_mismatch`, идемпотент | BR-PUR-50, §5.11 |
+| 8 | Цуцлалтын `RateSource.Snapshot` горимд `vat_identifier`, `vat_calculation_type`, хасагдахгүй хувийг **одоогийн** setup-аас уншдаг байсан → setup өөрчлөгдвөл BR-PUR-90 500 | Snapshot горимд posted мөрийн утгыг хадгална (`SnapshotNonDeductiblePercent`) | §5.4, §11.3 #27 |
+| 9 | **Зардалд шилжүүлсэн (`WRITTEN_OFF`) нэхэмжлэхийн кредит нот/цуцлалт** 1300-г кредитлэж, баталгаажуулах боломжгүй (BR-PUR-50 хориотой) сөрөг НӨАТ-ыг үүрд үлдээдэг байсан; `invoiceIds`-ээр write-off хийхэд кредит нотын баталгаажаагүй entry хамрагддаггүй байсан | Шинэ BR-PUR-97 (`REJECTED` өвлөх, 1300 хөдлөхгүй), BR-PUR-53 нэмэлт, BR-PUR-90-ийн тэнцэл | §4.7, §4.11, §4.12, §5.12, §5.14, §5.15, AT-PUR-40, GS-PUR-013, §11.3 #25 |
+| 10 | Цуцлалтын тулгалтыг unapply хийвэл цуцлагдсан нэхэмжлэх дахин нээгдэж төлбөрийн саналд орно | BR-AP-47 `party.unapply_cancellation_not_allowed`, `IUnapplyGuard` (06 BR-AR-48-ийн механизм) | §4.16, §5.17, §9.1, AT-AP-19 |
+| 11 | Цуцлалтад нийлүүлэгчийн `blocked = ALL` шалгалт алга (цуцлалт = кредит нот батлах) | BR-PUR-86, `CancelAsync` | §4.12, §5.15, AT-PUR-42 |
+| 12 | `event.purchase_invoice.paid` зөвхөн Old талд, `:apply`-д тодорхойгүй, цуцлалтад "paid" гарах эрсдэлтэй | Old/New аль ч тал, `:apply`, цуцлалтад гаргахгүй, `closedByDocumentType` | §5.16.2, §9.2 |
+| 13 | R-SALES-DOCUMENTS-47 (MUST): `document_date`/нөхцөл өөрчлөгдөхөд `due_date` дахин тооцох дүрэм алга; `document_date`-ээс өмнөх огнооны код алга | BR-PUR-05, `purchase.due_date_before_document_date` | §4.1, §8.2 |
+| 14 | §8-д `tax.parameter_not_effective`/`_unverified` (BR-PUR-30), `gl.period_locked`, `tax.vat_period_missing`, `bank.account_blocked` дутуу | Нэмэв | BR-PUR-30, 60, 73, §8.4 |
+| 15 | Төлбөрийн саналын зэрэгцээ ажиллагаа: түгжээгүй тул өөр batch-ийн хоёр санал ижил entry-г (ялангуяа `summarizePerVendor = false`) сонгож болно; мөнгөний дансны блок шалгагдаагүй | Компанийн саналын advisory түгжээ, `bank.account_blocked` | BR-AP-76, §5.20, §5.24, AT-AP-20, §11.3 #24 |
+| 16 | Хуулгын SQL: мөргүй үед `sum` NULL; `ORDER BY 1 DESC` нь үсгийн дарааллаас хамаарсан | `coalesce`, `sort_key` багана (PG16-д шалгав; UNION-ий ORDER BY-д илэрхийлэл хориотой — 06-ийн засвар ч үүнд унана, Хавсралт А №20) | §5.22.1, AT-AP-21 |
+| 17 | P11-ийн `on_hold = 'МАРГААН'` нь `vendor_ledger_entry.on_hold` CHECK (`≤ 3`)-ийг зөрчинө | `'МРГ'`; BR-AP-12-т уртын дүрэм | §7 P11, BR-AP-12 |
+| 18 | P7-ийн засварласан мөр 7232 — seed-ийн анхдагч `vat_prod` = `EXEMPT` тул НӨАТ 0 болж жишээний 1300 Дт 100 000.00-тай зөрнө | `VAT10`-ийг гараар тавьсныг тодорхой бичив | §7 P7 |
+| 19 | §11.3 #12: 0.33-ыг 8290-д журналаар хаах — 8290 нь хяналтын данс (`direct_posting = false`) тул `gl.direct_posting_not_allowed` | `REFUND −0.33` / 7200 | §11.3 #12 |
+| 20 | §11.3 #20 (`P = 1`) буруу дүгнэлттэй (0.50-ийн зөрүү "НӨАТ-ын зөрүүгээр") | Бүхэл дүнгийн хязгаарлалтыг зөв тайлбарлав | §11.3 #20 |
+| 21 | `GL_ACCOUNT` харьцсан дансны `direct_posting` шалгалт `SystemDerived` мөрөөр алгасагддаг байсан (BR-PUR-73) | `LineOrigin.UserEntered` | BR-PUR-73, §5.13 |
+| 22 | Журналын `VENDOR` handler: `journal_line`-д `payment_method_code` багана байхгүй (`payment_method_id`); журналын нэхэмжлэхэд `purchase_lcy = 0` нь BR-AP-04-тэй зөрчилдсөн | Код → id-аас; НӨАТ-гүй дүн | §5.19 |
+| 23 | Unapply-ийн толин тусгал мөрөнд `vendor_posting_group_id` бөглөх нь тодорхойгүй (`v_payables_reconciliation` үүгээр JOIN хийдэг; 06 review №16) | BR-AP-46, §5.17 | §4.16, §5.17 |
+| 24 | 2027 оны хуулийн UNVERIFIED зүйл (суудлын автомашины НӨАТ CMP-019, ҮХ-ийн НӨАТ-ын 60/120 сарын хуваарь CMP-020) P3 ба BR-PUR-16-д нөлөөлөх нь нээлттэй асуултад тусгагдаагүй | OQ-PUR-14, OQ-PUR-15 | §13 |
+
+**Тоон жишээнд алдаа олдоогүй** (P1–P15 бүгд тэнцсэн); зөвхөн P2/P15-ийн ваучерын дугаар (№1), P7-ийн НӨАТ-ын бүлгийн тайлбар (№18), P11-ийн `on_hold` утга (№17) засагдсан — дүн өөрчлөгдөөгүй.
+
+**Schema change requests (энэ review-ээс):** SCR-PUR-14 (VLE баримтын дугаарын UNIQUE index, `OPENING`-ийг хассан). 06 SCR-SAL-09 (`application_draft.updated_at`)-д тулгуурлана. Бусад (SCR-PUR-01..13) хэвээр.
+
+**Бусад баримтад дамжуулах (энэ баримт засаагүй):** Хавсралт А №20 (06 §5.18.1-ийн SQL), №21 (08 BR-TAX-51/36-д BR-PUR-97, BR-PUR-53-ийн нэмэлт).

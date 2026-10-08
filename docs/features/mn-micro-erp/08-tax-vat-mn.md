@@ -1,6 +1,6 @@
 # 08. Татвар: НӨАТ (Монгол), НХАТ, хуулийн параметр, ТТ-03а ба НӨАТ-ын хаалт, ААНОАТ-ын туслах тайлан — хөгжүүлэлтэд бэлэн тодорхойлолт
 
-> **Төлөв:** Хөгжүүлэлтэд бэлэн, v1.0. **Огноо:** 2026-10-07.
+> **Төлөв:** Хөгжүүлэлтэд бэлэн, v1.1 (adversarial review, 2026-10-08 — төгсгөлийн "Хяналтын тэмдэглэл"-ийг үзнэ үү). **Огноо:** 2026-10-07.
 > **Нэг эх сурвалж:** [DECISIONS.md](./DECISIONS.md) (ялангуяа §E, §H, §K). Хүснэгт, багана, функцийн нэрийн эх сурвалж нь [db/schema/*.sql](./db/schema/) ба [db/seed/](./db/seed/) (D-K1). Бусад баримт эдгээртэй зөрвөл DECISIONS ба схем давамгайлна (§0.3).
 > **Холбоос:** [01-requirements.md](./01-requirements.md) §2.3 (FR-TAX); [02-architecture.md](./02-architecture.md) §4.2.5, §4.5, §6, §9.6; [03-domain-model.md](./03-domain-model.md) §3.3, §5; [05-posting-engine.md](./05-posting-engine.md) §5.7, §6.4, §6.6; [06-sales-receivables.md](./06-sales-receivables.md) §4.3, §5.4, §6.3–§6.5; [11-fixed-assets-inventory.md](./11-fixed-assets-inventory.md); [12-ebarimt-integration.md](./12-ebarimt-integration.md) §5.6, §6, §16; [13-security-audit-tenancy.md](./13-security-audit-tenancy.md) §8, §18; [14-api.md](./14-api.md) §15.5; [15-ui-ux.md](./15-ui-ux.md) §16.9; [99-glossary.md](./99-glossary.md) §7; [db/seed/README.md](./db/seed/README.md) §6, §8.
 > **Судалгаа:** [bc-vat.md](./research/bc-vat.md) (R-VAT-01…32), [mn-tax.md](./research/mn-tax.md) (§2–§7, R1…R19), [legal-parameters.md](./research/legal-parameters.md) ((a)…(k), параметрийн хүснэгт), [mn-accounting.md](./research/mn-accounting.md) (§7 хаалтын календарь, REQ-ACC-13, -19, -20, -22).
@@ -25,6 +25,7 @@
 11. [Тест сценари](#11-тест-сценари)
 12. [Schema change requests](#12-schema-change-requests)
 13. [Нээлттэй асуулт](#13-нээлттэй-асуулт)
+14. [Хяналтын тэмдэглэл (Review log)](#хяналтын-тэмдэглэл-review-log)
 
 ---
 
@@ -63,7 +64,7 @@ Tax модуль нь **ямар** татвар, **ямар** хувиар, **я
 | `AT-TAX-NNN` | Хүлээн авах тест (§11.1) |
 | `GS-VAT-NNN-<slug>` | Golden scenario ([18-dev-setup.md](./18-dev-setup.md) §13.3-ын формат, `tests/Golden/Scenarios/vat/`) |
 | `E-TAX-NN` | §7-ийн posting-ийн жишээ |
-| `W-TAX-NN` | Анхааруулга (батлахыг зогсоохгүй, §8.3) |
+| `W-TAX-NN` | Анхааруулга (батлахыг зогсоохгүй, §8.2) |
 | `CR-TAX-NN` | Схемийн өөрчлөлтийн хүсэлт (§12) |
 | `Z-TAX-NN` | Баримтуудын зөрүүг шийдсэн мөр (§0.3) |
 | `OQ-TAX-NN` | Нээлттэй асуулт (§13) |
@@ -97,6 +98,7 @@ Tax модуль нь **ямар** татвар, **ямар** хувиар, **я
 | Z-TAX-13 | BC-ийн тайлан ба хаалт VAT date-ийн мужаар (R-VAT-26, R-VAT-28) | Хаалтын **дараа** ТТ-03а нь `vat_return_period_id = P`-ээр (оноолтоор), хаалтаас **өмнө** "энэ хаалтад орох" нээлттэй entry-ээр тооцогдоно (BR-TAX-66). Ингэснээр хоцорч баталгаажсан орцын НӨАТ (12 PUR-05) дараагийн үед орж, хаагдсан үеийн тайлан өөрчлөгдөхгүй | D-E4, D-E9 |
 | Z-TAX-14 | 06 §5.4-ийн `ITaxCalculator.ComputeDocument(lines, piv, P, mode)` | Бүрэн гэрээ §5.1 (`TaxDocument` → `TaxResult`). 06-ийн дуудлага нь түүний дэд хэсэг бөгөөд үр дүн ижил | Даалгавар |
 | Z-TAX-15 | 05 §5.7.1 `PostingBufferKey`-д хасагдахгүй НӨАТ-ын шалтгаан ба НХАТ-ын код алга | Түлхүүрт `NonDeductibleReason` ба `CityTaxCodeId` нэмэх санал (05 эзэмшигч засна). Нэмэгдэх хүртэл эх модуль ийм мөрийг `SeparateLineNo`-оор тусгаарлана | BR-TAX-31, BR-TAX-94 |
+| Z-TAX-16 | 05 BR-PST-36 ба §5.7.2: суурь G/L мөрийн `VatAmount` = **бүтэн** НӨАТ (хасагдахгүй хэсэг орно); энэ баримт BR-TAX-31: **хасагдах** НӨАТ | **Хасагдах** НӨАТ канон: тэгвэл NORMAL суурь мөрт (хасагдахгүй хэсэгтэй ч) `amount + vat_amount` = цэвэр + ND + (VAT − ND) = бохир дүн; RC ба FULL_VAT-д 05 §5.11-ийн тооцооны төрөл тус бүрийн томьёо хэвээр. Мөн `vat_amount` нь VAT дансны G/L мөрийн дүнтэй тэнцэнэ. Хасагдахгүй хэсэг нь VAT entry-ийн `non_deductible_amount`-д бий. 05 BR-PST-36, §5.7.2-ын `VatAmount = row.VatAmount`-ийг `row.VatAmount − row.NonDeductibleVat` болгох санал (05 эзэмшигч засна) | BR-TAX-31; R-VAT-18 |
 
 ---
 
@@ -152,7 +154,7 @@ Tax модуль нь Монголын бичил бизнест дараах ү
 | FR-TAX-009 Орцын НӨАТ баталгаажсан ДДТД-тэй | BR-TAX-45…51 | §5.8 |
 | FR-TAX-010 Хасагдахгүй орцын НӨАТ | BR-TAX-25, -52, -53 | §6.5, E-TAX-02 |
 | FR-TAX-011 НӨАТ төлөгч бус горим | BR-TAX-54…58 | §4.7, E-TAX-05 |
-| FR-TAX-012 Босгын хяналт | BR-TAX-83…88 | §5.14, §6.12 |
+| FR-TAX-012 Босгын хяналт | BR-TAX-83…88 | §5.14, §6.13 |
 | FR-TAX-013 НӨАТ-ын тайлангийн загвар → ТТ-03а | BR-TAX-65…69 | §3.7, §5.9 |
 | FR-TAX-014 ТТ-03а-5/6, экспорт | BR-TAX-70 | §5.12 |
 | FR-TAX-015 НӨАТ-ын хаалт ба үеийн түгжээ | BR-TAX-72…82 | §5.10, §5.11, E-TAX-06 |
@@ -193,7 +195,7 @@ Tax модуль нь Монголын бичил бизнест дараах ү
 | **Урвуу тооцоо** (reverse charge) | Резидент бусаас авсан үйлчилгээний НӨАТ-ыг худалдан авагч өөрөө төлөх ба хасах. G/L-д цэвэр 0 | `REVERSE_CHARGE`, 2305 |
 | **Гаалийн НӨАТ** (import VAT) | Импортын бараанд гаальд төлсөн НӨАТ. Мэдүүлгээр хасагдана | `FULL_VAT`, `CUSTOMS_VAT` |
 | **НХАТ** (capital city tax) | Нийслэлийн албан татвар: НӨАТ-гүй цэвэр дүнгийн 2%. НӨАТ-аас тусдаа мөр (D-E6) | `tax.city_tax_*` |
-| **Эргэлт** (turnover, босгын) | Сүүлийн 12 сарын татвар ногдох борлуулалт (үндсэн хөрөнгийн борлуулалтгүй) | Тооцоолно (§6.12) |
+| **Эргэлт** (turnover, босгын) | Сүүлийн 12 сарын татвар ногдох борлуулалт (үндсэн хөрөнгийн борлуулалтгүй) | Тооцоолно (§6.13) |
 
 ### 2.2 BC-ээс хуулсан, хялбарчилсан, хассан зүйл
 
@@ -536,7 +538,7 @@ DB guard: `trg_vat_entry_period` (`ERV01`): `vat_date` нь `OPEN` биш үед
 |---|---|---|---|
 | BR-TAX-01 | `gen_posting_type ∈ {SALE, PURCHASE}` мөр бүр (VAT Bus., VAT Prod.)-ийн яг нэг `tax.vat_posting_setup` мөртэй, `blocked = false` байна. Байхгүй → `tax.vat_posting_setup_missing`, блоклосон → `tax.vat_posting_setup_blocked`. Ноорог хадгалахад анхааруулга (W-TAX-12), release/preview/posting-д алдаа. | R-VAT-01; FR-TAX-001 AC1; BR-SAL-24 | AT-TAX-001 |
 | BR-TAX-02 | Posting-ийн B үед мөрийн `vat_calculation_type` нь setup-ийнхтэй ижил, A үед уншсан setup-ийн `row_version` өөрчлөгдөөгүй байна; эс бөгөөс `409 gl.setup_changed` (05 §5.2), клиент дахин илгээнэ. | R-VAT-02 | AT-TAX-002 |
-| BR-TAX-03 | Setup мөрийн (Bus. код, Prod. код)-оор `tax.vat_entry` үүссэн бол `vat_calculation_type`-ийг өөрчлөхгүй (`tax.vat_calc_type_locked`). Бүлэг эсвэл setup мөрийг entry, мастер өгөгдөл, баримтад ашиглагдаж байвал устгахгүй (`tax.vat_setup_in_use`). Хувь ба дансыг өөрчилж болно; батлагдсан snapshot өөрчлөгдөхгүй. | R-VAT-03; FR-TAX-001 AC2 | AT-TAX-003 |
+| BR-TAX-03 | Setup мөрийн (Bus. код, Prod. код)-оор `tax.vat_entry` үүссэн бол `vat_calculation_type`-ийг өөрчлөхгүй (`tax.vat_calc_type_locked`). Бүлэг эсвэл setup мөрийг entry, мастер өгөгдөл, баримтад ашиглагдаж байвал устгахгүй, бүлгийн `code`-ыг өөрчлөхгүй (`tax.vat_setup_in_use`) — VAT entry бүлгийг **кодоор** snapshot хийдэг ба хаалт (§5.10) дансыг кодоор хайдаг тул. Хувийг өөрчилж болно; батлагдсан snapshot өөрчлөгдөхгүй. НӨАТ-ын данс (`sales_vat_account_id`, `purchase_vat_account_id`, `reverse_chrg_vat_account_id`)-ыг тухайн (Bus., Prod.) кодтой `closed = false`, `amount ≠ 0` (RC-д `amount + non_deductible_amount ≠ 0`) entry байхад өөрчлөхгүй (`tax.vat_account_change_open_entries`): хаалт одоогийн setup-ийн дансыг Кт/Дт хийдэг тул хуучин дансанд бичигдсэн НӨАТ хаагдахгүй үлдэнэ (R-VAT-29). `blocked = true` нь шинэ posting-ийг л хориглоно, хаалтад нөлөөлөхгүй. | R-VAT-03; R-VAT-29; FR-TAX-001 AC2 | AT-TAX-003 |
 | BR-TAX-04 | Нэг VAT Bus. бүлэг дотор ижил `vat_identifier`-тэй мөрүүд ижил `vat_calculation_type`, ижил `vat_rate_param_code` (байхгүй бол ижил `vat_percent`)-тэй байна; хадгалахад `tax.vat_identifier_rate_conflict`. | R-VAT-04 | AT-TAX-004 |
 | BR-TAX-05 | Данс: хувь > 0 NORMAL мөрийг борлуулалтад хэрэглэхэд `sales_vat_account_id`, худалдан авалтад `purchase_vat_account_id`; `REVERSE_CHARGE`-д `purchase_vat_account_id` ба `reverse_chrg_vat_account_id`; `FULL_VAT`-д `purchase_vat_account_id` заавал (`tax.sales_vat_account_missing`, `tax.purchase_vat_account_missing`, `tax.reverse_charge_account_missing`). Хадгалахад: данс `POSTING`, блоклогдоогүй, `gen_posting_type = 'NONE'`; борлуулалтын ба урвуу тооцооны данс `LIABILITIES`, худалдан авалтын данс `ASSETS` ангилалтай (`tax.vat_account_invalid`). | R-VAT-05; 05 BR-PST-15 | AT-TAX-005 |
 | BR-TAX-06 | Ангилал ↔ eBarimt `taxType`-ийн харгалзаа нь D-E2 (DB CHECK). `VAT0`/`EXEMPT` (NORMAL) мөр анхдагч `ebarimt_tax_product_code`-той (CHECK). `TBD` түр кодтой мөрийг eBarimt-тэй компанид хэрэглэхэд W-TAX-11; барааны/мөрийн код заавал (12 MAP-22, VAL-09 `ebarimt.tax_product_code_missing`). Tax модуль энэ шалгалтыг давхардуулахгүй. | D-E2; FR-TAX-002 AC1; 12 MAP-22 | AT-TAX-006 |
@@ -604,10 +606,10 @@ DB guard: `trg_vat_entry_period` (`ERV01`): `vat_date` нь `OPEN` биш үед
 | ID | Дүрэм | Эх | Шалгах |
 |---|---|---|---|
 | BR-TAX-45 | `NORMAL`, `amount ≠ 0` PURCHASE entry нь зөвхөн `deductible_confirmed = true` үед НӨАТ-ын тайланд хасагдана. NORMAL entry-г баталгаажуулахад ДДТД заавал (DB CHECK). | D-E4 ⚠; FR-TAX-009 AC1; 03 INV-16 | AT-TAX-045 |
-| BR-TAX-46 | Posting үеийн утга: NORMAL худалдан авалт — `true` зөвхөн ДДТД бөглөгдсөн, хүсэлт `confirmInputVat = true`, хэрэглэгч `ACTION tax.vat_entry.confirm_deductible` эрхтэй, хасагдах дүн ≠ 0 үед (07 BR-PUR-47); бусад үед `false` (дараа нь гараар, R2-т импортоор баталгаажуулна, 12 PUR-12); `REVERSE_CHARGE` — `true` (баримтаар); `FULL_VAT` — мэдүүлгийн дугаар (`external_document_no`) ба огноо (`document_date`) байвал `true`, эс бөгөөс `false`; `amount = 0` entry — `false` (хасах зүйлгүй). | D-E4; FR-TAX-021 AC1; FR-TAX-020 | AT-TAX-046 |
+| BR-TAX-46 | Posting үеийн утга: NORMAL худалдан авалт — `true` зөвхөн ДДТД бөглөгдсөн, хүсэлт `confirmInputVat = true`, хэрэглэгч `ACTION tax.vat_entry.confirm_deductible` эрхтэй, хасагдах дүн ≠ 0 үед (07 BR-PUR-47); бусад үед `false` (дараа нь гараар, R2-т импортоор баталгаажуулна, 12 PUR-12); `REVERSE_CHARGE` — `true` (баримтаар); `FULL_VAT` — үргэлж `true`: мэдүүлгийн дугаар (`external_document_no`/`vendor_invoice_no`) ба огноо (`document_date`) posting-д **заавал** (BR-TAX-62, `tax.customs_declaration_required`), учир нь `external_document_no`, `document_date` нь VAT entry-д дараа нь өөрчлөгдөх боломжгүй (BR-TAX-32) ба `ConfirmDeductibleAsync` зөвхөн NORMAL entry-г баталгаажуулна — `false` FULL_VAT entry хэзээ ч хасагдахгүй, хаагдахгүй үлдэх байсан; `amount = 0` entry — `false` (хасах зүйлгүй). | D-E4; FR-TAX-021 AC1; FR-TAX-020 | AT-TAX-046 |
 | BR-TAX-47 | ДДТД `^[0-9]{33}$` (`ebarimt.purchase_receipt_ddtd_invalid` — 12 ба 07 BR-PUR-42-ын код). Нэг ДДТД-ийг компанид нэг л баримтад бүртгэх нь `ebarimt.purchase_receipt UNIQUE (company_id, ddtd)` (`ebarimt.purchase_receipt_duplicate`). | FR-TAX-009 AC3; 12 PUR-02 | AT-TAX-047 |
 | BR-TAX-48 | ДДТД-гүй батлах бодлого нь Purchases-ийнх (07 BR-PUR-46): хасагдах НӨАТ-тай (`NORMAL`, `Σ(VAT − ND) ≠ 0`) баримт ДДТД-гүй бол `require_supplier_ebarimt = true` үед хүсэлт `missingEbarimt ∈ {PENDING, NON_DEDUCTIBLE}`-ийг заавал агуулна (`purchase.supplier_ebarimt_required`); `NON_DEDUCTIBLE` → Tax мөр бүрд `NO_EBARIMT` шалтгаанаар `nd% = 100` (BR-TAX-25) тооцно; `PENDING` → `deductible_confirmed = false`. Tax-ийн `tax.supplier_receipt_id_required` нь зөвхөн баталгаажуулалтад ДДТД дутуу үед. | 07 BR-PUR-46; 12 PUR-01; mn-tax R5 | AT-TAX-048 |
-| BR-TAX-49 | Баталгаажуулах (`ACTION tax.vat_entry.confirm_deductible`): батлагдсан худалдан авалтын нэхэмжлэхийн (ба түүнийг засах кредит нотын) `NORMAL`, `amount ≠ 0`, `NOT deductible_confirmed`, `NOT closed`, `NOT reversed`, `vat_return_period_id IS NULL` PURCHASE entry бүрд `deductible_confirmed = true`, `_at`, `_by`, `supplier_ebarimt_id` (хоосон бол). Өөр ДДТД-тэй холбогдсон бол `tax.supplier_receipt_id_mismatch`. Дараа нь `IPurchaseReceiptRegistry.MarkConfirmedAsync`. Аль хэдийн баталгаажсан → no-op (идемпотент). `vat_date`-ийн үе хаагдсан байсан ч зөвшөөрнө: дараагийн хаагдах нээлттэй үеийн тайланд орно (W-TAX-10). | D-E4; FR-TAX-009 AC2; 12 PUR-04, PUR-05 | AT-TAX-049, GS-VAT-015 |
+| BR-TAX-49 | Баталгаажуулах (`ACTION tax.vat_entry.confirm_deductible`): батлагдсан худалдан авалтын нэхэмжлэхийн (ба түүнийг засах кредит нотын) `NORMAL`, `amount ≠ 0`, `NOT deductible_confirmed`, `NOT closed`, `NOT reversed`, `vat_return_period_id IS NULL` PURCHASE entry бүрд `deductible_confirmed = true`, `_at`, `_by`, `supplier_ebarimt_id` (хоосон бол). ДДТД-ийн нийцэл **нэхэмжлэхийн** entry-ээр шалгагдана: нэхэмжлэхийн entry-д өөр ДДТД бүртгэлтэй бол `tax.supplier_receipt_id_mismatch`; кредит нотын entry өөрийн (нийлүүлэгчийн буцаалтын баримтын) ДДТД-тэй бол түүнийгээ хадгална, хоосон бол нэхэмжлэхийн ДДТД-ийг авна (BR-TAX-36). Дараа нь `IPurchaseReceiptRegistry.MarkConfirmedAsync`. Аль хэдийн баталгаажсан → no-op (идемпотент). `vat_date`-ийн үе хаагдсан байсан ч зөвшөөрнө: дараагийн хаагдах нээлттэй үеийн тайланд орно (W-TAX-10). | D-E4; FR-TAX-009 AC2; 12 PUR-04, PUR-05 | AT-TAX-049, GS-VAT-015 |
 | BR-TAX-50 | "Баталгаажаагүй орцын НӨАТ" = PURCHASE, NORMAL, `amount ≠ 0`, `NOT deductible_confirmed`, `NOT closed`, `NOT reversed`, `vat_return_period_id IS NULL`. ТТ-03а-д орохгүй, тусдаа жагсаалт ба cue (15 CUE-14). | FR-TAX-009 AC1; FR-TAX-013 AC1 | AT-TAX-050 |
 | BR-TAX-51 | Хасалтаас татгалзах (R1 · Should, `tax.vat_entry.confirm_deductible`): BR-TAX-50-ийн entry-үүдийг хасагдахгүй болгох **залруулгын ваучер**: Дт суурь мөрийн данс (G/L–VAT холбоосоор, ижил dimension set), Кт `purchase_vat_account_id`; эх entry бүрд эсрэг VAT entry (`base = −base`, `amount = −amount`, `non_deductible_base = +base`, `non_deductible_amount = +amount`, шалтгаан `REJECTED`/`NO_EBARIMT`), хоёулаа `closed = true` бөгөөд `closed_by_entry_no`-оор бие биеэ заана. Source `VATADJ` (CR-TAX-08). Баталгаажсан, хаагдсан, оноогдсон entry-д `tax.deduction_reject_not_allowed`. | mn-tax R5 (`REJECTED`); FR-TAX-010; 12 §16.1 | AT-TAX-051, GS-VAT-016 |
 | BR-TAX-52 | Хасагдахгүй шалтгаан (CR-TAX-02): хэрэглэгч сонгох — `PASSENGER_CAR`, `PERSONAL_USE`, `EXEMPT_RELATED`, `NO_EBARIMT`; систем тавих — `NON_VAT_COMPANY`, `SIMPLIFIED_REGIME`, `REJECTED`. Мөрийг хасагдахгүй гэж тэмдэглэвэл шалтгаан заавал (`tax.non_deductible_reason_required`); системийн шалтгааныг гараар сонгохгүй (`tax.non_deductible_reason_invalid`). | FR-TAX-010; mn-tax R5; CMP-019 | AT-TAX-052 |
@@ -618,10 +620,10 @@ DB guard: `trg_vat_entry_period` (`ERV01`): `vat_date` нь `OPEN` биш үед
 | ID | Дүрэм | Эх | Шалгах |
 |---|---|---|---|
 | BR-TAX-54 | `IsVatRegistered(d) = company_setup.vat_registered AND (vat_registered_from IS NULL OR d ≥ vat_registered_from)` (CR-TAX-04-ийн дараа профайлын огноотой мөрөөс). | D-E5; 06 BR-SAL-28 | AT-TAX-054 |
-| BR-TAX-55 | `NOT IsVatRegistered(vat_date)` үед: **борлуулалт** — хувь 0, хэрэгжих ангилал `NOVAT`, `taxType` = `ebarimt_setup.non_vat_payer_tax_type` (12 SCR-04; байхгүй бол `NOT_VAT`), VAT entry суурь ≠ 0, дүн 0, `vat_identifier` = setup-ийнх (босгод, BR-TAX-83); **худалдан авалт** — нийлүүлэгчийн НӨАТ бүхэлдээ хасагдахгүй (`NON_VAT_COMPANY`); НӨАТ-ын тайлан ба хаалтын үйлдэл → `tax.company_not_vat_registered`. | D-E5 ⚠; FR-TAX-011 AC1/AC2; 12 SET-09 | AT-TAX-055, GS-VAT-006 |
-| BR-TAX-56 | `vat_registered`-ийг өөрчлөх (компанийн тохиргоо, `ERP_SETUP`): `true` болгоход `vat_registered_from` заавал (`tax.vat_registered_from_required`). Tax handler: тухайн оны НӨАТ-ын үеийг үүсгэнэ; seed-ээр 100 тавигдсан setup-ийн `non_deductible_vat_percent`-ийг 0 болгох санал (wizard-аар баталгаажуулна); батлагдсан entry-д нөлөөлөхгүй; тухайн үед W-TAX-09. | D-E5; [db/seed/README.md](./db/seed/README.md) §6 | AT-TAX-056 |
+| BR-TAX-55 | `NOT IsVatRegistered(vat_date)` үед: **борлуулалт** — хувь 0, хэрэгжих ангилал `NOVAT`, `taxType` = `ebarimt_setup.non_vat_payer_tax_type` (12 SCR-04; байхгүй бол `NOT_VAT`), VAT entry суурь ≠ 0, дүн 0, `vat_identifier` = setup-ийнх (босгод, BR-TAX-83); **худалдан авалт** — нийлүүлэгчийн НӨАТ бүхэлдээ хасагдахгүй (`NON_VAT_COMPANY`); НӨАТ-ын тайлан ба хаалтын үйлдэл → `tax.company_not_vat_registered` (R2: НХАТ төлөгч бол `:close` нь зөвхөн НХАТ-ын хаалт, BR-TAX-72). | D-E5 ⚠; FR-TAX-011 AC1/AC2; 12 SET-09 | AT-TAX-055, GS-VAT-006 |
+| BR-TAX-56 | `vat_registered`-ийг өөрчлөх (компанийн тохиргоо, `ERP_SETUP`): `true` болгоход `vat_registered_from` заавал (`tax.vat_registered_from_required`). Tax handler: `vat_registered_from`-ийн оноос одоогийн он хүртэлх НӨАТ-ын үеийг үүсгэнэ; seed-ээр 100 тавигдсан setup-ийн `non_deductible_vat_percent`-ийг 0 болгох санал (wizard-аар баталгаажуулна); батлагдсан entry-д нөлөөлөхгүй; тухайн үед W-TAX-09. `vat_registered_from`-ийг (`true` хэвээр) өөрчлөхөд хуучин ба шинэ огнооны аль бага нь болон түүнээс хойш `CLOSED`/`SUBMITTED` НӨАТ-ын үе, эсвэл `vat_date ≥ min(хуучин, шинэ)` SALE/PURCHASE entry байвал татгалзана (`tax.vat_registered_from_locked`) — эс бөгөөс хаагдсан үеийн scope (BR-TAX-57) ба батлагдсан борлуулалтын хувь (BR-TAX-55) хойноос өөрчлөгдөнө. | D-E5; [db/seed/README.md](./db/seed/README.md) §6 | AT-TAX-056 |
 | BR-TAX-57 | НӨАТ-ын тайлан ба хаалтын scope нь `vat_date ≥ vat_registered_from` entry л. Бүртгэлийн огнооноос өмнө дууссан үеийг хаах шаардлагагүй (BR-TAX-44). | D-E5 | AT-TAX-057 |
-| BR-TAX-58 | НӨАТ төлөгчөөс хасагдах (deregistration) огноо нь CR-TAX-04-ийн профайлаар (R2). R1-д `vat_registered = false` болгоход өмнөх огнооны entry өөрчлөгдөхгүй; дараагийн огнооны борлуулалт BR-TAX-55-аар. | ADR-0021 #2; mn-accounting §8 | AT-TAX-056 |
+| BR-TAX-58 | НӨАТ төлөгчөөс хасагдах (deregistration) огноо нь CR-TAX-04-ийн профайлаар (R2). R1-д `IsVatRegistered` нь "хүртэл" огноогүй тул `vat_registered = false` болгоход бүх огноо (өнгөрсөн ч) НӨАТ төлөгч бус гэж үнэлэгдэж, өмнөх үеийг хаах (BR-TAX-72) боломжгүй болно. Иймд R1-д `false` болгох урьдчилсан нөхцөл: `SALE`/`PURCHASE` entry-тэй (`amount ≠ 0` эсвэл `base ≠ 0`, `vat_date ≥ vat_registered_from`) НӨАТ-ын үе бүр `CLOSED` эсвэл `SUBMITTED` байх; эс бөгөөс `tax.vat_deregistration_periods_open` (жагсаалттай). Дараа нь батлагдсан entry өөрчлөгдөхгүй; шинэ борлуулалт BR-TAX-55-аар; entry-гүй `OPEN` үеийг устгаж болно (DB `ERP02` зөвшөөрнө). | ADR-0021 #2; mn-accounting §8 | AT-TAX-056, AT-TAX-058 |
 
 ### 4.8 Урвуу тооцоо ба импорт
 
@@ -630,7 +632,7 @@ DB guard: `trg_vat_entry_period` (`ERV01`): `vat_date` нь `OPEN` биш үед
 | BR-TAX-59 | Резидент бусаас авсан үйлчилгээ, ажил: VAT Bus. `IMPORT` × VAT Prod. `IMPORT_SERVICE` (`REVERSE_CHARGE`, 2305). Posting: Дт зардал (цэвэр + хасагдахгүй хэсэг), Дт 1300 (хасагдах), Кт 2305 (бүтэн), Кт өглөг (цэвэр). | R-VAT-07a; FR-TAX-020 AC1; mn-tax §2.1, R8 | AT-TAX-059, GS-VAT-010 |
 | BR-TAX-60 | Урвуу тооцооны entry posting үед `deductible_confirmed = true`. Хаалт: Кт 1300 хасагдах, Дт 2305 бүтэн, зөрүү (хасагдахгүй хэсэг) 2310-д төлөх дүнд нэмэгдэнэ. | R-VAT-31 (өргөтгөсөн); seed ТТ-03а мөр 13 | AT-TAX-060 |
 | BR-TAX-61 | Импортын бараа: гадаад нийлүүлэгчийн нэхэмжлэх (`IMPORT` × бараа) = NOVAT 0 %. Импортын НӨАТ зөвхөн гаалийн мөрөөр (`CUSTOMS_VAT`, `FULL_VAT`). | [db/seed/README.md](./db/seed/README.md) §6; mn-tax §2.5 | AT-TAX-061 |
-| BR-TAX-62 | Гаалийн НӨАТ-ыг (а) "гааль" нийлүүлэгчийн (`CUSTOMS` загвар → 2365) худалдан авалтын нэхэмжлэхийн 1300 дээрх `CUSTOMS_VAT` мөрөөр, эсвэл (б) төлбөрийн журналын мөрөөр (данс 1300, `PURCHASE`, `CUSTOMS_VAT`, харьцсан данс банк) оруулна. Мэдүүлгийн дугаар → `vendor_invoice_no`/`external_document_no`, огноо → `document_date`; баталгаажуулахад хоёулаа заавал (`tax.customs_declaration_required`). Гаалийн үнэ, татварын задаргааг CR-TAX-05 хадгална. | FR-TAX-021; mn-tax R7; R-VAT pitfall 9 | AT-TAX-062, GS-VAT-011 |
+| BR-TAX-62 | Гаалийн НӨАТ-ыг (а) "гааль" нийлүүлэгчийн (`CUSTOMS` загвар → 2365) худалдан авалтын нэхэмжлэхийн 1300 дээрх `CUSTOMS_VAT` мөрөөр, эсвэл (б) төлбөрийн журналын мөрөөр (данс 1300, `PURCHASE`, `CUSTOMS_VAT`, харьцсан данс банк) оруулна. Мэдүүлгийн дугаар → `vendor_invoice_no`/`external_document_no`, огноо → `document_date`; `FULL_VAT` мөртэй баримт/журналын мөрийг **батлахад** хоёулаа заавал (`tax.customs_declaration_required`, VAT writer-ийн `ValidateLockedAsync`, §5.6), entry `deductible_confirmed = true` (BR-TAX-46). Гаалийн үнэ, татварын задаргааг CR-TAX-05 хадгална. | FR-TAX-021; mn-tax R7; R-VAT pitfall 9 | AT-TAX-062, GS-VAT-011 |
 | BR-TAX-63 | Гаалийн татвар, онцгой албан татвар нь барааны өртөгт (1400) эсвэл зардалд, `NOVAT` мөрөөр. | mn-tax R7; 11 INV-R-11 | AT-TAX-063 |
 | BR-TAX-64 | Резидент бусад төлөх төлбөрийн суутган татвар (20 %) хүрээнээс гадуур (01 §7): систем автоматаар тооцохгүй, урвуу тооцооны нэхэмжлэхэд мэдээллийн тэмдэглэл л харуулна. | mn-tax R12; 01 §7 | — |
 
@@ -642,7 +644,7 @@ DB guard: `trg_vat_entry_period` (`ERV01`): `vat_date` нь `OPEN` биш үед
 | BR-TAX-66 | **Scope** (VAT_ENTRY_TOTALING-ийн entry-ийн олонлог): P нь `OPEN` бол — `vat_return_period_id IS NULL`, `entry_type ∈ {SALE, PURCHASE}`, `vat_date ≤ P.ending_date`, `vat_date ≥ coalesce(vat_registered_from, −∞)`, BR-TAX-67-ийн эрхтэй entry ("энэ хаалтад орох"); P нь `CLOSED`/`SUBMITTED` бол — `vat_return_period_id = P.id`. SETTLEMENT entry хэзээ ч орохгүй. | Z-TAX-13; R-VAT-28 (өөрчилсөн) | AT-TAX-066, GS-VAT-007 |
 | BR-TAX-67 | Хаалт/тайланд орох эрх: SALE — үргэлж; PURCHASE — `deductible_confirmed` ЭСВЭЛ `amount = 0` ЭСВЭЛ `closed` (татгалзлын хос) ЭСВЭЛ `reversed`. | D-E4; BR-TAX-51 | AT-TAX-067 |
 | BR-TAX-68 | `ACCOUNT_TOTALING`: `gl_account.no` шүүлтэд таарах дансны `Σ gl_entry.amount`, `vat_date ∈ [P.starting_date, P.ending_date]` (scope-оос үл хамаарна). | R-VAT-26 (нэмэлт) | AT-TAX-068 |
-| BR-TAX-69 | Тооцоо зөвхөн уншина (хадгалахгүй). Хариунд мөр бүрийн утга, хэвлэх утга, drill-down шүүлт (`vatEntryFilter`), `lastVatEntryNo` (компанийн хамгийн их `entry_no`). Хаалт ба экспорт нь клиентийн `expectedLastVatEntryNo`-г шалгана: зөрвөл `409 tax.vat_statement_stale`. | 15 UX-VAT-02, UX-VAT-03, A-11 | AT-TAX-069 |
+| BR-TAX-69 | Тооцоо зөвхөн уншина (хадгалахгүй). Хариунд мөр бүрийн утга, хэвлэх утга, drill-down шүүлт (`vatEntryFilter`), `lastVatEntryNo` (компанийн хамгийн их `entry_no`) ба `scopeVersion`. `scopeVersion` = `lower(hex(sha256("{lastVatEntryNo}\|{n}\|{Σbase}\|{Σamount}\|{Σnon_deductible_amount}\|{maxConfirmedAt}")))`-ийн эхний 16 тэмдэгт, энд `n`, `Σ` нь BR-TAX-66-ийн scope-ийн entry-ээр, `maxConfirmedAt` = scope-ийн `max(deductible_confirmed_at)` (ISO-8601 UTC, байхгүй бол `-`), дүн нь `numeric`-ийн canonical текст (4 орон). Шинэ entry (`lastVatEntryNo`) зөвхөн **нэмэлтийг** илрүүлнэ; баталгаажуулалт/цуцлалт entry нэмэхгүйгээр scope-ийг өөрчилдөг тул `scopeVersion` шаардлагатай. Хаалт ба экспорт нь клиентийн `expectedScopeVersion`-ийг (байхгүй бол `expectedLastVatEntryNo`-г) компанийн advisory lock-ийн дор дахин тооцсон утгатай харьцуулна: зөрвөл `409 tax.vat_statement_stale`. | 15 UX-VAT-02, UX-VAT-03, A-11 | AT-TAX-069 |
 | BR-TAX-70 | ТТ-03а-5 (худалдан авалт) ба ТТ-03а-6 (борлуулалт) нь ижил scope-оос (§5.12). Бүртгэлийн нийлбэр = тайлангийн харгалзах мөр. XLSX/CSV экспорт нь async job `tax.vat_return.export` (202). | D-E8; FR-TAX-014 AC1; mn-tax R9, R18; 02 §9.6 | AT-TAX-070 |
 | BR-TAX-71 | eBarimt-тэй тулгалт: үеийн SALE scope-ийн баримт бүрийн (`document_no`) НӨАТ ба eBarimt-ийн `SUCCESS` баримтын `total_vat`-ийг харьцуулна; баримтгүй, `SUCCESS` биш, дүн зөрсөн баримтыг жагсаана. Хаалтыг зогсоохгүй (W-TAX-06). | FR-TAX-016 AC1; REQ-ACC-16; mn-tax R9 | AT-TAX-071 |
 
@@ -650,23 +652,23 @@ DB guard: `trg_vat_entry_period` (`ERV01`): `vat_date` нь `OPEN` биш үед
 
 | ID | Дүрэм | Эх | Шалгах |
 |---|---|---|---|
-| BR-TAX-72 | `:close` урьдчилсан нөхцөл (бүгдийг цуглуулна): `ACTION tax.vat.settle`; `IsVatRegistered(P.ending_date)`; P `OPEN`; BR-TAX-44; бизнесийн огноо ≥ `P.ending_date` (`tax.vat_period_not_ended`); `postingDate ≥ P.ending_date` (`tax.vat_settlement_date_invalid`), тэр огноо нээлттэй нягтлан бодох үед ба компанийн цонхонд (`gl.period_closed`, `gl.posting_date_outside_window`); хаалтын данс BR-TAX-76; `expectedLastVatEntryNo` (BR-TAX-69). Анхааруулга: W-TAX-05 (баталгаажаагүй орцын НӨАТ), W-TAX-06 (eBarimt). | R-VAT-32; FR-TAX-015; 15 UX-VAT-05 | AT-TAX-072 |
+| BR-TAX-72 | `:close` урьдчилсан нөхцөл (бүгдийг цуглуулна): `ACTION tax.vat.settle`; `IsVatRegistered(P.ending_date)`; P `OPEN`; BR-TAX-44; бизнесийн огноо ≥ `P.ending_date` (`tax.vat_period_not_ended`); `postingDate ≥ P.ending_date` (`tax.vat_settlement_date_invalid`), тэр огноо нээлттэй нягтлан бодох үед ба компанийн цонхонд (`gl.period_closed`, `gl.posting_date_outside_window`); хаалтын данс BR-TAX-76; `expectedScopeVersion`/`expectedLastVatEntryNo` (BR-TAX-69). R2: компани `IsVatRegistered(P.ending_date) = false` боловч НХАТ идэвхтэй (`city_tax_payer AND city_tax_setup.enabled`) бол `:close` нь зөвхөн НХАТ-ын хаалтыг (`V2`, BR-TAX-95) хийнэ — ТТ-03а тооцогдохгүй, VAT entry оноогдохгүй; НХАТ-ын төлөгчид НӨАТ-ын үе (`fn_mn_ensure_vat_return_periods`) үүснэ (OQ-TAX-09). Анхааруулга: W-TAX-05 (баталгаажаагүй орцын НӨАТ), W-TAX-06 (eBarimt). | R-VAT-32; FR-TAX-015; 15 UX-VAT-05 | AT-TAX-072 |
 | BR-TAX-73 | Хаалтын алгоритм (§5.10): scope-ийн (BR-TAX-66) `closed = false` entry-ийг (Bus. код, Prod. код, төрөл)-өөр бүлэглэнэ. `Σamount ≠ 0` (урвуу тооцоонд `Σamount + Σnon_deductible_amount ≠ 0`) бүлэг бүрд: VAT дансны G/L мөр (`gen_posting_type = SETTLEMENT`, бүлгийн код) ба нэг SETTLEMENT VAT entry (`base = −Σbase`, `amount = −Σamount`, `non_deductible_* = −Σ`, `closed = true`, `vat_date = P.ending_date`, `vat_return_period_id = P`); эх entry-үүд `closed = true`, `closed_by_entry_no = S`. Бусад (0 дүнтэй бүлэг, аль хэдийн хаагдсан татгалзлын хос) зөвхөн `vat_return_period_id = P`. Нийлбэр хаалтын дансанд (`NONE`, бүлэггүй). | R-VAT-29, R-VAT-30, R-VAT-31; FR-TAX-015 AC1 | AT-TAX-073, GS-VAT-007 |
 | BR-TAX-74 | Боловсруулах дараалал: Bus. код → Prod. код (ordinal) → `PURCHASE` дараа нь `SALE` (R-VAT-29); entry ба мөрийн дугаар детерминист. | R-VAT-29 | AT-TAX-074 |
 | BR-TAX-75 | Ваучер: source `VATSTMT`, дугаар `GENERAL` template-ийн posting цуврал (`GJ`), `document_type = 'NONE'`, тайлбар "НӨАТ-ын хаалт YYYY-MM", мөрүүд `SystemGenerated`. G/L мөргүй бол ваучер үүсэхгүй (`settlement_transaction_no` NULL). Үеийн төлөв `CLOSED` нь ижил DB transaction-д. Preview = ижил код + ROLLBACK. | R-VAT-32; 05 BR-PST-52 | AT-TAX-075 |
 | BR-TAX-76 | Хаалтын данс = `tax_setup.vat_settlement_account_id` (CR-TAX-03); тэр хүртэл хүсэлтийн `settlementAccountId` (UI анхдагч: данс `2310`). Данс `POSTING`, блоклогдоогүй, `LIABILITIES`, `gen_posting_type = 'NONE'`, НӨАТ/Gen. бүлэггүй (`tax.vat_settlement_account_missing`, `tax.vat_settlement_account_invalid`). | R-VAT-30; pitfall 11 | AT-TAX-076 |
 | BR-TAX-77 | `VATSTMT` гүйлгээг нийтийн `:reverse` буцаахгүй (05 §3.7, `gl.reversal_not_reversible`); зөвхөн `:reopen`. | 05 BR-PST-45, OQ-PST-06 | AT-TAX-077 |
-| BR-TAX-78 | `:submit` (`ACTION tax.vat_return.submit`, MFA + step-up): P `CLOSED` (`tax.vat_period_not_closed`); `submission_reference` 1–100 тэмдэгт заавал (`tax.submission_reference_required`); `SUBMITTED`, `submitted_at = now()`, `submitted_by`. Хариуны `effects[]`: P-г хамарсан нягтлан бодох үе `CLOSED` бол `SUGGEST_GL_PERIOD_LOCK` (автомат биш, Z-TAX-04). Дахин илгээх → `tax.vat_period_already_submitted`. | FR-TAX-015; 15 UX-VAT-06; 13 SEC-POST-08 | AT-TAX-078 |
-| BR-TAX-79 | `:reopen` (`ACTION tax.vat.reopen`, Owner, step-up, шалтгаан ≥ 10 тэмдэгт `tax.reopen_reason_required`): P `CLOSED` ба хамгийн сүүлийнх (BR-TAX-44). Хаалтын ваучерыг `IReversalService`-ээр (`allowedSourceCodes = [VATSTMT]`) эх огноогоор буцаана (нягтлан бодох үе `OPEN` байх); SETTLEMENT entry-г толин тусгалаар; `closed_by_entry_no` нь P-гийн SETTLEMENT entry байсан эх entry → `closed = false`, `closed_by_entry_no = NULL`; `vat_return_period_id = P` бүх entry → NULL; P `OPEN`, `settlement_transaction_no = NULL`. Аудит ба outbox. | 05 OQ-PST-06; FR-TAX-015 | AT-TAX-079, GS-VAT-017 |
+| BR-TAX-78 | `:submit` (`ACTION tax.vat_return.submit`, MFA + step-up): P `CLOSED` (`tax.vat_period_not_closed`); `submission_reference` 1–100 тэмдэгт заавал (`tax.submission_reference_required`); `SUBMITTED`, `submitted_at = now()`, `submitted_by`. Хариуны `effects[]`: P-г хамарсан нягтлан бодох үе `CLOSED` бол `SUGGEST_GL_PERIOD_LOCK` (автомат биш, Z-TAX-04). Дахин илгээх → `tax.vat_period_already_submitted`. Илгээсэн тайлангийн **өөрчлөгдөхгүй бүртгэл** (mn-tax R19): ижил transaction-д ТТ-03а-г (§5.9) тооцож мөр бүрийн (`line_no`, `row_no`, `value`, `printed`) ба `scopeVersion`, `sha256`-ийг хадгална — CR-TAX-15 хүртэл `audit.security_event` (`VAT_PERIOD_SUBMITTED`)-ийн `details`-д (нэгтгэсэн дүн, PII-гүй). | FR-TAX-015; 15 UX-VAT-06; 13 SEC-POST-08; mn-tax R19 | AT-TAX-078 |
+| BR-TAX-79 | `:reopen` (`ACTION tax.vat.reopen`, Owner, step-up, шалтгаан ≥ 10 тэмдэгт `tax.reopen_reason_required`): P `CLOSED` ба хамгийн сүүлийнх (BR-TAX-44). Хаалтын ваучерыг `IReversalService`-ээр (`allowedSourceCodes = [VATSTMT]`) эх огноогоор буцаана (нягтлан бодох үе `OPEN` байх); SETTLEMENT entry-г толин тусгалаар; `closed_by_entry_no` нь P-гийн SETTLEMENT entry байсан эх entry → `closed = false`, `closed_by_entry_no = NULL`; `vat_return_period_id = P` бүх **SALE/PURCHASE** entry → NULL (SETTLEMENT entry ба түүний толин тусгал түүхэнд P-гийн id-гаа хадгална; scope-д хэзээ ч орохгүй, BR-TAX-66); R2: `city_tax_settlement_transaction_no` (CR-TAX-06) байвал түүнийг мөн ижил transaction-д буцаана (НХАТ-ын SETTLEMENT толин тусгал, эх `city_tax_entry` `closed = false`); P `OPEN`, `settlement_transaction_no = NULL`. Татгалзлын хос (BR-TAX-51) `closed = true` хэвээр (тэдгээрийн `closed_by_entry_no` нь SETTLEMENT биш). Аудит ба outbox. | 05 OQ-PST-06; FR-TAX-015 | AT-TAX-079, GS-VAT-017 |
 | BR-TAX-80 | `SUBMITTED`-ийн дараах засвар нь дараагийн нээлттэй үеийн огноотой шинэ баримт/кредит нотоор (pitfall 12). Засварласан тайлан (2 жилийн цонх, `tax.return_amendment_window_years`, 2027-оос) нь систем дотор дахин нээх замаар биш; засварын жагсаалтыг экспортоор (R3-т e-tax). | R-VAT pitfall 12; CMP-034 | AT-TAX-080 |
 | BR-TAX-81 | НӨАТ-ын төлбөр нь энгийн төлбөрийн журнал/банкны төлбөр: Дт 2310 / Кт банк (НӨАТ-гүй мөр). Буцаан авах (илүү төлсөн) үлдэгдэл 2310-ийн дебит үлдэгдэл болж дараагийн үеийн төлөхөөс хасагдана. | bc-vat F6.5 | GS-VAT-014 |
-| BR-TAX-82 | Инвариант (шөнийн шалгалт, 02 §8.8): `Σ gl_entry` 2300 = `Σ amount` (SALE, `NOT closed`); 1300 = `Σ amount` (PURCHASE, `NOT closed`, бүх тооцооны төрөл); 2305 = `−Σ (amount + non_deductible_amount)` (PURCHASE RC, `NOT closed`). Эдгээр дансанд гараар бичих боломжгүй (`direct_posting = false`). | NFR-005; 05 BR-PST-42 | AT-TAX-082 |
+| BR-TAX-82 | Инвариант (шөнийн шалгалт, 02 §8.8), НӨАТ-ын данс **тус бүрээр** (setup-ийн дансаар, seed-д 2300/1300/2305): `Σ gl_entry`(борлуулалтын данс) = `Σ amount` (SALE, `NOT closed`); `Σ gl_entry`(худалдан авалтын данс) = `Σ amount` (PURCHASE, `NOT closed`, бүх тооцооны төрөл); `Σ gl_entry`(урвуу тооцооны данс) = `−Σ (amount + non_deductible_amount)` (PURCHASE RC, `NOT closed`). Бүх огноогоор (`posting_date`-ийн хязгааргүй). Эдгээр дансанд гараар бичих боломжгүй (`direct_posting = false`); дансны өөрчлөлтийг BR-TAX-03 хамгаална. | NFR-005; 05 BR-PST-42 | AT-TAX-082 |
 
 ### 4.11 НӨАТ-ын бүртгэлийн босгын хяналт
 
 | ID | Дүрэм | Эх | Шалгах |
 |---|---|---|---|
-| BR-TAX-83 | Эргэлт `T(d) = Σ −(base + non_deductible_base)` — SALE entry, `vat_date ∈ (d − 12 сар, d]`, setup-ийн (одоогийн, бүлгийн кодоор) `vat_category ∈ {VAT10, VAT0}`, үндсэн хөрөнгийн борлуулалт биш (R1: `gen_prod_posting_group` код нь `Tax:Threshold:ExcludedGenProdGroupCodes` (анхдагч `["FA"]`)-д байхгүй; R2: CR-TAX-07-ийн `excluded_from_turnover = false`). Буцаалт ба кредит нот хасагдана (тэмдгээрээ). | mn-tax R4; FR-TAX-012; CMP-016; 11 §7 (ҮХ-ийн борлуулалт) | AT-TAX-083, GS-VAT-009 |
+| BR-TAX-83 | Эргэлт `T(d) = Σ −(base + non_deductible_base)` — SALE entry, `vat_date ∈ (d − 12 сар, d]`, setup-ийн (одоогийн, бүлгийн кодоор; setup олдохгүй бол entry-ийн `vat_category`) `vat_category ∈ {VAT10, VAT0}`, үндсэн хөрөнгийн борлуулалт биш (R1: `gen_prod_posting_group` код нь `Tax:Threshold:ExcludedGenProdGroupCodes` (анхдагч `["FA"]`)-д байхгүй; R2: CR-TAX-07-ийн `excluded_from_turnover = false`). Буцаалт ба кредит нот хасагдана (тэмдгээрээ). | mn-tax R4; FR-TAX-012; CMP-016; 11 §7 (ҮХ-ийн борлуулалт) | AT-TAX-083, GS-VAT-009 |
 | BR-TAX-84 | Босго `M(d)` = `GetParameter('vat.registration_threshold_mandatory', d, Report)`, `V(d)` = `…_voluntary`. НӨАТ төлөгч бус компанид: `T ≥ M` → `CROSSED` (W-TAX-02); `T ≥ 0.8 M` → `APPROACHING` (W-TAX-01); `T ≥ V` → `VOLUNTARY_ELIGIBLE` (мэдээлэл W-TAX-03); бусад `NONE`. НӨАТ төлөгчид: `T < M` → `BELOW_MANDATORY` (мэдээлэл W-TAX-04), бусад `NONE`. 80 %-ийн харьцаа нь UI-ийн тогтмол (хуулийн тоо биш). | FR-TAX-012 AC1/AC2; D-K5 | AT-TAX-084 |
 | BR-TAX-85 | 2027-07-01: `M` 50 сая → 400 сая. Үнэлгээ нь `d`-ийн `M`-ийг ашиглана (пропорциональ биш). Хариунд `crossedOn` = цонхонд `T(x) ≥ M(x)` болсон хамгийн эрт `x`; `crossedOn < 2027-07-01` ба одоогийн түвшин `CROSSED` биш бол "өмнөх босгыг {crossedOn}-нд давсан" тайлбар (эрх зүйн үр дагавар OQ-TAX-05). | D-K5; legal-parameters (a) | AT-TAX-085, GS-VAT-009 |
 | BR-TAX-86 | Өдөр бүр job `tax.vat_threshold.check` (06:00 Asia/Ulaanbaatar, компани тус бүр) ба `GET /tax/vat-threshold?asOf=`. Түвшин өөрчлөгдөхөд outbox `tax.vat_threshold.level_changed` (`idempotency_key = …:{companyId}:{level}:{thresholdParamId}` — нэг түвшинд нэг босгын хувилбарт нэг удаа). | 02 §4.2.5 `VatThresholdReached`; ADR-0012 | AT-TAX-086 |
@@ -712,7 +714,7 @@ DB guard: `trg_vat_entry_period` (`ERV01`): `vat_date` нь `OPEN` биш үед
 
 | ID | Дүрэм | Эх | Шалгах |
 |---|---|---|---|
-| BR-TAX-109 | Календарийн мөр параметрээс: НӨАТ (сар бүр, `vat_return_period.due_date`); хялбаршуулсан НӨАТ (улирал, ⚠); ААНОАТ улирлын тайлан (20), төлбөр (2027-оос ⚠), урьдчилгаа (25, ⚠), жилийн (02-10 → 2027-оос 03-05 ⚠); НХАТ (НӨАТ-ын хугацаатай ижил гэж үзнэ ⚠). `unverified` мөр ⚠-тэй. Амралтын өдрөөр шилжүүлэхгүй (OQ-TAX-13). | FR-TAX-018; mn-tax R17; mn-accounting §7; REQ-ACC-13 | AT-TAX-109 |
+| BR-TAX-109 | Календарийн мөр параметрээс: НӨАТ (сар бүр, `vat_return_period.due_date`); хялбаршуулсан НӨАТ (улирал, ⚠); ААНОАТ улирлын тайлан (20), төлбөр (2027-оос ⚠), урьдчилгаа (25, ⚠), жилийн (02-10 → 2027-оос 03-05 ⚠); НХАТ (НӨАТ-ын хугацаатай ижил гэж үзнэ ⚠). `unverified` мөр ⚠-тэй. Хүсэлтийн `[from, to]`-д **хугацаа (due)** нь орсон мөрийг буцаана; хугацааны параметрийг үе дууссаны дараагийн өдрөөр уншина (§5.18). Амралтын өдрөөр шилжүүлэхгүй (OQ-TAX-13). | FR-TAX-018; mn-tax R17; mn-accounting §7; REQ-ACC-13 | AT-TAX-109 |
 | BR-TAX-110 | Мөрийн төлөв өгөгдлөөс: НӨАТ-ын үе `SUBMITTED` → "Илгээсэн"; эс бөгөөс үлдсэн хоног (`due_date − бизнесийн огноо`). НӨАТ төлөгч бус компанид НӨАТ-ын мөр гарахгүй. | FR-TAX-018 AC1; 15 CUE-04 | AT-TAX-110 |
 
 ---
@@ -838,22 +840,27 @@ public sealed record VatLedgerLine(
 public interface IInputVatService            // §5.8
 {
     Task<ConfirmResult> ConfirmDeductibleAsync(ConfirmDeductibleCommand cmd, CancellationToken ct);
+    Task<ConfirmResult> UnconfirmAsync(UnconfirmDeductibleCommand cmd, CancellationToken ct);           // 07 BR-PUR-51 (Should); §5.8
     Task<PostingResult> RejectDeductionAsync(RejectDeductionCommand cmd, PostingMode mode, CancellationToken ct);
+    IAsyncEnumerable<UnconfirmedInputVat> ListUnconfirmedAsync(CancellationToken ct);                  // BR-TAX-50; 07 BR-PUR-52
 }
 public interface IVatReturnService           // §5.9–§5.11
 {
-    Task<VatStatementResult> CalculateAsync(Guid periodId, string statementName, CancellationToken ct);
-    Task<VatCloseResult> CloseAsync(VatCloseCommand cmd, PostingMode mode, CancellationToken ct);
+    Task<VatStatementResult> CalculateAsync(Guid periodId, string statementName, CancellationToken ct);  // lastVatEntryNo, scopeVersion
+    Task<VatCloseResult> CloseAsync(VatCloseCommand cmd, PostingMode mode, CancellationToken ct);       // mode = Preview → :preview-close
     Task<VatSubmitResult> SubmitAsync(Guid periodId, string submissionReference, CancellationToken ct);
     Task<VatReopenResult> ReopenAsync(Guid periodId, Guid? reasonCodeId, string reasonText, CancellationToken ct);
 }
-public interface IVatReturnQuery             // Reporting-ийн бүртгэл ба экспорт (§5.12)
+public sealed record VatCloseCommand(Guid PeriodId, DateOnly PostingDate, Guid? SettlementAccountId,
+                                     string? ExpectedScopeVersion, long? ExpectedLastVatEntryNo);       // BR-TAX-69, -72
+public interface IVatReturnQuery             // Reporting-ийн бүртгэл ба экспорт (§5.12), dashboard
 {
     IAsyncEnumerable<VatScopeEntry> GetScopeEntriesAsync(Guid periodId, CancellationToken ct);
+    Task<VatPeriodStatus> GetPeriodStatusAsync(Guid periodId, CancellationToken ct);                    // CUE-04, CUE-14
 }
 public interface IVatThresholdMonitor { Task<ThresholdStatus> EvaluateAsync(DateOnly asOf, CancellationToken ct); }   // §5.14
 public interface ICitHelper { Task<CitHelperResult> CalculateAsync(CitHelperRequest req, CancellationToken ct); }      // §5.17 (R2)
-public interface ITaxCalendar { Task<IReadOnlyList<TaxCalendarItem>> GetAsync(DateOnly from, DateOnly to, CancellationToken ct); }
+public interface ITaxCalendar { Task<IReadOnlyList<TaxCalendarItem>> GetAsync(DateOnly from, DateOnly to, CancellationToken ct); }  // §5.18
 ```
 
 Хэрэгжүүлэлт: `Erp.Tax.Domain` (цэвэр тооцоолол: `TaxCalculator`, `VatStatementEvaluator`, `SettlementPlanner`, `CitCalculator`), `Erp.Tax.Infrastructure` (SQL: `Sql/*.sql` embedded resource, writer, кэш), `Erp.Tax.Application` (use case, A/B үе).
@@ -940,7 +947,7 @@ public ResolvedVatSetup Resolve(Guid busId, Guid prodId, TaxDirection dir, DateO
     else
     {
         if (!registered && s.CalcType == "REVERSE_CHARGE")
-            throw Issue("tax.vat_calc_type_not_allowed", new { calcType = s.CalcType, reason = "COMPANY_NOT_VAT_REGISTERED" }); // OQ-TAX-07
+            throw Issue("tax.company_not_vat_registered", new { calcType = s.CalcType, date = vatDate });   // OQ-TAX-07; §8.1
         if (!registered)                                  { nd = 100m; reason = "NON_VAT_COMPANY"; }
         else if (co.RegimeAt(vatDate) == VatRegime.Simplified) { nd = 100m; reason = "SIMPLIFIED_REGIME"; }   // R2, BR-TAX-99
         else if (lineReason is not null)                  { nd = 100m; reason = lineReason; }               // BR-TAX-52
@@ -977,6 +984,8 @@ public TaxResult ComputeDocument(TaxDocument d)
         }
         if (l.VatDifference != 0m && (d.Direction == TaxDirection.Sale || !d.AllowVatDifference))
             b.Error(l, VatDiffCode(d, tooLarge: false));  // purchase.vat_difference_not_allowed (07) | gl.vat_difference_not_allowed (05); BR-TAX-26
+        if (l.VatDifference % P != 0m)                      // Allocate-ийн Σ = total баталгаа P-ийн үржвэр шаарддаг
+            b.Error(l, "api.validation_failed", new { field = "vatDifference", precision = P });
         if (l.CityTax is not null && d.Direction == TaxDirection.Sale && !d.Company.CityTaxEnabled)
             b.Error(l, "tax.city_tax_not_enabled");                                                                // BR-TAX-89
     }
@@ -1084,9 +1093,9 @@ public TaxResult ComputeDocument(TaxDocument d)
     foreach (var x in b.Lines())
     {
         bool needSales = d.Direction == TaxDirection.Sale && x.VatAmount != 0m;
+        decimal charged = x.Setup.CalcType == "REVERSE_CHARGE" ? x.SelfAssessedVat : x.VatAmount;   // §5.5-тай ижил
         bool needPurch = d.Direction == TaxDirection.Purchase
-                         && (x.VatAmount - x.NonDeductibleVat != 0m || x.SelfAssessedVat - x.NonDeductibleVat != 0m
-                             || x.Setup.CalcType == "FULL_VAT");
+                         && (charged - x.NonDeductibleVat != 0m || x.Setup.CalcType == "FULL_VAT");   // бүрэн хасагдахгүй NORMAL мөрөнд данс шаардахгүй
         if (needSales && x.Setup.SalesVatAccountId is null)    b.Error(x, "tax.sales_vat_account_missing");
         if (needPurch && x.Setup.PurchaseVatAccountId is null) b.Error(x, "tax.purchase_vat_account_missing");
         if (x.Setup.CalcType == "REVERSE_CHARGE" && x.Setup.ReverseChargeAccountId is null) b.Error(x, "tax.reverse_charge_account_missing");
@@ -1160,8 +1169,8 @@ public VatComposition Compose(PostingBufferRow row, string baseKey, VatPartyCont
     }
 
     // 3) VAT entry (BR-TAX-28..30, -46)
-    bool confirmed = !sale && (rc
-                     || (full && party.ExternalDocumentNo is not null && party.DocumentDate is not null)
+    bool confirmed = !sale && deductible != 0m && (rc                                          // amount = 0 entry → false (BR-TAX-46)
+                     || full                                                                    // мэдүүлэг заавал (§5.6, BR-TAX-46, -62)
                      || (!rc && !full && deductible != 0m && party.CorrectedInvoiceConfirmed)       // BR-TAX-36
                      || (!rc && !full && deductible != 0m && party.ConfirmInputVat                  // 07 BR-PUR-47: хүсэлт + эрх
                          && party.SupplierEbarimtId is not null));                                  // (эрхийг Purchases шалгаж тугийг өгнө)
@@ -1185,11 +1194,17 @@ public VatComposition Compose(PostingBufferRow row, string baseKey, VatPartyCont
         ctLine = new CityTaxLedgerLine(sale ? "SALE" : "PURCHASE", [baseKey], vatDate, ct,
                                        Base: row.CityTaxBase, Amount: row.CityTaxAmount, party);
     }
-    return new VatComposition(baseLine, vatGl, vatLine, ctGl, ctLine);
+    // 5) Суурь мөр 0 боловч НӨАТ ≠ 0 (ижил дансны +/− мөр buffer-т цэвэрлэгдээд, хуваарилалтын 1 нэгж үлдсэн; 05 BR-PST-25 нь 0 мөрийг хориглоно)
+    if (baseLine.Amount == 0m && vatGl.Count > 0)
+    {
+        baseLine = null;                                                                 // суурь G/L мөр бичигдэхгүй
+        vatLine = vatLine with { GlLineKeys = [vatGl[0].Key] };                          // VAT entry → VAT дансны мөр (gl_entry_no)
+    }
+    return new VatComposition(baseLine, vatGl, vatLine, ctGl, ctLine);                  // BaseLine nullable
 }
 ```
 
-Харилцагч/нийлүүлэгчийн мөр = −Σ(суурь + VAT + НХАТ мөр) (05 §5.7.1). Урвуу тооцоонд 1300 ба 2305 бие биеэ нөхөх тул өглөг = цэвэр дүн (BR-TAX-59).
+Харилцагч/нийлүүлэгчийн мөр = −Σ(суурь + VAT + НХАТ мөр) (05 §5.7.1). Урвуу тооцоонд 1300 ба 2305 бие биеэ нөхөх тул өглөг = цэвэр дүн (BR-TAX-59). Алхам 5 нь зөвхөн буфферийн `Amount = 0`, `VatAmount ≠ 0` мөрөнд (05 §5.7.1 нь гурвуулаа 0 мөрийг хасдаг) — тэнцэл харилцагчийн мөрөөр хадгалагдана.
 
 ### 5.6 VAT ledger writer (`VatLedgerWriter : ILedgerWriter, IReversibleLedger`, order 10)
 
@@ -1209,6 +1224,9 @@ public async Task<IReadOnlyList<PostingError>> ValidateLockedAsync(IPostingConte
     foreach (var l in lines.Where(l => l.EntryType == "PURCHASE" && l.DeductibleConfirmed && l.Setup.CalcType == "NORMAL"
                                        && l.Amount != 0m && l.SupplierEbarimtId is null))
         errs.Add(Err("tax.supplier_receipt_id_required"));                                    // DB CHECK-ийн өмнөх шалгалт
+    foreach (var l in lines.Where(l => l.EntryType == "PURCHASE" && l.Setup.CalcType == "FULL_VAT"
+                                       && (string.IsNullOrWhiteSpace(l.Party?.ExternalDocumentNo) || l.Party?.DocumentDate is null)))
+        errs.Add(Err("tax.customs_declaration_required"));                                    // BR-TAX-62 (мэдүүлгийн № ба огноо)
     return errs;
 }
 
@@ -1284,7 +1302,10 @@ public async Task<ConfirmResult> ConfirmDeductibleAsync(ConfirmDeductibleCommand
     //  WHERE entry_type = 'PURCHASE' AND vat_calculation_type = 'NORMAL' AND amount <> 0
     //    AND NOT deductible_confirmed AND NOT closed AND NOT reversed AND vat_return_period_id IS NULL
     if (entries.Count == 0) return ConfirmResult.NothingToConfirm;     // идемпотент
-    var existing = entries.Select(e => e.SupplierEbarimtId).Where(x => x is not null).Distinct().ToList();
+    // ДДТД-ийн нийцлийг зөвхөн НЭХЭМЖЛЭХИЙН entry-ээр шалгана; кредит нот өөрийн буцаалтын ДДТД-тэй байж болно (BR-TAX-36, -49)
+    var existing = entries.Where(e => e.DocumentType != "CREDIT_MEMO")
+                          .Select(e => e.SupplierEbarimtId).Where(x => x is not null).Distinct().ToList();
+    if (existing.Count > 1) throw Conflict("tax.supplier_receipt_id_mismatch", new { existing });   // SingleOrDefault-ийн exception-аас өмнө
     var ddtd = c.SupplierEbarimtId ?? existing.SingleOrDefault()
                ?? throw Validation("tax.supplier_receipt_id_required");
     if (existing.Any(x => x != ddtd)) throw Conflict("tax.supplier_receipt_id_mismatch", new { existing });
@@ -1293,7 +1314,7 @@ public async Task<ConfirmResult> ConfirmDeductibleAsync(ConfirmDeductibleCommand
     {
         await s.LedgerUpdateAsync("tax.vat_entry", e.EntryNo, new {
             deductible_confirmed = true, deductible_confirmed_at = now, deductible_confirmed_by = s.UserId,
-            supplier_ebarimt_id = ddtd }, ct);
+            supplier_ebarimt_id = e.SupplierEbarimtId ?? ddtd }, ct);                        // байгаа ДДТД-ийг дарахгүй
         if (await PeriodStatusAsync(e.VatDate, ct) is "CLOSED" or "SUBMITTED")
             lateWarnings.Add(Warn("W-TAX-10", new { e.EntryNo, e.VatDate }));                // BR-TAX-49
     }
@@ -1301,6 +1322,8 @@ public async Task<ConfirmResult> ConfirmDeductibleAsync(ConfirmDeductibleCommand
     return new ConfirmResult(entries.Select(e => e.EntryNo).ToList(), lateWarnings);
 }
 ```
+
+**Цуцлах** (`IInputVatService.UnconfirmAsync`, `:unconfirm`, 07 BR-PUR-51, Should): `fn_lock_company_posting`-ийн дор; entry бүр `NOT closed`, `vat_return_period_id IS NULL`, `NOT reversed` (эс бөгөөс `tax.vat_entry_closed`); `deductible_confirmed = false`, `_at`/`_by` = NULL (whitelist), `supplier_ebarimt_id` хэвээр. Entry нэмэгдэхгүй тул нээлттэй ТТ-03а-г `scopeVersion` (BR-TAX-69) хуучруулна.
 
 **R2 автомат.** EBarimt нь импортын тулгалтын дараа outbox `ebarimt.purchase_receipts.imported` (`{ companyId, importRunId, matched: [{ receiptId, ddtd, purchInvHeaderId, autoConfirm }] }`) нийтэлнэ. Tax-ийн inbox handler `autoConfirm = true` мөр бүрд дээрх `ConfirmDeductibleAsync`-ийг шинэ transaction-д дуудна (12 PUR-12).
 
@@ -1334,6 +1357,9 @@ sealed class RejectDeductionSource(Guid purchInvoiceId, DateOnly postingDate, Gu
 
 - Эсрэг VAT entry-ийн `vat_date` = эх entry-ийн `vat_date` биш, **`postingDate`** (одоогийн нээлттэй НӨАТ-ын үе; хаагдсан үед entry оруулах боломжгүй, `ERV01`). Хос нь `closed = true` тул дараагийн хаалтад зөвхөн оноогдож, G/L-ийн нийлбэрт орохгүй (BR-TAX-73), ТТ-03а-гийн мөр 11 (мэдээлэл)-д хасагдахгүй НӨАТ болж харагдана.
 - Нийлүүлэгчийн баримт eBarimt-д `REJECTED` болсон бол (12 §16.1) энэ үйлдлийг UI санал болгоно.
+- `RejectableEntries` нь нэхэмжлэх **ба** түүнийг засах баталгаажаагүй кредит нотын entry-г хамт авна (кредит нотын entry сөрөг тул Дт/Кт эсрэг). Бүрэн кредит нотлогдсон нэхэмжлэхэд ваучерын мөрүүд бие биеэ нөхөх ч entry бүр хос авч хаагдана (BR-TAX-50-ийн жагсаалтаас гарна).
+- Суурь G/L данс одоо `blocked` эсвэл `account_type ≠ POSTING` бол engine-ийн `gl.account_blocked`/`gl.account_not_posting` (05) — хэрэглэгч дансыг түр нээх ёстой; Tax өөр дансанд шилжүүлэхгүй. Хос мөр `SystemGenerated` тул `direct_posting`-ийн шалгалтад орохгүй (1300).
+- Ваучерын мөр `gen_posting_type = NONE`, НӨАТ-ын бүлэггүй (VAT entry-г writer шууд бичнэ; 05 R-VAT-17-ийн журналын шалгалт хамаарахгүй).
 
 ### 5.9 ТТ-03а-гийн тооцоо (`IVatReturnService.CalculateAsync`)
 
@@ -1405,7 +1431,7 @@ public VatStatementResult Evaluate(IReadOnlyList<StatementLine> lines, IReadOnly
 
 - `RowFilter`: `|`-ээр тусгаарласан `row_no`-ууд; `a..b` нь `row_no = a` мөрөөс `row_no = b` мөр хүртэлх **`line_no`-ийн** муж (BC-ийн Code-ийн тэмдэгт мөрийн харьцуулалт `"7".."11"`-ийг хоосон болгодог тул). Олдохгүй `row_no` → `tax.vat_statement_line_invalid`.
 - `accountTotal(l)` = `SELECT sum(amount) FROM gl.gl_entry WHERE gl_account_id IN (шүүлтийн данс) AND vat_date BETWEEN @start AND @end` (`calculate_with`-ийг дээрх мөр хэрэглэнэ).
-- Хариу: мөр бүр (`value`, `printed`, `drillFilter` = `{ entryType, vatBus, vatProd, vatCategory, onlyConfirmed, periodScope }`), `lastVatEntryNo` (`SELECT max(entry_no) FROM tax.vat_entry`), `unconfirmedInputVat` (BR-TAX-50-ийн тоо ба `Σ amount`), анхааруулга (W-TAX-05, W-TAX-06, W-TAX-09). Хадгалахгүй (UX-VAT-02).
+- Хариу: мөр бүр (`value`, `printed`, `drillFilter` = `{ entryType, vatBus, vatProd, vatCategory, onlyConfirmed, periodScope }`), `lastVatEntryNo` (`SELECT max(entry_no) FROM tax.vat_entry`), `scopeVersion` (BR-TAX-69; scope-ийн агрегатын ижил query-д `count(*)`, `sum`, `max(deductible_confirmed_at)`-ийг нэмж тооцно), `unconfirmedInputVat` (BR-TAX-50-ийн тоо ба `Σ amount`), анхааруулга (W-TAX-05, W-TAX-06, W-TAX-09). Хадгалахгүй (UX-VAT-02).
 - Drill-down: `GET /vat-entries?periodScope={periodId}&entryType=…&vatBus=…` нь ижил scope-ийн entry жагсаалт.
 
 ### 5.10 НӨАТ-ын хаалт (`:close`, `:preview-close`)
@@ -1422,15 +1448,15 @@ sequenceDiagram
     participant SW as VatSettlementDocumentWriter (Tax)
     participant VW as VatLedgerWriter (Tax)
     participant DB as PostgreSQL
-    U->>API: POST /vat-return-periods/{id}:close {postingDate, settlementAccountId?, expectedLastVatEntryNo} (Idempotency-Key)
+    U->>API: POST /vat-return-periods/{id}:close {postingDate, settlementAccountId?, expectedScopeVersion, expectedLastVatEntryNo?} (Idempotency-Key)
     API->>VR: Close(cmd)
     Note over VR: A үе: эрх, НӨАТ төлөгч, үеийн төлөв, өмнөх үе, огноо, данс (бүгдийг цуглуулна)
     VR->>PE: PostAsync(VatSettlementSource, mode)
     PE->>DB: fn_lock_company_posting
-    PE->>VR: BuildAsync (түгжээний дор): үе FOR UPDATE, lastVatEntryNo, scope, бүлэглэл → SettlementPlan
+    PE->>VR: BuildAsync (түгжээний дор): үе FOR UPDATE + status, scopeVersion (BR-TAX-69), scope, бүлэглэл → SettlementPlan
     alt G/L мөр байхгүй
         VR-->>PE: null (NothingToPost)
-        VR->>DB: fn_ledger_update vat_return_period_id (оноолт), status = CLOSED
+        VR->>DB: fn_ledger_update vat_return_period_id (оноолт), status = CLOSED, outbox tax.vat_period.closed, audit VAT_PERIOD_CLOSE
     else G/L мөртэй
         PE->>DB: GJ дугаар, gl_transaction, gl_entry
         PE->>VW: WriteAsync: SETTLEMENT entry, эх entry closed/closed_by/vat_return_period_id
@@ -1493,8 +1519,9 @@ public SettlementPlan Plan(VatPeriod p, IReadOnlyList<ScopeEntry> scope, Func<st
 
 - `Settle(...)` мөр: `Origin = SystemGenerated`, `GenPostingType = "SETTLEMENT"` (VAT дансны мөрт), `VatDate = p.EndingDate`, dimension set 0.
 - **Ваучер:** `PostingVoucher { Key = "V1", Numbering = FromSeries(GENERAL template-ийн posting цуврал), DocumentType = "NONE", PostingDate = postingDate, SourceCode = "VATSTMT", Description = "НӨАТ-ын хаалт 2027-05" }`; R2-т НХАТ-ын хаалт `V2` (`CITYTAXSTMT`, §5.15) ижил `PostingDocument`-д (05 BR-PST-02: нэг run).
-- **`VatSettlementDocumentWriter : IPostedDocumentWriter`**: `LockSourceAsync` — `SELECT … FROM tax.vat_return_period WHERE id = @p FOR UPDATE`, `status = 'OPEN'`, `max(entry_no) = expectedLastVatEntryNo` (`tax.vat_statement_stale`); `WriteAsync` — `assignOnly` бүрд `fn_ledger_update('tax.vat_entry', n, '{"vat_return_period_id": P}')`, `UPDATE tax.vat_return_period SET status = 'CLOSED', settlement_transaction_no = ctx.TransactionNo("V1"), updated_at/by`, outbox.
-- **G/L мөргүй тохиолдол** (жишээ нь зөвхөн 0 %-ийн борлуулалт, эсвэл бүх бүлгийн Σ = 0): `BuildAsync` нь `null` буцааж, `VatReturnService` ижил transaction-д (advisory lock хэвээр) оноолт ба төлөвийг шууд бичнэ; `settlement_transaction_no = NULL`.
+- **`BuildAsync`** (хоёр замд ч, engine-ийн advisory lock-ийн дор): `SELECT … FROM tax.vat_return_period WHERE id = @p FOR UPDATE`; `status = 'OPEN'` (`tax.vat_period_not_open`); scope-ийн `scopeVersion`-ийг дахин тооцож `expectedScopeVersion`-тэй (байхгүй бол `max(entry_no)`-ийг `expectedLastVatEntryNo`-тэй) харьцуулна (`tax.vat_statement_stale`); `setupByCodes` нь блоклогдсон setup мөрийг ч уншина (BR-TAX-03), олдохгүй бол `tax.vat_posting_setup_missing`.
+- **`VatSettlementDocumentWriter : IPostedDocumentWriter`**: `LockSourceAsync` — дээрх шалгалтыг давтана (ижил transaction, хямд); `WriteAsync` — `assignOnly` бүрд `fn_ledger_update('tax.vat_entry', n, '{"vat_return_period_id": P}')`, `UPDATE tax.vat_return_period SET status = 'CLOSED', settlement_transaction_no = ctx.TransactionNo("V1"), updated_at/by`, outbox.
+- **G/L мөргүй тохиолдол** (жишээ нь зөвхөн 0 %-ийн борлуулалт, эсвэл бүх бүлгийн Σ = 0, R2-т НХАТ-ын `V2` ч хоосон): `BuildAsync` нь `null` буцааж (engine `NothingToPost`, 05 §5.13), `VatReturnService` ижил transaction-д (advisory lock ба `FOR UPDATE` хэвээр) оноолт, `status = 'CLOSED'`, outbox `tax.vat_period.closed` (`settlementTransactionNo = null`), `audit.security_event` `VAT_PERIOD_CLOSE`-ийг өөрөө бичнэ; `settlement_transaction_no = NULL`. Preview горимд энэ замыг алгасна (engine `MarkRollbackOnly`).
 - **Preview:** ижил код; G/L-тэй бол engine-ийн preview (05 BR-PST-52, дугаар `***`), G/L-гүй бол төлөвлөгөөг бичихгүйгээр буцаана.
 
 ### 5.11 Илгээсэн гэж тэмдэглэх ба дахин нээх
@@ -1508,10 +1535,12 @@ if p.status = 'SUBMITTED': raise 409 tax.vat_period_already_submitted
 if p.status <> 'CLOSED':   raise 409 tax.vat_period_not_closed
 if trim(@ref) = '' or len(@ref) > 100: raise 422 tax.submission_reference_required
 UPDATE tax.vat_return_period SET status = 'SUBMITTED', submitted_at = now(), submitted_by = @user, submission_reference = @ref
+stmt := VatReturnService.Calculate(p.id, 'TT03A')                                  -- scope = vat_return_period_id = p (BR-TAX-66)
+snapshot := { rows: [(line_no, row_no, value, printed)], scopeVersion, sha256(canonical JSON) }   -- BR-TAX-78, mn-tax R19
 effects := []
 for ap in gl.accounting_period overlapping [p.starting_date, p.ending_date]:
     if ap.status = 'CLOSED': effects += { type: 'SUGGEST_GL_PERIOD_LOCK', accountingPeriodId: ap.id }   -- Z-TAX-04
-INSERT outbox tax.vat_period.submitted; audit.security_event 'VAT_PERIOD_SUBMITTED'
+INSERT outbox tax.vat_period.submitted; audit.security_event 'VAT_PERIOD_SUBMITTED' (details = snapshot; CR-TAX-15-ийн дараа tax.vat_return_snapshot)
 COMMIT → 200 { period, effects }
 ```
 
@@ -1524,13 +1553,15 @@ if p.status = 'SUBMITTED': raise 409 tax.vat_period_submitted
 if p.status <> 'CLOSED':   raise 409 tax.vat_period_not_closed                       -- аль хэдийн OPEN
 if exists later period with status IN ('CLOSED','SUBMITTED'): raise 409 tax.vat_period_reopen_not_latest
 if len(trim(reasonText)) < 10: raise 422 tax.reopen_reason_required
-if p.settlement_transaction_no is not null:
-    IReversalService.Reverse(transactionNo = p.settlement_transaction_no, allowedSourceCodes = ['VATSTMT', 'CITYTAXSTMT'],
+txs := [p.settlement_transaction_no, p.city_tax_settlement_transaction_no /* R2, CR-TAX-06 */] (NULL-ийг хасна)
+if txs is not empty:                                                                  -- нэг run (05 BR-PST-02): хоёр гүйлгээг хамт
+    IReversalService.Reverse(transactionNos = txs, allowedSourceCodes = ['VATSTMT', 'CITYTAXSTMT'],
                              reasonCodeId, description = 'НӨАТ-ын хаалт цуцлав')   -- эх огноо; gl.period_closed боломжтой
     -- VatLedgerWriter.ReverseAsync: SETTLEMENT толин тусгал; эх entry closed = false (BR-TAX-79)
-for e in tax.vat_entry WHERE vat_return_period_id = p.id:
-    fn_ledger_update('tax.vat_entry', e.entry_no, '{"vat_return_period_id": null}')
-UPDATE tax.vat_return_period SET status = 'OPEN', settlement_transaction_no = NULL
+    -- CityTaxLedgerWriter.ReverseAsync (R2): SETTLEMENT толин тусгал; эх city_tax_entry closed = false
+for e in tax.vat_entry WHERE vat_return_period_id = p.id AND entry_type IN ('SALE','PURCHASE'):
+    fn_ledger_update('tax.vat_entry', e.entry_no, '{"vat_return_period_id": null}')   -- SETTLEMENT entry түүхэнд id-гаа хадгална
+UPDATE tax.vat_return_period SET status = 'OPEN', settlement_transaction_no = NULL   -- R2: city_tax_settlement_transaction_no = NULL
 INSERT outbox tax.vat_period.reopened (+ notify); audit.security_event 'VAT_PERIOD_REOPEN' (шалтгаантай)
 COMMIT
 ```
@@ -1553,13 +1584,15 @@ Reporting модуль `IVatReturnQuery.GetScopeEntriesAsync(periodId)` (BR-TAX-
 
 **ТТ-03а-6 (борлуулалт).** SALE scope, баримт тутамд: харилцагчийн ТТД (хувь хүнд хоосон, "Иргэд" гэж өдрөөр нэгтгэнэ), нэр, eBarimt-ийн ДДТД (EBarimt contract: сүүлийн `SUCCESS` баримт), огноо, ангилал, суурь, НӨАТ. Нийлбэр = мөр 1–5.
 
-**Экспорт** (`POST /vat-return-periods/{id}:export` → 202, job `tax.vat_return.export`, max_attempts 3, timeout 2 мин): XLSX (ТТ-03а мөрийн дарааллаар + 2 хавсралт хуудас) ба CSV (хавсралт бүрд). Файлын нэр `TT03A_{ТТД}_{YYYYMM}.xlsx`. Job-ийн параметрт `lastVatEntryNo`; файлын эхний мөрөнд "Тооцоолсон: {цаг}, бичилт ≤ {lastVatEntryNo}" (D-E8; 02 §9.6; `ITaxFilingChannel = ManualExportChannel`).
+**Экспорт** (`POST /vat-return-periods/{id}:export` → 202, job `tax.vat_return.export`, max_attempts 3, timeout 2 мин): XLSX (ТТ-03а мөрийн дарааллаар + 2 хавсралт хуудас) ба CSV (хавсралт бүрд). Файлын нэр `TT03A_{ТТД}_{YYYYMM}.xlsx`. Job-ийн параметрт `lastVatEntryNo` ба `scopeVersion` (job эхлэхэд дахин тооцож зөрвөл `tax.vat_statement_stale`-аар унана); файлын эхний мөрөнд "Тооцоолсон: {цаг}, бичилт ≤ {lastVatEntryNo}, хувилбар {scopeVersion}" (D-E8; 02 §9.6; `ITaxFilingChannel = ManualExportChannel`).
 
 ### 5.13 eBarimt-тэй НӨАТ-ын тулгалт (FR-TAX-016)
 
 ```text
-for doc in SALE scope of P grouped by (document_type, document_no):
-    ledgerVat := −Σ amount; ledgerTotal := −Σ (base + amount) + city tax
+for doc in SALE scope of P WHERE source_code = 'SALES' AND document_type IN ('INVOICE','CREDIT_MEMO')
+        grouped by (document_type, document_no):                        -- журналын SALE entry-д eBarimt байхгүй → тусдаа "журналын НӨАТ" (мэдээлэл)
+    ledgerVat := −Σ amount                                              -- кредит нотод сөрөг; r.totalVat-ийг ижил тэмдэгт хөрвүүлнэ
+    ledgerTotal := −Σ (base + amount) − Σ city_tax_entry.amount (ижил document_no, R2)   -- city tax entry SALE < 0
     r := IEbarimtReceiptQuery.GetNetStateBySourceDocument(doc)          -- 12 §12.3 (засварын гинжийн цэвэр төлөв)
     if r is null and company eBarimt enabled:   issue NO_RECEIPT
     else if r.status <> 'SUCCESS':              issue STATUS_{r.status}   (PENDING, SENT, ERROR, UNKNOWN)
@@ -1576,15 +1609,15 @@ AC: 3-р сарын нэхэмжлэхийн НӨАТ 1 000 000, `SUCCESS` ба�
 WITH daily AS (
     SELECT e.vat_date AS d, sum(-(e.base + e.non_deductible_base)) AS t
       FROM tax.vat_entry e
-      JOIN tax.vat_bus_posting_group  b ON b.company_id = e.company_id AND b.code = e.vat_bus_posting_group
-      JOIN tax.vat_prod_posting_group p ON p.company_id = e.company_id AND p.code = e.vat_prod_posting_group
-      JOIN tax.vat_posting_setup s ON s.company_id = e.company_id
-                                  AND s.vat_bus_posting_group_id = b.id AND s.vat_prod_posting_group_id = p.id
+      LEFT JOIN tax.vat_bus_posting_group  b ON b.company_id = e.company_id AND b.code = e.vat_bus_posting_group
+      LEFT JOIN tax.vat_prod_posting_group p ON p.company_id = e.company_id AND p.code = e.vat_prod_posting_group
+      LEFT JOIN tax.vat_posting_setup s ON s.company_id = e.company_id
+                                       AND s.vat_bus_posting_group_id = b.id AND s.vat_prod_posting_group_id = p.id
      WHERE e.company_id = platform.current_company_id()
        AND e.entry_type = 'SALE'
        AND e.vat_date >  (@asOf - interval '24 months')::date
        AND e.vat_date <= @asOf
-       AND s.vat_category IN ('VAT10', 'VAT0')                                   -- мөн чанараараа татвар ногдох (BR-TAX-83)
+       AND coalesce(s.vat_category, e.vat_category) IN ('VAT10', 'VAT0')         -- мөн чанараараа татвар ногдох (BR-TAX-83); setup-гүй бол entry-ийн ангилал
        AND coalesce(e.gen_prod_posting_group, '') <> ALL (@excluded)              -- R1: ҮХ; R2: AND NOT e.excluded_from_turnover
      GROUP BY e.vat_date)
 SELECT x.d::date AS day,
@@ -1612,7 +1645,8 @@ public async Task<ThresholdStatus> EvaluateAsync(DateOnly asOf, CancellationToke
     foreach (var x in series)
         if (x.Turnover >= _params.GetParameter("vat.registration_threshold_mandatory", x.Day, ParameterUse.Report).RequireNumeric())
         { crossedOn = x.Day; break; }
-    return new ThresholdStatus(asOf, T, m, M.Id, M.IsVerified, v, decimal.Round(T / m * 100m, 2), level, crossedOn, registered);
+    return new ThresholdStatus(asOf, T, m, M.Id, M.IsVerified, v,
+        decimal.Round(T / m * 100m, 2, MidpointRounding.AwayFromZero), level, crossedOn, registered);   // ToEven хориотой (No_bankers_rounding)
 }
 ```
 
@@ -1673,10 +1707,10 @@ public async Task<CitHelperResult> CalculateAsync(CitHelperRequest q, Cancellati
                 + await _fa.TaxDepreciationDifferenceAsync(y0, e, ct)                                // R2 ҮХ (байхгүй бол 0)
                 + q.ManualAdjustments.Sum(a => a.Amount);
     decimal ti = pbt + adj;
-    decimal lossUsed = LossOffset(ti, q.PriorLosses, y0);                                          // ⚠ unverified параметр
+    decimal lossUsed = LossOffset(ti, q.PriorLosses, y0);                                          // §6.15; ⚠ unverified параметр
     decimal tiAfterLoss = Math.Max(0m, ti - lossUsed);
     decimal prevYearRev = await PriorYearRevenueAsync(q.Year - 1, ct);                             // эрхийн босгод
-    var std = Banded(tiAfterLoss, y0);                                                             // §6.14
+    var std = Banded(tiAfterLoss, y0);                                                             // §6.15
     var result = new CitHelperResult(q, rev, pbt, adj, ti, lossUsed, tiAfterLoss,
         Standard: std,
         Credit90: Eligible("cit.credit_90pct_threshold", prevYearRev, y0) ? MoneyMath.Round(std * (1m - Num("cit.credit_90pct_rate", y0)), _P) : null,
@@ -1696,18 +1730,26 @@ public async Task<CitHelperResult> CalculateAsync(CitHelperRequest q, Cancellati
 ### 5.18 Татварын календарь (FR-TAX-018)
 
 ```text
+-- Дүрэм: мөр нь ХУГАЦААГААР шүүгдэнэ — due ∈ [from, to] (хоёр зах орно). Хугацааны параметрийн asOf = тайлагнах үеийн
+-- дараагийн өдөр (үе дууссаны дараа мөрдөгдөх журам; BR-TAX-13). Хугацаа null (тодорхойгүй) мөр: үеийн end + 1 ∈ [from, to] бол.
 items := []
-if company VAT-registered (Standard):  for P in vat_return_period overlapping [from, to+2 months]:
-    items += { kind: 'VAT_RETURN', form: 'ТТ-03а', period: P, due: P.due_date, verified: param(vat.return_due_day).isVerified,
-               status: P.status = 'SUBMITTED' ? 'DONE' : daysLeft(P.due_date) }
+if company VAT-registered (Standard):
+    for P in vat_return_period WHERE due_date BETWEEN from AND to:
+        items += { kind: 'VAT_RETURN', form: 'ТТ-03а', period: P, due: P.due_date,
+                   verified: param('vat.return_due_day', P.ending_date + 1).isVerified,
+                   status: P.status = 'SUBMITTED' ? 'DONE' : daysLeft(P.due_date) }
 if Simplified (R2): улирлын P, due = null (⚠ "хугацаа тодорхойгүй")
-for quarter Q ending in [from − 1 month, to]:                                     -- ААНОАТ (R2-т тайлан; R1-д календарь л)
-    items += { kind: 'CIT_QUARTERLY_RETURN', form: 'ТТ-02', due: firstDayOfNextMonth(Q.end) + (cit.quarterly_return_due_day − 1) }
-    if param cit.quarterly_payment_due effective: items += { kind: 'CIT_QUARTERLY_PAYMENT', due: lastDay(nextMonth(Q.end)), verified: false }
-for month M: if param cit.advance_payment_due_day: items += { kind: 'CIT_ADVANCE', due: M-25, verified: false }
-items += { kind: 'CIT_ANNUAL', due: date(Y+1, cit.annual_return_due[MM-DD] at Y+1-01-01) }
-if city tax payer (R2): items += { kind: 'CITY_TAX', due: same as VAT due, verified: false }   -- OQ-TAX-09
-return items ordered by due
+for quarter Q with Q.end ∈ [from − 2 months, to]:                                -- ААНОАТ (R2-т тайлан; R1-д календарь л); due нь Q.end-ээс ≤ 1 сарын дараа
+    a := Q.end + 1
+    d := firstDayOfNextMonth(Q.end) + (param('cit.quarterly_return_due_day', a) − 1)
+    if d ∈ [from, to]: items += { kind: 'CIT_QUARTERLY_RETURN', form: 'ТТ-02', due: d, verified: … }
+    if TryParam('cit.quarterly_payment_due', a, Report):                            -- 2027-01-01-нээс (unverified)
+        d := lastDay(month(a)); if d ∈ [from, to]: items += { kind: 'CIT_QUARTERLY_PAYMENT', due: d, verified: false }
+for month M with day 25 ∈ [from, to]: if TryParam('cit.advance_payment_due_day', firstDay(M), Report):
+    items += { kind: 'CIT_ADVANCE', due: date(M, value), verified: false }
+for Y: d := date(Y+1, param('cit.annual_return_due', (Y+1)-01-01)[MM-DD]); if d ∈ [from, to]: items += { kind: 'CIT_ANNUAL', year: Y, due: d }
+if city tax payer (R2): VAT_RETURN-тэй ижил P ба due-аар { kind: 'CITY_TAX', verified: false }   -- OQ-TAX-09
+return items ordered by (due, kind)
 ```
 
 Амралтын өдрөөр хугацааг шилжүүлэхгүй (OQ-TAX-13). `tax.filing_extension_max_days` нь зөвхөн тайлбар.
@@ -1718,11 +1760,12 @@ return items ordered by due
 |---|---|---|---|---|
 | Баримт/журнал батлах (НӨАТ-ын мөр) | Posting engine-ийн нэг transaction (05) | `fn_lock_company_posting`; эх ноорог `FOR UPDATE` | `Idempotency-Key` (05 BR-PST-62) | Тийм (05) |
 | Баталгаажуулалт (`purchase-receipts/{id}:confirm`) | Нэг transaction | `fn_lock_company_posting` (хаалттай давхцахгүй) | `Idempotency-Key`; байгалийн: баталгаажсан → no-op | Үгүй |
+| Баталгаажуулалт цуцлах (`:unconfirm`, Should) | Нэг transaction | `fn_lock_company_posting` | `Idempotency-Key`; байгалийн: аль хэдийн `false` → no-op | Үгүй |
 | `input-vat:write-off` | Engine run (`VATADJ`) | Engine | `Idempotency-Key`; байгалийн: entry хаагдсан → 409 | Тийм |
 | `:close` | Engine run (`VATSTMT` [+`CITYTAXSTMT`]) эсвэл G/L-гүй шууд бичилт | Engine + `vat_return_period FOR UPDATE` | `Idempotency-Key`; байгалийн: `CLOSED` → `409 tax.vat_period_not_open` | `:preview-close` |
 | `:reopen` | `IReversalService` run + оноолтын бичилт | Engine + `FOR UPDATE` | `Idempotency-Key`; байгалийн: `OPEN` → 409 | Үгүй |
 | `:submit` | Нэг transaction | `fn_lock_company_posting` + `FOR UPDATE` | `Idempotency-Key`; байгалийн: `SUBMITTED` → 409 | Үгүй |
-| `:export` | Job (`tax.vat_return.export`) | Үгүй (уншина) | Job-ийн түлхүүр `(periodId, lastVatEntryNo)` — ижил бол өмнөх файлыг буцаана | — |
+| `:export` | Job (`tax.vat_return.export`) | Үгүй (уншина, `REPEATABLE READ`) | Job-ийн түлхүүр `(periodId, scopeVersion)` — ижил бол өмнөх файлыг буцаана (`lastVatEntryNo` дангаараа баталгаажуулалтыг илрүүлэхгүй) | — |
 | Босгын job | Job transaction | Үгүй | Outbox `idempotency_key` | — |
 | `GET /reports/vat-return`, бүртгэл, ААНОАТ | Уншина (`REPEATABLE READ`, `READ ONLY`) | Үгүй | — | — |
 
@@ -1782,7 +1825,7 @@ Base_g = G_g − VAT_g − CT_g
 VAT_i, CT_i: running remainder (жин CLA_i);  Amount_i = CLA_i − VAT_i − CT_i;  AIV_i = Amount_i + VAT_i
 ```
 
-**Жишээ 6.3-A:** 3 мөр × 1 005.00, VAT10, НХАТ-гүй. `G = 3 015.00`, `VAT = RV(274.090909) = 274.09`, `Base = 2 740.91`. Хувь хэмжээ 91.363636: мөр 1 → 91.36 (rem +0.003636), мөр 2 → R(91.367273) = 91.37 (rem −0.002727), мөр 3 → R(91.360909) = 91.36. Σ = 274.09 ✓. Amount = 913.64 / 913.63 / 913.64 (Σ 2 740.91).
+**Жишээ 6.3-A:** 3 мөр × 1 005.00, VAT10, НХАТ-гүй. `G = 3 015.00`, `VAT = RV(274.090909) = 274.09`, `Base = 2 740.91`. Хуваарилах нь **бөөрөнхийлсөн** `VAT_g`: хувь хэмжээ `274.09 × 1 005/3 015 = 91.363333`: мөр 1 → 91.36 (rem +0.003333), мөр 2 → R(91.366667) = 91.37 (rem −0.003333), мөр 3 → R(91.360000) = 91.36. Σ = 274.09 ✓. Amount = 913.64 / 913.63 / 913.64 (Σ 2 740.91).
 
 **Жишээ 6.3-B** (FR-TAX-005 AC2): 33 000.00 ба 13 993.00 → `G = 46 993.00`, `VAT = R(4 272.090909) = 4 272.09`, `Base = 42 720.91`; мөр 1 = R(2 999.99936) = 3 000.00, мөр 2 = 1 272.09 (06 Жишээ 6-B-тэй ижил).
 
@@ -1791,7 +1834,7 @@ VAT_i, CT_i: running remainder (жин CLA_i);  Amount_i = CLA_i − VAT_i − C
 ```
 Сөрөг бүлэг (−) эхэлнэ:  exact⁻ = W⁻ × r/100;  VAT⁻ = RV(exact⁻);  carry = exact⁻ − VAT⁻
 Эерэг бүлэг (+):          VAT⁺ = RV(W⁺ × r/100 + carry)
-Баталгаа: VAT⁻ + VAT⁺ = RV((W⁻ + W⁺) × r/100)  (NEAREST үед, бүлэг бүр нэг тэмдэгтэй)
+Баталгаа: VAT⁻ + VAT⁺ = RV((W⁻ + W⁺) × r/100)  (NEAREST үед, бүлэг бүр нэг тэмдэгтэй; онцгой: exact⁺ + carry яг ±P/2 дээр тэмдэг солигдвол P-ээр зөрж болно — тест PBT-TAX-02 зөвшөөрнө)
 ```
 
 Жишээ (06 Жишээ 6-C): −100.03 ба +1 000.05 → `VAT⁻ = −10.00` (carry −0.003), `VAT⁺ = R(100.005 − 0.003) = 100.00` → нийт 90.00 = R(900.02 × 0.1) ✓.
@@ -1872,7 +1915,7 @@ Seed: мөр 14 = value(2) + value(13) + value(12) = −Σamount(SALE, VAT10) + 
 NORMAL/FULL_VAT:  VAT данс += −sa;                         net += sa
 REVERSE_CHARGE:   1300 += −sa;  2305 += sa + sna;          net += −sna
 Хаалтын данс (2310) += net       (net < 0 → төлөх Кт; net > 0 → буцаан авах Дт)
-Σ ваучер = Σ(−sa) + Σ_RC(sa + sna − sa) ... = 0  (тэнцэл)
+Σ ваучер = Σ_N(−sa) + Σ_RC(−sa + sa + sna) + net,  net = Σ_N sa − Σ_RC sna  ⇒  Σ ваучер = 0  (N = NORMAL ба FULL_VAT бүлэг)
 Төлөх НӨАТ = −net = ТТ-03а мөр 14 (seed загварт; зөрвөл W-TAX-13)
 Инвариант (хаалтын дараа): Σ gl(2300) = Σ amount(SALE, ¬closed); Σ gl(1300) = Σ amount(PURCHASE, ¬closed); Σ gl(2305) = −Σ(amount + nd)(RC, ¬closed)
 ```
@@ -1909,7 +1952,10 @@ Payable = R(r/100 × S × (1 − share));   D = O − Payable
 Tax(TI) = Σ_k r_k × max(0, min(TI, upper_k) − lower_k)   (TI ≤ 0 → 0);  R(·)
 CREDIT_90:   Net = R(Tax × (1 − cit.credit_90pct_rate))
 ONE_PERCENT: Net = R(Rev × cit.turnover_regime_rate)
-Улирлын төлөх = Net(E) − Net(E_prev)
+Алдагдал (LossOffset, ⚠ хоёр параметр unverified → Report):
+  eligible = Σ L_v  (хэрэглэгчийн оруулсан өмнөх оны алдагдал L_v > 0, Y − v ≤ cit.loss_carryforward_years, ашиглагдаагүй үлдэгдэл)
+  lossUsed = TI ≤ 0 ? 0 : min(eligible, R(TI × cit.loss_offset_cap_ratio));   хамгийн эртний он эхэлж хэрэглэнэ (FIFO)
+Улирлын төлөх = Net(E) − Net(E_prev)   (сөрөг бол 0 биш, сөрөг утгаараа харуулна — илүү төлсөн)
 ```
 
 | TI | 2026 (`r2 = 0.25`, `U2` байхгүй) | 2027 (`r2 = 0.15`, `U2 = 10 тэрбум`, `r3 = 0.25`) |
@@ -2016,7 +2062,7 @@ VAT entry 408: PURCHASE, NOVAT, `base` 100 000.00, `amount` 0. VAT entry 409: PU
 
 (в) Гаальд төлөх, `BP-2027-00052`, 2027-05-21: 2365 Дт 300 000.00 / 1110 Кт 300 000.00 (НӨАТ-гүй).
 
-Хувилбар (журнал): гаалийн НӨАТ-ыг нийлүүлэгчгүйгээр банкнаас шууд — төлбөрийн журналын мөр: данс 1300, `PURCHASE`, IMPORT × CUSTOMS_VAT, дүн 200 000.00, харьцсан данс `BANK01`, `external_document_no = 'ГМ-2027-000123'` → 1300 Дт 200 000.00 / 1110 Кт 200 000.00, VAT entry (`base` 0, `amount` 200 000.00).
+Хувилбар (журнал): гаалийн НӨАТ-ыг нийлүүлэгчгүйгээр банкнаас шууд — төлбөрийн журналын мөр: данс 1300, `PURCHASE`, IMPORT × CUSTOMS_VAT, дүн 200 000.00, харьцсан данс `BANK01`, `external_document_no = 'ГМ-2027-000123'`, `document_date = 2027-05-20` (хоёулаа заавал, BR-TAX-62) → 1300 Дт 200 000.00 / 1110 Кт 200 000.00, VAT entry (`base` 0, `amount` 200 000.00, `deductible_confirmed = true`). Мэдүүлгийн дугаар эсвэл огноо хоосон бол батлах → 422 `tax.customs_declaration_required`.
 
 ### E-TAX-05. НӨАТ төлөгч бус компани (GS-VAT-006)
 
@@ -2079,9 +2125,9 @@ VAT entry: PURCHASE, `base` 0, `amount` 0, `non_deductible_base` 1 000 000.00, `
 | 13 | Урвуу тооцооны НӨАТ (төлөх) | 350 000.00 | 350 000.00 |
 | 14 | **Төлөх НӨАТ** = 2 + 13 + 12 | **500 000.00** | **500 000.00** |
 
-Баталгаажаагүй орцын НӨАТ: 1 баримт (PI-2027-00152), 50 000.00 (W-TAX-05, CUE-14). `lastVatEntryNo = 411`.
+Баталгаажаагүй орцын НӨАТ: 1 баримт (PI-2027-00152), 50 000.00 (W-TAX-05, CUE-14). `lastVatEntryNo = 411`, `scopeVersion` (BR-TAX-69) — scope 10 entry (410 орохгүй).
 
-**Хаалт** `:close` (`postingDate = 2027-05-31`, хаалтын данс 2310, `expectedLastVatEntryNo = 411`) → ваучер `GJ-2027-00088`, source `VATSTMT`:
+**Хаалт** `:close` (`postingDate = 2027-05-31`, хаалтын данс 2310, `expectedScopeVersion` = тооцооны хариуных, `expectedLastVatEntryNo = 411`) → ваучер `GJ-2027-00088`, source `VATSTMT`. Тооцоо ба хаалтын хооронд PI-2027-00152-ыг баталгаажуулсан бол entry нэмэгдэхгүй ч `scopeVersion` өөрчлөгдөж `409 tax.vat_statement_stale` (EC-13):
 
 | Бүлэг (дарааллаар) | Entry | Σ amount | Үйлдэл |
 |---|---|---:|---|
@@ -2226,7 +2272,8 @@ SETTLEMENT толин тусгал 416–419 (`reversed = true`); 412–415 `rev
 | `tax.vat_posting_setup_missing` | 422 | (VAT Bus., VAT Prod.) хослолд setup мөр алга | "НӨАТ-ын тохиргоо олдсонгүй: {vatBus} × {vatProd}. Тохиргоо → НӨАТ-ын тохиргоо цэснээс нэмнэ үү." | BR-TAX-01 |
 | `tax.vat_posting_setup_blocked` | 422 | Setup мөр `blocked = true` | "НӨАТ-ын тохиргоо {vatBus} × {vatProd} хаагдсан байна." | BR-TAX-01 |
 | `tax.vat_calc_type_locked` | 409 | Entry-тэй хослолын тооцооны төрлийг өөрчлөх | "Энэ хослолоор НӨАТ-ын бичилт үүссэн тул тооцооны төрлийг өөрчлөх боломжгүй. Шинэ бүтээгдэхүүний бүлэг үүсгэнэ үү." | BR-TAX-03 |
-| `tax.vat_setup_in_use` | 409 | Entry-тэй бүлэг/setup мөрийг устгах | "{code} бүлгийг НӨАТ-ын бичилт ашиглаж байгаа тул устгах боломжгүй. Хаах (blocked) сонголтыг ашиглана уу." | BR-TAX-03 |
+| `tax.vat_setup_in_use` | 409 | Entry-тэй бүлэг/setup мөрийг устгах, эсвэл бүлгийн `code`-ыг өөрчлөх | "{code} бүлгийг НӨАТ-ын бичилт ашиглаж байгаа тул устгах эсвэл кодыг өөрчлөх боломжгүй. Хаах (blocked) сонголтыг ашиглана уу." | BR-TAX-03 |
+| `tax.vat_account_change_open_entries` | 409 | Хаагдаагүй (`closed = false`, дүн ≠ 0) entry-тэй setup мөрийн НӨАТ-ын дансыг өөрчлөх | "{vatBus} × {vatProd}-д хаагдаагүй НӨАТ-ын бичилт ({count}) байгаа тул дансыг өөрчлөх боломжгүй. Эхлээд НӨАТ-ын хаалт хийнэ үү." | BR-TAX-03 |
 | `tax.vat_identifier_rate_conflict` | 422 | Нэг Bus. бүлэгт ижил identifier өөр хувь/төрөлтэй | "{vatBus} бүлэгт '{identifier}' таних тэмдэг өөр хувь эсвэл тооцооны төрөлтэй мөрөнд давхардсан байна." | BR-TAX-04 |
 | `tax.sales_vat_account_missing` | 422 | Хувь > 0 NORMAL мөрийг борлуулалтад, данс хоосон | "{vatBus} × {vatProd}-д борлуулалтын НӨАТ-ын данс тохируулаагүй байна." | BR-TAX-05 |
 | `tax.purchase_vat_account_missing` | 422 | Худалдан авалт/RC/FULL_VAT-д данс хоосон | "{vatBus} × {vatProd}-д худалдан авалтын НӨАТ-ын данс тохируулаагүй байна." | BR-TAX-05 |
@@ -2235,7 +2282,7 @@ SETTLEMENT толин тусгал 416–419 (`reversed = true`); 412–415 `rev
 | `tax.vat_calc_type_not_allowed` | 422 | Борлуулалтад `REVERSE_CHARGE`/`FULL_VAT`, эсвэл баримтын төрөлд зөвшөөрөгдөөгүй | "'{calcType}' тооцооны төрлийг {documentType} баримтад хэрэглэхгүй." | BR-TAX-07 |
 | `tax.full_vat_account_mismatch` | 422 | `FULL_VAT` мөрийн данс ≠ setup-ийн `purchase_vat_account_id` | "Гаалийн НӨАТ-ын мөрийн данс {expected} байх ёстой (одоо {actual})." | BR-TAX-24 |
 | `tax.full_vat_non_deductible_not_allowed` | 422 | `FULL_VAT` мөрөнд хасагдахгүй хувь/шалтгаан | "Гаалийн НӨАТ-ын мөрөнд хасагдахгүй хэсэг тавих боломжгүй; зардлын мөрөөр бүртгэнэ үү." | BR-TAX-24 |
-| `tax.customs_declaration_required` | 422 | `FULL_VAT` entry-г баталгаажуулахад мэдүүлгийн дугаар (`external_document_no`/`vendor_invoice_no`; R2: `customs_declaration_id`) эсвэл огноо (`document_date`) хоосон | "Гаалийн мэдүүлгийн дугаар ба огноог оруулна уу." | BR-TAX-62 |
+| `tax.customs_declaration_required` | 422 | `FULL_VAT` мөртэй баримт/журналын мөрийг батлахад мэдүүлгийн дугаар (`vendor_invoice_no`/`external_document_no`; CR-TAX-05-ийн дараа `customs_declaration_id`) эсвэл огноо (`document_date`) хоосон | "Гаалийн НӨАТ-ын мөрөнд гаалийн мэдүүлгийн дугаар ба огноог оруулна уу." | BR-TAX-46, BR-TAX-62 |
 | (НӨАТ-ын зөрүү) | 422 | BR-TAX-26 | Эх модулийн код: `purchase.vat_difference_not_allowed`, `purchase.vat_difference_exceeds_max` (07 §8), `gl.vat_difference_not_allowed`, `gl.vat_difference_too_large` (05 §8) | BR-TAX-26 |
 | `tax.non_deductible_reason_required` | 422 | `nd% > 0` гараар тавьсан, шалтгаангүй | "Хасагдахгүй НӨАТ-ын шалтгааныг сонгоно уу." | BR-TAX-52 |
 | `tax.non_deductible_reason_invalid` | 422 | Систем-д зориулсан шалтгааныг (`NON_VAT_COMPANY`, `SIMPLIFIED_REGIME`, `REJECTED`) гараар сонгох, эсвэл NORMAL/RC бус мөрөнд | "'{reason}' шалтгааныг энэ мөрөнд хэрэглэх боломжгүй." | BR-TAX-52 |
@@ -2257,6 +2304,8 @@ SETTLEMENT толин тусгал 416–419 (`reversed = true`); 412–415 `rev
 | `tax.vat_date_outside_user_window` | 422 | R2: хэрэглэгчийн VAT огнооны цонхноос гадуур | "Таны эрхийн НӨАТ-ын огнооны муж {from}–{to}; {vatDate} гадуур байна." | BR-TAX-41 |
 | `tax.company_not_vat_registered` | 409 | НӨАТ төлөгч бус компанид хаалт, баталгаажуулалт, урвуу тооцоо | "Компани {date}-нд НӨАТ төлөгч биш тул энэ үйлдэл хийгдэхгүй." | BR-TAX-55, BR-TAX-72; OQ-TAX-07 |
 | `tax.vat_registered_from_required` | 422 | `vat_registered = true` болгоход огноогүй | "НӨАТ төлөгчөөр бүртгэгдсэн огноог оруулна уу." | BR-TAX-56 |
+| `tax.vat_registered_from_locked` | 409 | Хаагдсан НӨАТ-ын үе эсвэл НӨАТ-ын бичилттэй огнооны мужид бүртгэлийн огноог өөрчлөх | "{from}-оос хойш НӨАТ-ын бичилт эсвэл хаагдсан тайлан байгаа тул бүртгэлийн огноог өөрчлөх боломжгүй." | BR-TAX-56 |
+| `tax.vat_deregistration_periods_open` | 409 | R1: `vat_registered = false` болгоход бичилттэй НӨАТ-ын үе хаагдаагүй | "НӨАТ төлөгчөөс хасагдахаас өмнө {periods} сарын НӨАТ-ын тайланг хаана уу." | BR-TAX-58 |
 
 #### Орцын НӨАТ
 
@@ -2280,10 +2329,10 @@ SETTLEMENT толин тусгал 416–419 (`reversed = true`); 412–415 `rev
 | `tax.vat_period_already_submitted` | 409 | `:submit`-ийг давтах (idempotency-гүй) | "{period} сарын НӨАТ-ын тайланг {submittedAt}-нд илгээсэн гэж тэмдэглэсэн." | BR-TAX-78 |
 | `tax.vat_period_submitted` | 409 | `SUBMITTED` үеийг өөрчлөх/дахин нээх (DB `ERP02`) | "Илгээсэн НӨАТ-ын тайланг өөрчлөх боломжгүй. Засварыг дараагийн нээлттэй сарын баримтаар хийнэ үү." | BR-TAX-43, BR-TAX-80 |
 | `tax.vat_period_reopen_not_latest` | 409 | Хожуу үе хаагдсан байхад өмнөхийг нээх | "Зөвхөн хамгийн сүүлд хаасан НӨАТ-ын үеийг дахин нээнэ ({latest})." | BR-TAX-79 |
-| `tax.vat_settlement_date_invalid` | 422 | Хаалтын `postingDate < P.ending_date` (нягтлан бодох үе хаалттай бол `gl.period_closed`, цонхноос гадуур бол `gl.posting_date_outside_window`) | "Хаалтын огноо {date} нь {period} сарын сүүлийн өдөр ({endingDate})-өөс өмнө байж болохгүй." | BR-TAX-75 |
+| `tax.vat_settlement_date_invalid` | 422 | Хаалтын `postingDate < P.ending_date` (нягтлан бодох үе хаалттай бол `gl.period_closed`, цонхноос гадуур бол `gl.posting_date_outside_window`) | "Хаалтын огноо {date} нь {period} сарын сүүлийн өдөр ({endingDate})-өөс өмнө байж болохгүй." | BR-TAX-72 |
 | `tax.vat_settlement_account_missing` | 422 | `tax_setup`-д ба хүсэлтэд данс алга | "НӨАТ-ын тооцооны дансыг (жишээ нь 2310) сонгоно уу." | BR-TAX-76 |
-| `tax.vat_settlement_account_invalid` | 422 | Данс `POSTING` биш, блоклогдсон, эсвэл НӨАТ-ын 1300/2300/2305 | "{accountNo} дансыг НӨАТ-ын тооцооны дансаар ашиглах боломжгүй." | BR-TAX-76 |
-| `tax.vat_statement_stale` | 409 | Preview-ээс хойш шинэ VAT entry (`lastVatEntryNo` зөрсөн) | "Тайланг тооцоолсноос хойш шинэ НӨАТ-ын бичилт нэмэгдсэн. Дахин тооцоолно уу." | BR-TAX-72 |
+| `tax.vat_settlement_account_invalid` | 422 | Данс `POSTING` биш, блоклогдсон, `LIABILITIES` ангилалгүй, `gen_posting_type ≠ NONE`, Gen./НӨАТ-ын бүлэгтэй, эсвэл аль нэг setup-ийн НӨАТ-ын данс (1300/2300/2305) | "{accountNo} дансыг НӨАТ-ын тооцооны дансаар ашиглах боломжгүй ({reason})." | BR-TAX-76 |
+| `tax.vat_statement_stale` | 409 | Тооцоо/preview-ээс хойш scope өөрчлөгдсөн: шинэ VAT entry эсвэл баталгаажуулалт/цуцлалт (`scopeVersion` эсвэл `lastVatEntryNo` зөрсөн) | "Тайланг тооцоолсноос хойш НӨАТ-ын бичилт нэмэгдсэн эсвэл баталгаажуулалт өөрчлөгдсөн. Дахин тооцоолно уу." | BR-TAX-69, BR-TAX-72 |
 | `tax.vat_statement_template_missing` | 422 | Компанид `VAT`/`TT03A` загвар алга | "НӨАТ-ын тайлангийн загвар (ТТ-03а) тохируулагдаагүй байна." | BR-TAX-65 |
 | `tax.vat_statement_line_invalid` | 422 | Загварын мөрийн шалгалт (BR-TAX-65) | "Тайлангийн мөр {rowNo}: {reason}." | BR-TAX-65 |
 | `tax.vat_statement_row_cycle` | 422 | `ROW_TOTALING` давталт | "Тайлангийн мөр {rowNo} өөрийгөө (шууд эсвэл шууд бусаар) нэмж байна." | BR-TAX-65 |
@@ -2350,18 +2399,18 @@ SETTLEMENT толин тусгал 416–419 (`reversed = true`); 412–415 `rev
 
 | Гэрээ | Эзэмшигч | Хэрэглэгч | Тайлбар |
 |---|---|---|---|
-| `ITaxParameterProvider.GetParameter(code, asOf, use)`, `GetTimeline` | Tax | Sales, Purchases, GL, Reporting, Platform (календарь), EBarimt | §5.2; 30 мин кэш (глобал, migration-д хүчингүй) |
+| `ITaxParameterProvider.GetParameter(code, asOf, use)`, `GetTimeline` | Tax | Sales, Purchases, GL, Reporting, Platform (календарь), EBarimt | §5.2; процессын immutable snapshot, `NOTIFY tax_parameter_changed` + 10 мин тутмын шалгалтаар шинэчлэгдэнэ |
 | `IVatSetupResolver.Resolve` | Tax | Sales, Purchases, GL (журнал) | §5.3 |
 | `ITaxCalculator.ComputeDocument(TaxDocument)` | Tax | Sales (06 §5.4), Purchases (07), GL журнал, EBarimt (дүнгийн шалгалт) | §5.4; цэвэр функц, DB-гүй |
 | `IVatPostingComposer.Compose` | Tax | Posting engine (05 §5.7) | §5.5 |
 | `ILedgerWriter<VatLedgerLine>`, `IReversibleLedger` (order 10); `ILedgerWriter<CityTaxLedgerLine>` (order 15, R2) | Tax | Posting engine | §5.6; 05 BR-PST-40 |
 | `IJournalVatHandler` | Tax | GL журнал (05 §5.4.2) | §5.7 |
-| `IInputVatService` (`ConfirmDeductibleAsync`, `RejectDeductionAsync`) | Tax | API, inbox handler (R2) | §5.8 |
-| `IVatReturnService` (`CalculateAsync`, `PreviewCloseAsync`, `CloseAsync`, `SubmitAsync`, `ReopenAsync`) | Tax | API, job | §5.9–5.11 |
+| `IInputVatService` (`ConfirmDeductibleAsync`, `UnconfirmAsync`, `RejectDeductionAsync`, `ListUnconfirmedAsync`) | Tax | API, inbox handler (R2) | §5.8 |
+| `IVatReturnService` (`CalculateAsync`, `CloseAsync(cmd, PostingMode)` — `Preview` = `:preview-close`, `SubmitAsync`, `ReopenAsync`) | Tax | API, job | §5.9–5.11 |
 | `IVatReturnQuery` (`GetScopeEntriesAsync`, `GetPeriodStatusAsync`) | Tax | Reporting (ТТ-03а-5/6, CUE-04/14), Platform (dashboard) | §5.12; зөвхөн унших |
 | `IVatThresholdMonitor.EvaluateAsync(asOf)` | Tax | Job, dashboard, Sales preview (сүүлийн түвшин) | §5.14 |
-| `ICitHelper.ComputeAsync(year, period)` (R2) | Tax | Reporting API | §5.17 |
-| `ITaxCalendar.GetItemsAsync(from, to)` | Tax | Platform (dashboard, мэдэгдэл), API | §5.18 |
+| `ICitHelper.CalculateAsync(CitHelperRequest)` (R2) | Tax | Reporting API | §5.17 |
+| `ITaxCalendar.GetAsync(from, to)` | Tax | Platform (dashboard, мэдэгдэл), API | §5.18 |
 | `IEbarimtReceiptQuery.GetNetStateBySourceDocument` | EBarimt | Tax (§5.13) | 12 §12.3 |
 | `IReversalService.Reverse` | GL | Tax (`:reopen`) | 05 §5.10 |
 | `IPostingService.PostAsync` | GL | Tax (`:close`, `input-vat:write-off`) | 05 §5.1 |
@@ -2375,9 +2424,9 @@ SETTLEMENT толин тусгал 416–419 (`reversed = true`); 412–415 `rev
 
 | Topic | Хэзээ | `payload` | `idempotency_key` | Consumer | Хувилбар |
 |---|---|---|---|---|---|
-| `tax.vat_period.closed` | `:close` commit | `{ companyId, vatReturnPeriodId, periodCode, settlementTransactionNo?, cityTaxSettlementTransactionNo?, closedAt, lastVatEntryNo }` | `tax.vat_period.closed:{companyId}:{periodId}:{settlementTransactionNo ?? lastVatEntryNo}` | Мэдэгдэл (нягтлан, Owner), dashboard кэш, R2 webhook `vat_return_period.status_changed` | R1 |
+| `tax.vat_period.closed` | `:close` commit | `{ companyId, vatReturnPeriodId, periodCode, settlementTransactionNo?, cityTaxSettlementTransactionNo?, closedAt, lastVatEntryNo }` | `tax.vat_period.closed:{companyId}:{periodId}:{rowVersion}` (`vat_return_period.row_version` шинэчилсний дараах; хаах → нээх → G/L-гүй дахин хаах үед `lastVatEntryNo` давтагдаж event алга болохоос сэргийлнэ) | Мэдэгдэл (нягтлан, Owner), dashboard кэш, R2 webhook `vat_return_period.status_changed` | R1 |
 | `tax.vat_period.submitted` | `:submit` | `{ companyId, vatReturnPeriodId, periodCode, submittedAt, submittedBy }` (`submission_reference` орохгүй) | `tax.vat_period.submitted:{companyId}:{periodId}` | Мэдэгдэл, GL үе түгжих санал (Z-TAX-04), R2 webhook | R1 |
-| `tax.vat_period.reopened` | `:reopen` | `{ companyId, vatReturnPeriodId, periodCode, reversalTransactionNo?, reopenedBy, reasonCodeId? }` | `tax.vat_period.reopened:{companyId}:{periodId}:{reversalTransactionNo ?? ts}` | **Заавал мэдэгдэл** (бүх Owner, нягтлан — 13 аюулгүй байдлын event), R2 webhook | R1 |
+| `tax.vat_period.reopened` | `:reopen` | `{ companyId, vatReturnPeriodId, periodCode, reversalTransactionNo?, reopenedBy, reasonCodeId? }` | `tax.vat_period.reopened:{companyId}:{periodId}:{rowVersion}` | **Заавал мэдэгдэл** (бүх Owner, нягтлан — 13 аюулгүй байдлын event), R2 webhook | R1 |
 | `tax.vat_threshold.level_changed` | Босгын job, түвшин өөрчлөгдсөн | `{ companyId, asOf, previousLevel, level, crossedOn? }` | `tax.vat_threshold.level_changed:{companyId}:{level}:{thresholdParamId}` (BR-TAX-86) | Мэдэгдэл (Owner: имэйл + апп), dashboard | R1 |
 | `tax.input_vat.rejected` | `input-vat:write-off` | `{ companyId, transactionNo, documentNo, purchInvoiceId, entryNos[] }` | `tax.input_vat.rejected:{companyId}:{transactionNo}` | Мэдэгдэл (Purchases-ийн эзэн) | R1 · Should |
 | `tax.vat_return.exported` | Экспортын job амжилттай | `{ companyId, vatReturnPeriodId, jobId, lastVatEntryNo }` | `tax.vat_return.exported:{companyId}:{jobId}` | Мэдэгдэл (S-PLT-18) | R1 (job framework-ийн ерөнхий event-ээр хангагдвал хасна) |
@@ -2402,7 +2451,7 @@ Webhook (R2, 14 §11.2): `vat_return_period.status_changed` (`{ id, status, prev
 |---|---|---|---|---|
 | `tax.vat_threshold.check` | Өдөр бүр 06:00 Asia/Ulaanbaatar, компани тус бүр | §5.14; түвшин өөрчлөгдсөн бол outbox | 3, timeout 5 мин | R1 (CR-TAX-11) |
 | `tax.vat_return.export` | Хүсэлтээр (`:export`) | §5.12 | 3, timeout 2 мин | R1 (CR-TAX-11) |
-| `tax.vat_invariant.check` | Шөнө бүр (02 §8.8-ийн шөнийн шалгалтын нэг алхам) | BR-TAX-82: дансны үлдэгдэл ↔ VAT entry; зөрвөл `audit.integrity_issue` ба Owner-т мэдэгдэл | 1 | R1 (02 §8.8-ийн job-д нэмнэ) |
+| `tax.vat_invariant.check` | Шөнө бүр (02 §8.8-ийн шөнийн шалгалтын нэг алхам) | BR-TAX-82: дансны үлдэгдэл ↔ VAT entry; зөрвөл 02 §8.8-ийн `ops.consistency_issue` (P2; схемд хараахан алга — 02-ын эзэмшил) ба Owner-т мэдэгдэл | 1 | R1 (02 §8.8-ийн job-д нэмнэ) |
 | `tax.calendar.reminder` | Өдөр бүр 09:00 | Хугацаа хүртэл 7, 3, 1 хоног үлдсэн мөрөнд мэдэгдэл (BR-TAX-110) | 1 | R1 · Should (платформын мэдэгдлийн job-оор) |
 
 ### 9.5 Ажиглалт
@@ -2428,10 +2477,10 @@ Webhook (R2, 14 §11.2): `vat_return_period.status_changed` (`{ id, status, prev
 | `GET /input-vat/unconfirmed` (07 BR-PUR-52) | `TABLE tax.vat_entry R` | R1 | BR-TAX-50; Tax-ийн `IInputVatService.ListUnconfirmedAsync` |
 | `POST /purchase-receipts/{id}:confirm`, `:unconfirm` (12, 07 BR-PUR-50/51); `POST /purchase-invoices/{id}:link-ebarimt` (`confirm`, 07) | `ACTION tax.vat_entry.confirm_deductible` | R1 (`:unconfirm` Should) | BR-TAX-49; Tax-ийн `ConfirmDeductibleAsync` / `UnconfirmAsync` |
 | `POST /input-vat:write-off` (07 §5.12), `POST /input-vat:preview-write-off` (санал) | `ACTION tax.vat_entry.confirm_deductible` | R1 · Should | BR-TAX-51; `PostingPreview` |
-| `PUT /purchase-invoices/{id}/vat-amount-lines` | `TABLE purch.purchase_header W` | R1 | BR-TAX-26 (НӨАТ-ын зөрүү); 07-ийн endpoint, Tax шалгана |
+| `PUT /purchase-invoices/{id}/vat-amount-lines` | `TABLE purchase.purchase_header M` | R1 | BR-TAX-26 (НӨАТ-ын зөрүү); 07-ийн endpoint, Tax шалгана |
 | `GET /vat-return-periods`, `GET /vat-return-periods/{id}` | `TABLE tax.vat_return_period R` | R1 | |
-| `POST /vat-return-periods/{id}:preview-close` | `ACTION tax.vat.settle` | R1 | `PostingPreview` + `warnings[]` + `lastVatEntryNo` |
-| `POST /vat-return-periods/{id}:close` | `ACTION tax.vat.settle` | R1 | `{ postingDate, settlementAccountId?, expectedLastVatEntryNo }`; BR-TAX-72…76 |
+| `POST /vat-return-periods/{id}:preview-close` | `ACTION tax.vat.settle` | R1 | `PostingPreview` + `warnings[]` + `lastVatEntryNo` + `scopeVersion` |
+| `POST /vat-return-periods/{id}:close` | `ACTION tax.vat.settle` | R1 | `{ postingDate, settlementAccountId?, expectedScopeVersion, expectedLastVatEntryNo? }`; BR-TAX-69, -72…76 |
 | `POST /vat-return-periods/{id}:submit` | `ACTION tax.vat_return.submit` (MFA, step-up) | R1 | `{ submissionReference }`; хариунд `effects[]` |
 | `POST /vat-return-periods/{id}:reopen` | `ACTION tax.vat.reopen` (Owner, step-up; CR-TAX-09) | R1 | `{ reasonCodeId?, reasonText }` |
 | `POST /vat-return-periods/{id}:export` | `ACTION tax.vat_return.export` (CR-TAX-09; тэр хүртэл `rpt.export.excel` + `REPORT rpt.vat_return`) | R1 | 202 + `Job` |
@@ -2445,7 +2494,7 @@ Webhook (R2, 14 §11.2): `vat_return_period.status_changed` (`{ id, status, prev
 | `GET/POST/PATCH /city-tax-codes`, `GET/PATCH /city-tax-setup`, `GET /city-tax-entries`, `GET /reports/city-tax?periodId=` | `TABLE tax.city_tax_*`, `REPORT rpt.vat_return` | R2 | §5.15 |
 | `GET/POST /company-tax-profiles` (effective-dated) | `ERP_SETUP` | R2 | CR-TAX-04; BR-TAX-97, -102 |
 | `GET /reports/simplified-vat?periodId=` | `REPORT rpt.vat_return` | R2 · Could | §5.16 |
-| `GET /reports/cit-helper?year=&period=`, `POST /reports/cit-helper:create-accrual-draft`, `POST /reports/cit-helper:export` | `REPORT rpt.cit_helper` (CR-TAX-09); ноорогт `TABLE gl.gen_journal_line W` | R2 | §5.17 |
+| `GET /reports/cit-helper?year=&period=`, `POST /reports/cit-helper:create-accrual-draft`, `POST /reports/cit-helper:export` | `REPORT rpt.cit_helper` (CR-TAX-09); ноорогт `TABLE gl.journal_line I` | R2 | §5.17 |
 | `GET/POST/PATCH /customs-declarations` | `TABLE tax.customs_declaration` (CR-TAX-05) | R2 | BR-TAX-62 |
 
 Тэмдэг: `vat-entries` нь DB-ийн тэмдгийг өөрчлөхгүй (14 API-JSON-07); мөнгөн дүн string (`"−2166.67"`).
@@ -2485,7 +2534,7 @@ Dashboard: CUE-04 (төлөх НӨАТ), CUE-14 (баталгаажаагүй о
 
 - **AT-TAX-001** (BR-TAX-01) · I/E. **Өгөгдсөн нь** `DOMESTIC × VAT10` setup-ийг устгасан (эсвэл `blocked = true`); **Хэрэв** тэр хослолтой борлуулалтын ноорог хадгалж, дараа нь `:post`; **Тэгвэл** хадгалалт 200 + `warnings[0].code = tax.vat_posting_setup_missing` (W-TAX-12); post → 422 `tax.vat_posting_setup_missing` (`blocked` үед `tax.vat_posting_setup_blocked`), `errors[].pointer = /lines/0/...`; G/L, VAT entry үүсэхгүй.
 - **AT-TAX-002** (BR-TAX-02) · I. **Өгөгдсөн нь** posting-ийн A үед setup уншигдсан; **Хэрэв** B үеэс өмнө өөр session setup-ийн `vat_calculation_type`/данс өөрчилнө (тест hook); **Тэгвэл** 409 `gl.setup_changed`, юу ч бичигдэхгүй; дахин илгээхэд шинэ тохиргоогоор амжилттай.
-- **AT-TAX-003** (BR-TAX-03) · E. **Өгөгдсөн нь** `DOMESTIC × VAT10`-оор VAT entry бий; **Хэрэв** `PATCH /vat-posting-setups/{id}` `vatCalculationType = REVERSE_CHARGE`; **Тэгвэл** 409 `tax.vat_calc_type_locked`; `vatPercent`-ийг өөрчлөх → 200, өмнөх entry-ийн `vat_percent` өөрчлөгдөхгүй; бүлгийг `DELETE` → 409 `tax.vat_setup_in_use`.
+- **AT-TAX-003** (BR-TAX-03) · E. **Өгөгдсөн нь** `DOMESTIC × VAT10`-оор VAT entry бий; **Хэрэв** `PATCH /vat-posting-setups/{id}` `vatCalculationType = REVERSE_CHARGE`; **Тэгвэл** 409 `tax.vat_calc_type_locked`; `vatPercent`-ийг өөрчлөх → 200, өмнөх entry-ийн `vat_percent` өөрчлөгдөхгүй; бүлгийг `DELETE` эсвэл `code`-ыг өөрчлөх → 409 `tax.vat_setup_in_use`; хаагдаагүй entry-тэй үед `purchaseVatAccountId`-ийг өөр дансаар → 409 `tax.vat_account_change_open_entries`, хаалтын дараа → 200.
 - **AT-TAX-004** (BR-TAX-04) · E. **Өгөгдсөн нь** `DOMESTIC` бүлэгт identifier `VAT10` (10 %); **Хэрэв** шинэ Prod. бүлгийн мөрийг identifier `VAT10`, хувь 0 эсвэл төрөл `REVERSE_CHARGE`-ээр хадгална; **Тэгвэл** 422 `tax.vat_identifier_rate_conflict`.
 - **AT-TAX-005** (BR-TAX-05) · E/I. (а) `sales_vat_account_id = NULL` мөрөөр 10 %-ийн борлуулалт → 422 `tax.sales_vat_account_missing`; (б) RC мөрийн 2305 хоосон → `tax.reverse_charge_account_missing`; (в) setup-ийн худалдан авалтын дансанд `LIABILITIES` ангиллын данс (2300) эсвэл `HEADING` данс → 422 `tax.vat_account_invalid`.
 - **AT-TAX-006** (BR-TAX-06) · I. **Өгөгдсөн нь** seed setup; **Тэгвэл** `VAT0`/`EXEMPT` мөр бүр `ebarimt_tax_product_code` бөглөгдсөн (CHECK); ангилал `VAT10` + `taxType = VAT_FREE` INSERT → `23514`; `TBD` кодтой мөрөөр eBarimt-тэй компанийн борлуулалтын preview → `warnings[].code = tax.tax_product_code_placeholder` (W-TAX-11).
@@ -2496,7 +2545,7 @@ Dashboard: CUE-04 (төлөх НӨАТ), CUE-14 (баталгаажаагүй о
 
 - **AT-TAX-010** (BR-TAX-10) · A. `No_statutory_literals_in_tax_code`: `Erp.Tax*`, `Erp.Sales*`, `Erp.Purchases*` assembly-ийн IL-д `10m`, `0.10m`, `50000000`, `400000000`, `0.02m` (НХАТ), `0.01m` (хялбаршуулсан) literal хориотой (allow-list: `MoneyMath`-ийн нарийвчлал, тест). Literal нэмсэн PR → CI улаан.
 - **AT-TAX-011** (BR-TAX-11) · U/E. **Өгөгдсөн нь** `vat.registration_threshold_mandatory` мөр 1 (… – 2027-06-30, 50 000 000), мөр 2 (2027-07-01 – ∞, 400 000 000); **Тэгвэл** `GetParameter(…, 2027-06-30)` = 50 000 000, `2027-07-01` = 400 000 000; эхний мөрийн `effective_from`-оос өмнөх огноо → `tax.parameter_not_effective`; `GET /tax-parameters/{code}?date=1990-01-01` → 404 `tax.parameter_not_effective`. `superseded` мөр хэзээ ч буцахгүй.
-- **AT-TAX-012** (BR-TAX-12) · U/I. **Өгөгдсөн нь** `vat.simplified.payable_rate` нь `unverified`; **Хэрэв** хялбаршуулсан тайлан (`Report`) ба хаалт (`Posting`); **Тэгвэл** тайлан 200 + `isVerified = false` + W-TAX-08 (`tax.parameter_unverified_used`); хаалт 422 `tax.parameter_unverified`, юу ч бичигдэхгүй.
+- **AT-TAX-012** (BR-TAX-12) · U/I. **Өгөгдсөн нь** `vat.simplified.deemed_purchase_share` нь `unverified` (seed-ийн бодит төлөв); **Хэрэв** хялбаршуулсан тайлан (`Report`) ба хаалт (`Posting`); **Тэгвэл** тайлан 200 + `isVerified = false` + W-TAX-08 (`tax.parameter_unverified_used`); хаалт 422 `tax.parameter_unverified`, юу ч бичигдэхгүй.
 - **AT-TAX-013** (BR-TAX-13) · U. `asOf`-ийн сонголт: худалдан авалтын мөр `posting_date` 2027-04-03, `vat_date` 2027-03-28 → хувь 03-28-аар; ААНОАТ 2027 Q3 → `asOf = 2027-01-01`; хялбаршуулсан Q3 → `2027-07-01`. Mock provider дуудлагын `asOf`-ийг шалгана.
 - **AT-TAX-014** (BR-TAX-14) · I. **Өгөгдсөн нь** setup `vat_rate_param_code = 'vat.standard_rate'` (0.10); **Хэрэв** нэхэмжлэх батлах; **Тэгвэл** мөрийн `vat_percent = 10.00000`, VAT entry `vat_percent = 10`, (CR-TAX-01-ийн дараа) `tax_parameter_id` = тэр мөрийн id.
 - **AT-TAX-015** (BR-TAX-15) · I. **Өгөгдсөн нь** ноорог 2027-06-30-нд хадгалсан (тест migration-аар 2027-07-01-нээс хувь 12 % гэж тавьсан тусгай параметр — зөвхөн энэ тестийн DB-д); **Хэрэв** `posting_date`/`vat_date`-ийг 2027-07-01 болгож батлах; **Тэгвэл** НӨАТ 12 %-иар дахин тооцогдоно; цуцлалтын кредит нот (06 BR-SAL-74) эх 10 %-ийг хадгална.
@@ -2540,12 +2589,12 @@ Dashboard: CUE-04 (төлөх НӨАТ), CUE-14 (баталгаажаагүй о
 #### Орцын НӨАТ (BR-TAX-45…53)
 
 - **AT-TAX-045** (BR-TAX-45) · I. Баталгаажаагүй NORMAL entry ТТ-03а-гийн мөр 7/8-д орохгүй; `deductible_confirmed = true`, `supplier_ebarimt_id = NULL` UPDATE → CHECK `23514`.
-- **AT-TAX-046** (BR-TAX-46) · I. (а) ДДТД + `confirmInputVat = true` + эрхтэй → entry `true`; (б) эрхгүй → `false` + анхааруулга `purchase.confirm_input_vat_not_permitted` (07); (в) RC → `true`; (г) FULL_VAT мэдүүлгийн дугаар ба огноотой → `true`, огноогүй → `false`; (д) `amount = 0` → `false`.
+- **AT-TAX-046** (BR-TAX-46) · I. (а) ДДТД + `confirmInputVat = true` + эрхтэй → entry `true`; (б) эрхгүй → `false` + анхааруулга `purchase.confirm_input_vat_not_permitted` (07); (в) RC → `true`; (г) FULL_VAT мэдүүлгийн дугаар ба огноотой → `true`; аль нэг нь хоосон → 422 `tax.customs_declaration_required` (батлагдахгүй); (д) `amount = 0` → `false`.
 - **AT-TAX-047** (BR-TAX-47) · E. ДДТД 32 орон → 422 `ebarimt.purchase_receipt_ddtd_invalid`; ижил ДДТД өөр нэхэмжлэхэд → 409 `ebarimt.purchase_receipt_duplicate`.
 - **AT-TAX-048** (BR-TAX-48) · E. `require_supplier_ebarimt = true`, ДДТД-гүй, `missingEbarimt` байхгүй → 422 `purchase.supplier_ebarimt_required`; `NON_DEDUCTIBLE` → бүх мөр `NO_EBARIMT`, НӨАТ зардалд, 1300-д мөргүй; `PENDING` → `deductible_confirmed = false`.
 - **AT-TAX-049** (BR-TAX-49) · I/E. Баталгаажуулалт: entry `true`, `_at`, `_by`; давтах → no-op (200, хоосон жагсаалт); өөр ДДТД-тэй → 409 `tax.supplier_receipt_id_mismatch`; `vat_date`-ийн үе `CLOSED` → 200 + W-TAX-10, `vat_return_period_id` NULL хэвээр (GS-VAT-015).
 - **AT-TAX-050** (BR-TAX-50) · E. `GET /input-vat/unconfirmed` нь зөвхөн BR-TAX-50-ийн entry-г (хаагдсан, буцаагдсан, оноогдсоныг биш) буцаана; Σ = CUE-14-ийн дүн.
-- **AT-TAX-051** (BR-TAX-51) · I. E-TAX-08: ваучер Дт 7200 50 000 / Кт 1300 50 000, эсрэг entry `base −500 000`, `amount −50 000`, `nd +500 000/+50 000`, хос `closed = true`; баталгаажсан entry-д → 409 `tax.deduction_reject_not_allowed`; preview → ижил бичилт, ROLLBACK.
+- **AT-TAX-051** (BR-TAX-51) · I. E-TAX-08: ваучер Дт 7213 50 000 / Кт 1300 50 000, эсрэг entry `base −500 000`, `amount −50 000`, `nd +500 000/+50 000`, хос `closed = true`; баталгаажсан entry-д → 409 `tax.deduction_reject_not_allowed`; preview → ижил бичилт, ROLLBACK.
 - **AT-TAX-052** (BR-TAX-52) · E. Хасагдахгүй хувь > 0, шалтгаангүй → 422 `tax.non_deductible_reason_required`; хэрэглэгч `NON_VAT_COMPANY` сонгох → 422 `tax.non_deductible_reason_invalid` (07-ийн мөрийн шалгалт `purchase.non_deductible_reason_invalid`-тэй давхцахгүй: 0 %-ийн мөр 07, системийн шалтгаан Tax).
 - **AT-TAX-053** (BR-TAX-53) · I. E-TAX-02: `PASSENGER_CAR` мөрийн суурь G/L = цэвэр + НӨАТ, 1300-д тэр мөрийн хэсэг бичигдэхгүй.
 
@@ -2553,7 +2602,8 @@ Dashboard: CUE-04 (төлөх НӨАТ), CUE-14 (баталгаажаагүй о
 
 - **AT-TAX-054** (BR-TAX-54) · U. `vat_registered = true`, `vat_registered_from = 2027-04-01` → `IsVatRegistered(2027-03-31) = false`, `(2027-04-01) = true`.
 - **AT-TAX-055** (BR-TAX-55) · I/E. `BASE-NONVAT`: VAT10 бараатай борлуулалт → НӨАТ 0, ангилал `NOVAT`, `taxType = NOT_VAT` (эсвэл `ebarimt_setup.non_vat_payer_tax_type`), entry суурь ≠ 0; худалдан авалтын НӨАТ бүхэлдээ зардалд; `POST /vat-return-periods/{id}:close` → 409 `tax.company_not_vat_registered` (E-TAX-05).
-- **AT-TAX-056** (BR-TAX-56, -58) · E. `vat_registered = true`, огноогүй → 422 `tax.vat_registered_from_required`; огноотой → тухайн оны үе үүснэ, өмнөх entry өөрчлөгдөхгүй; `false` болгоход дараагийн борлуулалт BR-TAX-55-аар.
+- **AT-TAX-056** (BR-TAX-56, -58) · E. `vat_registered = true`, огноогүй → 422 `tax.vat_registered_from_required`; огноотой → тухайн оны үе үүснэ, өмнөх entry өөрчлөгдөхгүй; 5-р сар `CLOSED` болсны дараа `vat_registered_from`-ийг 2027-03-01 → 2027-06-01 болгох → 409 `tax.vat_registered_from_locked`.
+- **AT-TAX-058** (BR-TAX-58) · E. НӨАТ төлөгч компани, 6-р сарын үе `OPEN` ба SALE entry-тэй; **Хэрэв** `vat_registered = false`; **Тэгвэл** 409 `tax.vat_deregistration_periods_open` (`periods = [2027-06]`); 6-р сарыг хаасны дараа → 200, дараагийн борлуулалт BR-TAX-55-аар (`NOVAT`, НӨАТ 0), 7-р сарын entry-гүй үеийг устгах → 204.
 - **AT-TAX-057** (BR-TAX-57) · I. `vat_registered_from = 2027-04-15`: 4-р сарын ТТ-03а-д зөвхөн 04-15-аас хойших entry; 3-р сарыг хаах шаардлагагүй (4-р сарын `:close` 409 гаргахгүй); W-TAX-09.
 
 #### Урвуу тооцоо ба импорт (BR-TAX-59…63)
@@ -2561,7 +2611,7 @@ Dashboard: CUE-04 (төлөх НӨАТ), CUE-14 (баталгаажаагүй о
 - **AT-TAX-059** (BR-TAX-59) · I. E-TAX-03: Дт 7230 3 500 000, Дт 1300 350 000, Кт 2305 350 000, Кт 2101 3 500 000; VAT entry `REVERSE_CHARGE` 3 500 000 / 350 000.
 - **AT-TAX-060** (BR-TAX-60) · I. RC entry `deductible_confirmed = true`; 50 % хасагдахгүй RC (`PERSONAL_USE`) → хаалтад Кт 1300 175 000, Дт 2305 350 000, 2310-д +175 000.
 - **AT-TAX-061** (BR-TAX-61) · I. Гадаад нийлүүлэгчийн барааны нэхэмжлэх (`IMPORT × VAT10`) → entry ангилал `NOVAT`, 0 %, 1300-д мөргүй.
-- **AT-TAX-062** (BR-TAX-62) · E. Гаалийн нийлүүлэгчийн нэхэмжлэх `CUSTOMS_VAT` 1 200 000, мэдүүлгийн дугааргүй → entry `false`; баталгаажуулахад → 422 `tax.customs_declaration_required`; дугаар ба огноотой → `true`, ТТ-03а мөр 9.
+- **AT-TAX-062** (BR-TAX-62) · E. Гаалийн нийлүүлэгчийн нэхэмжлэх `CUSTOMS_VAT` 1 200 000, мэдүүлгийн дугааргүй (эсвэл `document_date`-гүй) батлах → 422 `tax.customs_declaration_required`, юу ч бичигдэхгүй; дугаар ба огноотой → entry `true`, ТТ-03а мөр 9; журналын хувилбар ижил.
 - **AT-TAX-063** (BR-TAX-63) · I. Гаалийн татвар 300 000 `NOVAT` мөрөөр 1400-д → VAT entry `NOVAT` суурь 300 000 / 0, ТТ-03а мөр 7/8/9-д орохгүй.
 
 #### ТТ-03а (BR-TAX-65…71)
@@ -2570,14 +2620,14 @@ Dashboard: CUE-04 (төлөх НӨАТ), CUE-14 (баталгаажаагүй о
 - **AT-TAX-066** (BR-TAX-66) · I. E-TAX-06: `OPEN` үеийн scope-д өмнөх сарын хаагдаагүй, баталгаажсан entry орно; хаалтын дараа scope = `vat_return_period_id = P`; SETTLEMENT entry хэзээ ч орохгүй.
 - **AT-TAX-067** (BR-TAX-67) · U. PURCHASE entry: баталгаажаагүй, `amount ≠ 0` → эрхгүй; `amount = 0` → эрхтэй; татгалзлын хос (`closed`) → эрхтэй; `reversed` хос → эрхтэй.
 - **AT-TAX-068** (BR-TAX-68) · I. `ACCOUNT_TOTALING` мөр (данс `2310`) нь `vat_date ∈ P` G/L-ийн нийлбэр; scope-оос үл хамаарна.
-- **AT-TAX-069** (BR-TAX-69) · E. `GET /reports/vat-return` хоёр удаа → DB-д мөр нэмэгдэхгүй; хариунд `lastVatEntryNo`; шинэ entry нэмээд хуучин `expectedLastVatEntryNo`-оор `:close` → 409 `tax.vat_statement_stale`.
+- **AT-TAX-069** (BR-TAX-69) · E. `GET /reports/vat-return` хоёр удаа → DB-д мөр нэмэгдэхгүй; хариунд `lastVatEntryNo`; шинэ entry нэмээд хуучин `expectedLastVatEntryNo`-оор `:close` → 409 `tax.vat_statement_stale`; entry нэмэлгүй зөвхөн нэг худалдан авалтыг баталгаажуулаад хуучин `expectedScopeVersion`-оор `:close` → 409 `tax.vat_statement_stale` (`lastVatEntryNo` ижил хэвээр).
 - **AT-TAX-070** (BR-TAX-70) · E. ТТ-03а-5-ын А хэсгийн НӨАТ-ын нийлбэр = мөр 8, Б = мөр 9, В = мөр 10/13; ТТ-03а-6-ын нийлбэр = мөр 1…6; `:export` → 202, job `SUCCEEDED`, XLSX 3 хуудас.
 - **AT-TAX-071** (BR-TAX-71) · I. 3 нэхэмжлэх: `SUCCESS` (тэнцүү), eBarimt-гүй, `SUCCESS` (НӨАТ 0.01 зөрүү) → тулгалт 2 issue (`NO_RECEIPT`, `VAT_MISMATCH`); `:preview-close` → W-TAX-06, хаалт зогсохгүй.
 
 #### Хаалт, илгээх, дахин нээх (BR-TAX-72…82)
 
 - **AT-TAX-072** (BR-TAX-72) · E. Нэг хүсэлтэд олон зөрчил (эрх ✓, сар дуусаагүй, данс хоосон) → 422 `api.validation_failed`, `errors[]` = [`tax.vat_period_not_ended`, `tax.vat_settlement_account_missing`]; `postingDate` 2027-05-30 (5-р сар) → `tax.vat_settlement_date_invalid`; нягтлан бодох 5-р сар `CLOSED` → `gl.period_closed`.
-- **AT-TAX-073** (BR-TAX-73) · I. E-TAX-06: SETTLEMENT entry 412–415 (бүлэг тус бүр), эх entry `closed = true`, `closed_by_entry_no`; 0-дүнтэй бүлэг (VAT0, EXEMPT) зөвхөн оноогдоно; 410 (баталгаажаагүй) хаагдахгүй, оноогдохгүй; G/L тэнцсэн, 2310 Кт 1 350 000.
+- **AT-TAX-073** (BR-TAX-73) · I. E-TAX-06: SETTLEMENT entry 412–415 (бүлэг тус бүр), эх entry `closed = true`, `closed_by_entry_no`; 0-дүнтэй бүлэг (VAT0, EXEMPT) зөвхөн оноогдоно; 410 (баталгаажаагүй) хаагдахгүй, оноогдохгүй; G/L тэнцсэн (Σ Дт = Σ Кт = 1 350 000), 2310 Кт 500 000 = ТТ-03а мөр 14.
 - **AT-TAX-074** (BR-TAX-74) · U. Ижил өгөгдөлд `SettlementPlanner` хоёр удаа → ижил дараалал ба мөрийн түлхүүр; PURCHASE мөр SALE-ээс өмнө.
 - **AT-TAX-075** (BR-TAX-75) · I. Ваучерын source `VATSTMT`, дугаар `GJ-…`, тайлбар "НӨАТ-ын хаалт 2027-05"; бүх entry `amount = 0` үе → ваучергүй, `settlement_transaction_no` NULL, үе `CLOSED`; `:preview-close` → ижил хариу, DB өөрчлөгдөхгүй.
 - **AT-TAX-076** (BR-TAX-76) · E. `settlementAccountId` = 1300 → 422 `tax.vat_settlement_account_invalid`; `HEADING` данс → мөн; `tax_setup`-гүй, хүсэлтэд дансгүй → `tax.vat_settlement_account_missing`.
@@ -2625,7 +2675,7 @@ Dashboard: CUE-04 (төлөх НӨАТ), CUE-14 (баталгаажаагүй о
 
 #### Календарь (BR-TAX-109, -110)
 
-- **AT-TAX-109** (BR-TAX-109) · E. `GET /tax/calendar?from=2027-01-01&to=2027-03-31` → НӨАТ 3 мөр (02-10, 03-10, 04-10), ААНОАТ улирлын (04-20), жилийн; `unverified` мөр `verified = false`; амралтын өдөр шилжихгүй.
+- **AT-TAX-109** (BR-TAX-109) · E. 2020-оос НӨАТ төлөгч компани, `GET /tax/calendar?from=2027-01-01&to=2027-03-31` → хугацаа нь мужид орсон мөр л: НӨАТ 3 (01-10 — 2026-12, 02-10 — 2027-01, 03-10 — 2027-02; 3-р сарын 04-10 орохгүй), ААНОАТ 2026 Q4 тайлан 01-20, 2026 Q4 төлбөр 01-31 (`cit.quarterly_payment_due` 2027-01-01-нээс, `verified = false`), урьдчилгаа 01-25, 02-25, 03-25 (`verified = false`), 2026 оны жилийн тайлан 03-05 (`cit.annual_return_due` @ 2027-01-01, `verified = false`); амралтын өдөр шилжихгүй.
 - **AT-TAX-110** (BR-TAX-110) · E. `SUBMITTED` үе → `status = DONE`; бусад → үлдсэн хоног; `BASE-NONVAT` → НӨАТ-ын мөргүй.
 
 ### 11.2 Golden scenario (GS-VAT)
@@ -2678,7 +2728,7 @@ GS-VAT-001…012 нь [16 §12.4](./16-test-strategy.md)-ийн каталоги
 |---|---|---|
 | EC-01 | Баримтын бүх мөр `CLA = 0` | НӨАТ 0, VAT entry-гүй (buffer мөргүй) |
 | EC-02 | Нэг мөр 0.01, хувь 10 % | НӨАТ 0.00 (`NEAREST`), `UP` горимд 0.01 |
-| EC-03 | Маш том дүн 9 999 999 999 999.99 | `numeric(19,2)` хүрээнд, overflow-гүй |
+| EC-03 | Маш том дүн 9 999 999 999 999.99 | `platform.amount = numeric(19,4)` (15 бүхэл орон) хүрээнд, overflow-гүй; C# `decimal`-д `W × r` завсрын үржвэр 28 оронд багтана |
 | EC-04 | 12-р сарын 31-ний хаалт ба санхүүгийн жилийн хаалт | НӨАТ-ын хаалт `is_closing = false`; жилийн хаалтын өмнө ч, дараа ч (05) |
 | EC-05 | `vat_registered_from` сарын дунд (2027-04-15) | 4-р сарын хаалт зөвхөн 04-15-аас; 3-р сар шаардлагагүй |
 | EC-06 | 2-р сарын 29 (2028) ба 12 сарын цонх | `(2028-02-29 − 12 сар) = 2027-02-28` (`AddMonths`) |
@@ -2688,6 +2738,12 @@ GS-VAT-001…012 нь [16 §12.4](./16-test-strategy.md)-ийн каталоги
 | EC-10 | FX баримт (USD) | НӨАТ төгрөгөөр (`_lcy`) тооцогдож entry-д MNT; ханшийн зөрүү VAT entry-д нөлөөлөхгүй (09/10) |
 | EC-11 | Параметрийн мөр `superseded` болсон (migration) | Шинэ тооцоонд хэрэглэгдэхгүй; хуучин entry-ийн snapshot өөрчлөгдөхгүй |
 | EC-12 | Татгалзсан entry-тэй нэхэмжлэхэд дараа нь ДДТД ирсэн | `purchase.input_vat_written_off` (07); засварыг шинэ журналаар (OQ-TAX-02) |
+| EC-13 | ТТ-03а тооцсоны дараа, `:close`-оос өмнө худалдан авалтыг баталгаажуулсан (шинэ entry үүсээгүй) | `scopeVersion` өөрчлөгдсөн → `:close` 409 `tax.vat_statement_stale`; дахин тооцоолоход мөр 7/8 өснө (BR-TAX-69) |
+| EC-14 | Нэг дансанд +100.05 ба −100.05 (VAT10) мөр, ижил identifier-ийн өөр дансны мөртэй; buffer-т цэвэрлэгдээд `Amount = 0`, хуваарилалтаас `VatAmount = ±0.01` үлдсэн | Суурь G/L мөр бичигдэхгүй, VAT entry VAT дансны мөртэй холбогдоно (§5.5 алхам 5); ваучер тэнцсэн |
+| EC-15 | Баталгаажаагүй нэхэмжлэхийг бүрэн кредит нотолсон (ДДТД хэзээ ч ирэхгүй) | BR-TAX-50-ийн жагсаалтад хоёулаа (цэвэр 0); `input-vat:write-off` хоёуланг нь хос авч хаана, G/L-ийн цэвэр нөлөө 0 |
+| EC-16 | R2: НӨАТ төлөгч бус, НХАТ төлөгч ресторан | `:close` нь зөвхөн `CITYTAXSTMT` (`V2`), ТТ-03а-гүй; `tax.company_not_vat_registered` гарахгүй (BR-TAX-72) |
+| EC-17 | R2: `SUBMITTED` үеийн дараа ТТ-03а-гийн загварын мөрийг засварласан | Илгээсэн утга `:submit`-ийн snapshot-оос (CR-TAX-15); дахин тооцоолсон утга зөрвөл UI "илгээсэн хувилбараас зөрүүтэй" тэмдэглэнэ. R1-д загвар зөвхөн унших тул үүсэхгүй |
+| EC-18 | Хаагдаагүй entry-тэй үед setup-ийн 1300 дансыг 1305 болгох оролдлого | 409 `tax.vat_account_change_open_entries`; хаалтын дараа зөвшөөрнө (BR-TAX-03) |
 
 ---
 
@@ -2703,14 +2759,15 @@ GS-VAT-001…012 нь [16 §12.4](./16-test-strategy.md)-ийн каталоги
 | CR-TAX-04 | Шинэ `tax.company_tax_profile` (`id`, `company_id`, `valid_from date NOT NULL`, `valid_to date`, `vat_status` (`STANDARD`, `SIMPLIFIED`, `NOT_REGISTERED`), `vat_return_frequency` (`MONTHLY`, `QUARTERLY`), `simplified_base` (`VAT_EXCLUSIVE`, `VAT_INCLUSIVE`), `cit_regime` (`STANDARD`, `CREDIT_90`, `ONE_PERCENT`, `SIMPLIFIED_ANNUAL`), `excluded_activity_code text`, `note`; `EXCLUDE USING gist (company_id WITH =, daterange(valid_from, valid_to, '[]') WITH &&)`); `company_setup.vat_registered/_from` нь профайлаас trigger-ээр шинэчлэгдэх кэш. | ADR-0021 #2; BR-TAX-54, -58, -97, -102, -107; deregistration ба горимын түүх | `company_setup.vat_registered`, `vat_registered_from` (нэг шилжилт) | Дунд (R2-ийн өмнө заавал) |
 | CR-TAX-05 | Шинэ `tax.customs_declaration` (`id`, `company_id`, `declaration_no text`, `declaration_date date`, `customs_office_code`, `vendor_id`, `customs_value numeric(19,4)`, `customs_duty`, `excise_tax`, `vat_base`, `vat_amount numeric(19,2)`, `currency_code`, `exchange_rate`); `tax.vat_entry.customs_declaration_id uuid NULL` (FK). 07 SCR-PUR-07 (`customs_declaration_no`, `customs_value` header-т)-тэй нэгтгэх. | BR-TAX-62; ТТ-03а-5 Б хэсгийн гаалийн үнэ; OQ-TAX-08 | `external_document_no`, `document_date` | Дунд |
 | CR-TAX-06 | `tax.vat_return_period.city_tax_settlement_transaction_no bigint`; `tax.city_tax_entry.vat_return_period_id uuid NULL` (FK) ба `platform.ledger_guard`-ийн mutable жагсаалтад нэмэх. | BR-TAX-95; НХАТ-ын хаалтыг `:reopen`-оор буцаах | `CITYTAXSTMT` гүйлгээг `posting_log`-оор хайх | Дунд (R2) |
-| CR-TAX-07 | `tax.vat_entry.excluded_from_turnover boolean NOT NULL DEFAULT false` (snapshot); `gl.gen_product_posting_group.exclude_from_vat_turnover boolean NOT NULL DEFAULT false` (seed `FA` = true). | BR-TAX-83: ҮХ-ийн борлуулалтыг босгоос хасах (CMP-016) | `Tax:Threshold:ExcludedGenProdGroupCodes` тохиргоо | Дунд |
+| CR-TAX-07 | `tax.vat_entry.excluded_from_turnover boolean NOT NULL DEFAULT false` (snapshot); `party.gen_prod_posting_group.exclude_from_vat_turnover boolean NOT NULL DEFAULT false` (seed `FA` = true). | BR-TAX-83: ҮХ-ийн борлуулалтыг босгоос хасах (CMP-016) | `Tax:Threshold:ExcludedGenProdGroupCodes` тохиргоо | Дунд |
 | CR-TAX-08 | `platform.source_code` seed-д `('VATADJ', 'Орцын НӨАТ-ын залруулга', 'Input VAT adjustment')`; `audit.posting_log.posting_type` CHECK-д `INPUT_VAT_WRITE_OFF` (07 SCR-PUR-11). | BR-TAX-51; 05 §3.7-ын source code-оор буцаалтын бодлого | `PURCHASES` / `GENERAL_JOURNAL` | Дунд |
-| CR-TAX-09 | Эрхийн объект (`mn_00_catalogs.sql`, `mn_60_security.sql`): `ACTION tax.vat.reopen` (`ERP_PERIOD_REOPEN`, Owner), `ACTION tax.vat_return.export` (`ERP_VAT`), `REPORT rpt.vat_threshold` (`ERP_VAT`, `ERP_FIN_REPORTS`), `REPORT rpt.cit_helper` (R2). | BR-TAX-79; §10.1 | `tax.vat.settle` + Owner шалгалт; `rpt.vat_return` | Дунд |
+| CR-TAX-09 | Эрхийн объект (`mn_00_catalogs.sql`, `mn_60_security.sql`): `ACTION tax.vat.reopen` (`ERP_PERIOD_REOPEN`, Owner), `ACTION tax.vat_return.export` (`ERP_VAT`), `REPORT rpt.vat_threshold` (`ERP_VAT`, `ERP_FIN_REPORTS`), `REPORT rpt.cit_helper` (R2). `ERP_VAT`-ийн `TABLE tax.vat_entry` `Rm` → `Rim` (`:close` нь SETTLEMENT, `input-vat:write-off` нь VATADJ entry INSERT хийнэ); R2: `TABLE tax.city_tax_entry` `i` (`ERP_SALES_POST`, `ERP_PURCH_POST`, `ERP_VAT`), `Rm` (`ERP_VAT`). | BR-TAX-51, -73, -79, -95; §10.1 | `tax.vat.settle` + Owner шалгалт; `rpt.vat_return` | Дунд |
 | CR-TAX-10 | `gl.gl_account.cit_treatment text NOT NULL DEFAULT 'NORMAL' CHECK (cit_treatment IN ('NORMAL','NON_DEDUCTIBLE','NON_TAXABLE'))`; seed 8430 = `NON_DEDUCTIBLE`. | BR-TAX-106 | Тохиргооны дансны жагсаалт | Бага (R2) |
 | CR-TAX-11 | `integration.job_definition` seed: `tax.vat_threshold.check` (cron `0 6 * * *` Asia/Ulaanbaatar, `max_attempts 3`), `tax.vat_return.export` (`max_attempts 3`, timeout 120 s; 14 SCR-API-02-той нэг). | BR-TAX-86, -70 | — | Бага |
 | CR-TAX-12 | `COMMENT ON COLUMN tax.vat_statement_line.vat_bus_posting_group / vat_prod_posting_group / vat_category IS '… NULL = any (seed contract)'`. | Z-TAX-10: BC-ийн "хоосон = зөвхөн хоосон"-оос ялгаатай гэрээг схемд баримтжуулах | Энэ баримт | Бага |
 | CR-TAX-13 | `legal_parameters.sql`: `cit.simplified_return_rate` (0.01, `unverified`, эх mn-tax §3.3). | BR-TAX-107 (SIMPLIFIED_ANNUAL) кодонд literal бичихгүй (BR-TAX-10) | Горимыг "параметргүй" гэж харуулна | Бага (R2) |
-| CR-TAX-14 | `tax.vat_entry` CHECK нэмэх: `vat_calculation_type <> 'FULL_VAT' OR base = 0`; `entry_type <> 'SALE' OR (non_deductible_base = 0 AND non_deductible_amount = 0)`; `entry_type <> 'SETTLEMENT' OR closed`. | BR-TAX-24, -25, -73 инвариантыг DB-д | Апп-ын шалгалт | Бага |
+| CR-TAX-14 | `tax.vat_entry` CHECK нэмэх: `vat_calculation_type <> 'FULL_VAT' OR base = 0`; `entry_type <> 'SALE' OR (non_deductible_base = 0 AND non_deductible_amount = 0)`; `entry_type <> 'SETTLEMENT' OR closed`; `entry_type <> 'PURCHASE' OR vat_calculation_type <> 'FULL_VAT' OR amount = 0 OR (deductible_confirmed AND external_document_no IS NOT NULL AND document_date IS NOT NULL)`. | BR-TAX-24, -25, -46, -62, -73 инвариантыг DB-д | Апп-ын шалгалт | Бага |
+| CR-TAX-15 | Шинэ `tax.vat_return_snapshot` (`id`, `tenant_id`, `company_id`, `vat_return_period_id` FK, `statement_name_code`, `rows jsonb NOT NULL` (`line_no`, `row_no`, `value`, `printed`), `scope_version text`, `sha256 text`, `created_at`, `created_by`; `UNIQUE (company_id, vat_return_period_id)`; append-only — `platform.ledger_guard`-д mutable баганагүй). `:submit` бичнэ. | mn-tax R19 "илгээсэн тайлан бүрийн өөрчлөгдөхгүй бүртгэл"; R2-т загвар засварлах боломжтой болоход илгээсэн утга дахин тооцоогоор өөрчлөгдөх эрсдэл (EC-17) | `audit.security_event.details` (`VAT_PERIOD_SUBMITTED`) | Дунд (R2-ийн загвар засварлахаас өмнө заавал) |
 
 05-д тусгах (схем биш, гэрээ): `PostingBufferKey`-д `NonDeductibleReason`, `CityTaxCodeId` нэмэх; `PostingBufferRow`-д `VatDifference`, `NonDeductibleBase` (Z-TAX-15).
 
@@ -2728,7 +2785,7 @@ GS-VAT-001…012 нь [16 §12.4](./16-test-strategy.md)-ийн каталоги
 | OQ-TAX-06 | Хялбаршуулсан НӨАТ: эхлэх огноо, эрхийн нөхцөл (эргэлт, салбар), суурь (НӨАТ-гүй эсвэл НӨАТ-тэй), төлөх хувь ба хөнгөлөлтийн хувь, тайлангийн маягт ба хугацаа, борлуулалтын баримтад 10 % хэвээр эсэх, үлдэх дүнгийн (D) бүртгэл (8200 орлого эсвэл өөр) | BR-TAX-97…102, GS-VAT-021 | Бүгд `unverified` параметр; Posting хориотой (BR-TAX-12); 8200 | Татварын зөвлөх, СМТТ | D-E7; ADR-0021; legal-parameters (b) |
 | OQ-TAX-07 | Урвуу тооцооны хамрах хүрээ: зөвхөн резидент бусын үйлчилгээ үү, барааны (гаалиар ороогүй) хамаарах уу; НӨАТ төлөгч бус компани урвуу тооцоо хийх үүрэгтэй эсэх; суутган татвар (20 %)-тай уялдаа | BR-TAX-59, -64; `tax.company_not_vat_registered` | Зөвхөн үйлчилгээ; НӨАТ төлөгч бус компанид RC хориотой (алдаа); суутган татвар хүрээнээс гадуур | Татварын зөвлөх | D-E1; mn-tax R8, R12; 01 §7 |
 | OQ-TAX-08 | Импортын НӨАТ-ын суурь (гаалийн үнэ + гаалийн татвар + онцгой албан татвар) ба ТТ-03а-5 Б хэсэгт гаалийн үнийг заавал харуулах эсэх | CR-TAX-05, ТТ-03а-5 | Гаалийн мэдүүлгийн НӨАТ-ын дүнг шууд оруулна (FULL_VAT), гаалийн үнэ сонголтоор | Татварын зөвлөх | mn-tax §2.5 (UNVERIFIED); FR-TAX-021 |
-| OQ-TAX-09 | НХАТ-ын тайлангийн маягт, давтамж (сар/улирал), төлөх хугацаа, аймаг/нийслэлийн өөр хувь | BR-TAX-95, -109; S-TAX-08 | НӨАТ-ын үетэй ижил сар; хугацаа НӨАТ-тай ижил ⚠; хувь кодоор | Татварын зөвлөх, НТГ | D-E6; mn-tax R14 |
+| OQ-TAX-09 | НХАТ-ын тайлангийн маягт, давтамж (сар/улирал), төлөх хугацаа, аймаг/нийслэлийн өөр хувь | BR-TAX-72, -95, -109; S-TAX-08 | НӨАТ-ын үетэй ижил сар; хугацаа НӨАТ-тай ижил ⚠; хувь кодоор; НӨАТ төлөгч бус НХАТ төлөгчид мөн сарын үе үүсгэж `:close`-оор зөвхөн НХАТ-ыг хаана (EC-16) | Татварын зөвлөх, НТГ | D-E6; mn-tax R14 |
 | OQ-TAX-10 | ААНОАТ-ын туслах тайлан DECISIONS §H-д (хувилбарын агуулга) байхгүй; R2-т оруулах эсэх (D-E-д шийдвэр хэрэгтэй); 1 %-ийн горимын суурь (нийт орлого эсвэл борлуулалт), CREDIT_90-ийн нөхцөл | §5.17, BR-TAX-103…108, GS-VAT-022 | R2 · Could, зөвхөн уншдаг тооцоо + ноорог | Бүтээгдэхүүний эзэн, татварын зөвлөх | DECISIONS §H; mn-tax §3 |
 | OQ-TAX-11 | Үндсэн хөрөнгийн орцын НӨАТ-ыг нэг дор эсвэл хэсэгчлэн (жишээ нь барилга 120 сар, бусад 60 сар) хасах дүрэм | BR-TAX-25, 11-fixed-assets | Нэг дор (BC загвар); хэсэгчилсэн хасалт хийхгүй | Татварын зөвлөх | CMP-020; 11 |
 | OQ-TAX-12 | eBarimt-ийн бараа бүрийн НӨАТ ба баримтын НӨАТ-ын бөөрөнхийллийн дүрэм (баримтын түвшний Nearest + running remainder) PosAPI-ийн шалгалттай таарах эсэх; бэлэн бүхэл төгрөгийн бөөрөнхийлөлтийн (D-C2) НӨАТ-д нөлөө | BR-TAX-19…21, -37; GS-VAT-001/002 | Баримтын түвшин, Nearest, 0.01; бэлэн бөөрөнхийлөлт НӨАТ-ын суурьт орохгүй | СМТТ (PosAPI) | D-E3 ⚠; D-C2 |
@@ -2747,3 +2804,42 @@ GS-VAT-001…012 нь [16 §12.4](./16-test-strategy.md)-ийн каталоги
 | [13-security-audit-tenancy.md](./13-security-audit-tenancy.md) | `VAT_PERIOD_SUBMITTED` аудитын event | §5.11, §9.5 |
 | [14-api.md](./14-api.md) | §9 problem хэлбэр, `tax.parameter_not_effective` 404, SCR-API-02 job | §8, §9.4; Q19-ийг §5.11 хаана |
 | [16-test-strategy.md](./16-test-strategy.md) | §12.4 GS-VAT-001…012 | §11.2-т ID-г 16-тай тааруулж, 013…022-ыг нэмэв; OQ-TAX-04 (Q12), OQ-TAX-15 |
+
+---
+
+## Хяналтын тэмдэглэл (Review log)
+
+**2026-10-08, adversarial review.** Шалгасан: §6–§7-ийн бүх тоон жишээг дахин бодсон (E-TAX-01…12, §6.1–§6.15; Python `Decimal`, `ROUND_HALF_UP`) — бүх ваучер тэнцсэн, ТТ-03а-гийн мөр 1–14 ба хаалтын 2310 = 500 000.00 зөв; хүснэгт/баганын нэрийг `db/schema/*.sql`-тай, seed (`mn_10_coa.sql`, `mn_20_tax.sql`, `mn_50_reports.sql`, `legal_parameters.sql`, `mn_00_catalogs.sql`)-тэй, FR id-г 01-тэй, алдааны кодын хэв маягийг 02/05/14-тэй тулгасан; bc-vat (R-VAT-01…32, pitfall 1–19), mn-tax (R1–R19), mn-accounting (§7, REQ-ACC-13/16/19/22)-ийн MUST дүрмийн хамрагдалт.
+
+| # | Төрөл | Олдсон асуудал | Засвар |
+|---|---|---|---|
+| 1 | Нягтлан (хаалт) | `FULL_VAT` entry мэдүүлэггүй батлагдвал `deductible_confirmed = false` болж, `ConfirmDeductibleAsync` зөвхөн NORMAL-ийг баталгаажуулдаг, `external_document_no` whitelist-гүй тул тэр НӨАТ хэзээ ч хасагдахгүй, хаагдахгүй 1300-д үлдэх байсан | Мэдүүлгийн № ба огноо posting-д заавал, FULL_VAT үргэлж `true` (BR-TAX-46, -62, §5.5, §5.6, §8.1, AT-TAX-046/062, E-TAX-04; CR-TAX-14-т CHECK). 07 BR-PUR-47/P14-ийг дагуулж засах санал |
+| 2 | Нягтлан (хаалт) | Setup-ийн НӨАТ-ын дансыг нээлттэй entry байхад сольж болдог байсан → хаалт шинэ дансыг Кт/Дт хийж, хуучин дансны НӨАТ үлдэнэ; бүлгийн кодыг солиход `setupByCodes` олдохгүй | BR-TAX-03: кодыг солихгүй, нээлттэй entry-тэй үед данс солихгүй (`tax.vat_account_change_open_entries`), blocked setup хаалтад нөлөөлөхгүй; EC-18 |
+| 3 | Зэрэгцээ ажиллагаа | `expectedLastVatEntryNo` нь entry нэмэхгүй баталгаажуулалт/цуцлалтыг илрүүлэхгүй → хэрэглэгчийн харсан ТТ-03а-аас өөр дүнгээр хаалт хийгдэх боломжтой | `scopeVersion` (BR-TAX-69 томьёо), `expectedScopeVersion` (BR-TAX-72, §5.10, §5.12 экспорт, §5.19, §10.1, `VatCloseCommand`); AT-TAX-069, EC-13 |
+| 4 | Хэрэгжүүлэлт (bug) | `ConfirmDeductibleAsync`: ДДТД-ийн олон утгад `SingleOrDefault` exception (409 биш 500); кредит нотын өөрийн буцаалтын ДДТД (BR-TAX-36) нь `supplier_receipt_id_mismatch` өгч, бас дарагдах байсан | Нийцлийг зөвхөн нэхэмжлэхийн entry-ээр, эхлээд `Count > 1` шалгана, байгаа ДДТД-ийг дарахгүй (BR-TAX-49, §5.8) |
+| 5 | Хэрэгжүүлэлт (bug) | `ComputeDocument` алхам 5: бүрэн хасагдахгүй NORMAL мөрөнд `SelfAssessedVat − ND ≠ 0` болж худалдан авалтын НӨАТ-ын данс шаардах буруу алдаа | `charged`-ийг тооцооны төрлөөр (§5.5-тай ижил) |
+| 6 | Хэрэгжүүлэлт | `decimal.Round(T/m*100, 2)` нь .NET-ийн анхдагч banker's rounding (баримтын `No_bankers_rounding` дүрэм зөрчсөн); босгын SQL inner JOIN нь setup/бүлэг олдохгүй entry-г чимээгүй хасдаг | `MidpointRounding.AwayFromZero`; LEFT JOIN + `coalesce(s.vat_category, e.vat_category)` (§5.14, BR-TAX-83) |
+| 7 | Хэрэгжүүлэлт | Buffer-т ижил дансны +/− мөр цэвэрлэгдээд `Amount = 0` боловч `VatAmount ≠ 0` үлдэх тохиолдолд суурь G/L мөр 0 болж 05 BR-PST-25 (500) зөрчигдөнө; НӨАТ-ын зөрүү `P`-ийн үржвэр биш бол `Allocate`-ийн Σ баталгаа эвдэрнэ | Composer алхам 5 (суурь мөргүй, VAT entry → VAT дансны мөр), `vatDifference % P` шалгалт; EC-14 |
+| 8 | Нягтлан / дүрэм | R1-д `vat_registered = false` болгоход `IsVatRegistered` бүх огноонд `false` болж өмнөх үеийг хаах боломжгүй; `vat_registered_from`-ийг хойноос солиход хаагдсан үеийн scope өөрчлөгдөнө | BR-TAX-58 урьдчилсан нөхцөл (`tax.vat_deregistration_periods_open`), BR-TAX-56 түгжээ (`tax.vat_registered_from_locked`); AT-TAX-056, шинэ AT-TAX-058 |
+| 9 | Хамрах хүрээ (R2) | НӨАТ төлөгч бус НХАТ төлөгч (ресторан) `:close` хийж чадахгүй (`company_not_vat_registered`) тул НХАТ хэзээ ч хаагдахгүй; `:reopen` НХАТ-ын хаалтыг буцаадаггүй; хоёр `Reverse` дуудлага 05 BR-PST-02 (нэг run)-ийг зөрчих | BR-TAX-72/-55: НХАТ-ын л хаалт; reopen нь хоёр гүйлгээг нэг run-д буцаана, SALE/PURCHASE-ийн оноолтыг л арилгана (BR-TAX-79, §5.11); EC-16, OQ-TAX-09 |
+| 10 | Шаардлага (mn-tax R19) | Илгээсэн ТТ-03а-гийн өөрчлөгдөхгүй бүртгэл байхгүй (R2-т загвар засварлахад илгээсэн утга өөрчлөгдөнө) | BR-TAX-78 + §5.11: `:submit`-д snapshot (`audit.security_event.details`); CR-TAX-15; EC-17 |
+| 11 | Тоон жишээ | §6.3-A: бөөрөнхийлөөгүй НӨАТ-ыг (91.363636) хуваарилсан завсрын утга — алгоритм бөөрөнхийлсөн `VAT_g`-ийг хуваарилна | 91.363333 / rem ±0.003333 болгож засав (эцсийн утга өөрчлөгдөөгүй) |
+| 12 | Тест | AT-TAX-073 "2310 Кт 1 350 000" (ваучерын нийт, 2310 нь 500 000); AT-TAX-051 данс 7200 (E-TAX-08-д 7213); AT-TAX-012 байхгүй параметр `vat.simplified.payable_rate`; EC-03 `numeric(19,2)` (схем `numeric(19,4)`) | Засав |
+| 13 | Тодорхой бус алгоритм | Татварын календарийн шүүлт ("overlapping [from, to+2 months]") AT-TAX-109-ийн хүлээлттэй зөрчилдөж байсан; хугацааны параметрийн `asOf` тодорхойгүй | Дүрэм: `due ∈ [from, to]`, параметр = үеийн дараагийн өдрөөр (§5.18, BR-TAX-109), AT-TAX-109-ийг бодит мөрүүдээр дахин бичсэн |
+| 14 | Тодорхой бус алгоритм | ААНОАТ-ын `LossOffset` томьёогүй; §5.17-д §6.14 гэж буруу заасан | §6.15-д FIFO, хувийн хязгаар, хугацаатай томьёо |
+| 15 | Тодорхой бус алгоритм | G/L-гүй хаалтын замд outbox/audit хэн бичих, түгжээ/stale шалгалт хаана хийгдэх тодорхойгүй (engine `LockSourceAsync`-ийг дууддаггүй) | §5.10: `BuildAsync` хоёр замд шалгана, VatReturnService outbox ба audit бичнэ |
+| 16 | Тодорхой бус алгоритм | `:unconfirm` алгоритм, түгжээ байхгүй; eBarimt тулгалтад журналын SALE entry (eBarimt-гүй) ба НХАТ-ын тэмдэг | §5.8 "Цуцлах", §5.19 мөр; §5.13 scope `source_code = 'SALES'`, тэмдэг |
+| 17 | Idempotency | `tax.vat_period.closed`/`reopened`-ийн `idempotency_key` хаах → нээх → G/L-гүй дахин хаахад давтагдаж event алга болно | `{rowVersion}`-оор (§9.2) |
+| 18 | Тууштай байдал | 05 BR-PST-36 суурь мөрийн `VatAmount` = бүтэн НӨАТ, энэ баримт = хасагдах НӨАТ | Z-TAX-16 (хасагдах канон, үндэслэлтэй; 05-д засах санал) |
+| 19 | Тууштай байдал | §5.1-ийн гэрээ ба §9.1/§10.1-ийн нэр зөрүү (`PreviewCloseAsync`, `ComputeAsync`, `GetItemsAsync`, `ListUnconfirmedAsync`, `UnconfirmAsync`, `GetPeriodStatusAsync`); параметрийн кэшийн тайлбар §5.2-той зөрсөн | Нэгтгэв |
+| 20 | Тууштай байдал (схем) | `purch.purchase_header`, `gl.gen_journal_line`, `gl.gen_product_posting_group`, `audit.integrity_issue` — схемд байхгүй нэр; эрхийн үсэг `W` (D-I2-д R/I/M/D/X) | `purchase.purchase_header M`, `gl.journal_line I`, `party.gen_prod_posting_group` (CR-TAX-07), 02 §8.8-ийн `ops.consistency_issue` |
+| 21 | Тууштай байдал | §5.3 RC + НӨАТ төлөгч бус компанид `tax.vat_calc_type_not_allowed`, §8.1 ба OQ-TAX-07-д `tax.company_not_vat_registered` | `tax.company_not_vat_registered` |
+| 22 | Алдааны код | Шинэ дүрмийн код дутуу; `tax.vat_settlement_date_invalid`-ийн BR буруу; `tax.vat_settlement_account_invalid`-ийн нөхцөл BR-TAX-76-тай зөрсөн; `tax.customs_declaration_required` нөхцөл | 4 шинэ код (`tax.vat_account_change_open_entries`, `tax.vat_registered_from_locked`, `tax.vat_deregistration_periods_open` + stale-ийн нөхцөл), бусдыг тааруулав |
+| 23 | Эрх | `ERP_VAT` нь `tax.vat_entry`-д `Rm` л (seed) — `:close` (SETTLEMENT) ба `input-vat:write-off` (VATADJ) INSERT хийнэ; R2 `city_tax_entry`-ийн эрх алга | CR-TAX-09-д нэмэв |
+| 24 | Инвариант | BR-TAX-82 нь 2300/1300/2305 гэж хатуу дансаар; setup өөр данс заавал буруу дохио | Setup-ийн данс тус бүрээр |
+| 25 | Татгалзал | Суурь данс блоклогдсон, кредит нот хамт, ваучерын мөрийн `gen_posting_type` тодорхойгүй | §5.8-д нэмэв; EC-15 |
+| 26 | Жижиг | §0.2 W-TAX → §8.2; §1.3, §2.1 → §6.13; §6.4 дунд утгын онцгой тохиолдол; §6.12 тэнцлийн мөр | Засав |
+
+**Schema change requests (энэ review-ээр):** CR-TAX-15 шинэ (`tax.vat_return_snapshot`); CR-TAX-09 (ERP_VAT `Rim`, `city_tax_entry` эрх) ба CR-TAX-14 (FULL_VAT CHECK) өргөтгөсөн; CR-TAX-07-ийн хүснэгтийн нэрийг `party.gen_prod_posting_group` болгож засав. SQL файлыг засаагүй.
+
+**Бусад баримтад дагуулж засах (санал):** 05 BR-PST-36/§5.7.2 (Z-TAX-16); 07 BR-PUR-47 ба P14 (FULL_VAT-ын мэдүүлэг заавал, `true`); 14 §15 (`expectedScopeVersion`, `scopeVersion`); 15 UX-VAT-03 (`scopeVersion`-оор харьцуулах); 02 §8.8 (`ops.consistency_issue` хүснэгт схемд).
